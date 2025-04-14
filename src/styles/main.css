@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "primeicons/primeicons.css";
+
+@theme {
+  --color-primary-50: var(--pv-primary-50);
+  --color-primary-100: var(--pv-primary-100);
+  --color-primary-200: var(--pv-primary-200);
+  --color-primary-300: var(--pv-primary-300);
+  --color-primary-400: var(--pv-primary-400);
+  --color-primary-500: var(--pv-primary-500);
+  --color-primary-600: var(--pv-primary-600);
+  --color-primary-700: var(--pv-primary-700);
+  --color-primary-800: var(--pv-primary-800);
+  --color-primary-900: var(--pv-primary-900);
+}
+
+/* Custom styles */
+.maplibregl-map {
+  width: 100%;
+  height: calc(100dvh - 32px);
+}
