@@ -8,6 +8,7 @@
     <!-- Main content area -->
     <main class="flex-grow">
       <MapView />
+      <Icon name="undo" :svgClass="'w-8 h-8 text-white'" />
     </main>
 
     <!-- <footer class="p-4 bg-primary-800 text-white text-center">
@@ -17,7 +18,8 @@
 </template>
 
 <script setup lang="ts">
-import MapView from "@/components/MapView.vue";
+import MapView from "@/components/map/MapView.vue";
+import Icon from "@/components/ui/Icon.vue";
 </script>
 
 <style scoped>

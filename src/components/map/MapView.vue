@@ -21,7 +21,7 @@ import {
   distance as turfDistance,
 } from "@turf/turf";
 
-import { useRouteStore } from "@/stores/routeStore";
+import { useRouteStore } from "@/stores/route.store";
 const routeStore = useRouteStore();
 
 // For store-based markers
