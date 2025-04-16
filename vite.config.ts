@@ -11,4 +11,13 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  server: {
+    proxy: {
+      "/ors-api": {
+        target: "https://api.openrouteservice.org",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ors-api/, ""),
+      },
+    },
+  },
 });

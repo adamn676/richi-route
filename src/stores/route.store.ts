@@ -1,24 +1,28 @@
-// src/stores/routeStore.ts
+// src/stores/route.store.ts
 import { defineStore } from "pinia";
-import axios from "axios";
+import type { FeatureCollection } from "geojson";
+import { getRoute } from "@/services";
 
 export interface Waypoint {
   id: string; // "start", "end", or "wp-<timestamp>"
   coord: [number, number]; // [lng, lat]
 }
 
+/**
+ * A simple variable to hold our debounce timer.
+ * We only do an actual ORS call once the user stops updating for a short time.
+ */
+let calcTimeout: number | null = null;
+
 export const useRouteStore = defineStore("route", {
   state: () => ({
     waypoints: [] as Waypoint[],
-    routeData: null as GeoJSON.FeatureCollection | null,
+    routeData: null as FeatureCollection | null,
   }),
 
   getters: {
     getWaypointById: (state) => (id: string) =>
       state.waypoints.find((wp) => wp.id === id),
-
-    // Sort so that 'start' is always first, 'end' is last
-    // Intermediates remain in the order they were inserted
     orderedWaypoints: (state) => {
       return [...state.waypoints].sort((a, b) => {
         if (a.id === "start") return -1;
@@ -44,19 +48,16 @@ export const useRouteStore = defineStore("route", {
         return;
       }
 
-      // If replacing end
       if (newWp.id === "end") {
         this.waypoints = this.waypoints.filter((wp) => wp.id !== "end");
         this.waypoints.push(newWp);
         return;
       }
 
-      // Otherwise an intermediate
       const endIndex = this.waypoints.findIndex((wp) => wp.id === "end");
       if (endIndex === -1) {
         this.waypoints.push(newWp);
       } else {
-        // Insert before end
         this.waypoints.splice(endIndex, 0, newWp);
       }
     },
@@ -81,32 +82,33 @@ export const useRouteStore = defineStore("route", {
       }
     },
 
-    async calculateRoute() {
+    /**
+     * Public method: we call this whenever we want to recalc the route,
+     * but we use a short debounce to avoid multiple calls in quick succession.
+     */
+    calculateRoute(delay = 200) {
+      if (calcTimeout) {
+        clearTimeout(calcTimeout);
+      }
+      calcTimeout = window.setTimeout(() => {
+        this._calculateRouteNow();
+      }, delay);
+    },
+
+    /**
+     * The actual route calculation that calls getRoute().
+     * We keep it private (underscore prefix) so external code calls only "calculateRoute()".
+     */
+    async _calculateRouteNow() {
       if (this.waypoints.length < 2) {
         this.routeData = null;
         return;
       }
 
       try {
-        const orsApiKey = import.meta.env.VITE_ORS_API_KEY;
         const coords = this.orderedWaypoints.map((wp) => wp.coord);
-
-        const response = await axios.post(
-          "https://api.openrouteservice.org/v2/directions/cycling-regular/geojson",
-          {
-            coordinates: coords,
-            preference: "recommended",
-            extra_info: ["surface", "waytype", "steepness"],
-          },
-          {
-            headers: {
-              Authorization: orsApiKey,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        this.routeData = response.data;
+        const data = await getRoute(coords);
+        this.routeData = data;
       } catch (err) {
         console.error("ORS error:", err);
         this.routeData = null;

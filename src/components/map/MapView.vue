@@ -1,11 +1,7 @@
-<template>
-  <div class="relative w-full">
-    <div ref="mapContainer" class="w-full h-full"></div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { onMounted, ref, shallowRef, watch } from "vue";
+import { getMapTilerStyleUrl } from "@/services";
+
 import maplibregl, {
   Map as MaplibreMap,
   Marker,
@@ -15,13 +11,20 @@ import maplibregl, {
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import {
+  DIST_ROUTE,
+  DIST_EXISTING,
+  ROUTE_LAYER_ID,
+  ROUTE_SOURCE_ID,
+} from "@/config/map.config";
+
+import {
   lineString,
   point,
   nearestPointOnLine,
   distance as turfDistance,
 } from "@turf/turf";
 
-import { useRouteStore } from "@/stores/route.store";
+import { useRouteStore } from "@/stores";
 const routeStore = useRouteStore();
 
 // For store-based markers
@@ -29,48 +32,42 @@ const markersMap = new Map<string, Marker>();
 
 // Single ephemeral marker
 let ephemeralMarker: Marker | null = null;
-let ephemeralIsVisible = false;
-let ephemeralIsCommitted = false;
+let ephemeralVisible = false;
+let ephemeralCommitted = false;
 
 // Track ephemeral dragging & any dragging
 let isDraggingEphemeral = false;
 let isDraggingAnyMarker = false;
 
-// Constants for route layer, etc.
-const ROUTE_LAYER_ID = "routeLayer";
-const ROUTE_SOURCE_ID = "routeSource";
 const mapContainer = ref<HTMLDivElement | null>(null);
 const mapInstance = shallowRef<MaplibreMap | null>(null);
-const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
 
 onMounted(() => {
   if (!mapContainer.value) return;
 
   mapInstance.value = new maplibregl.Map({
     container: mapContainer.value,
-    style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+    style: getMapTilerStyleUrl("streets"),
     center: [15.4417, 47.0679],
     zoom: 15,
   });
 
   mapInstance.value.addControl(new maplibregl.NavigationControl(), "top-right");
 
-  // Create ephemeral marker once during initialization
-  // We'll create it immediately but not add it to the map yet
+  // Create ephemeral marker once
   ephemeralMarker = new maplibregl.Marker({
     draggable: true,
     color: "#0d6efd",
     scale: 0.8,
   });
 
-  // Set up all event handlers for the ephemeral marker
+  // Ephemeral marker events
   ephemeralMarker.on("dragstart", onEphemeralDragStart);
   ephemeralMarker.on("drag", onEphemeralDrag);
   ephemeralMarker.on("dragend", onEphemeralDragEnd);
 
-  // Initialize state
-  ephemeralIsVisible = false;
-  ephemeralIsCommitted = false;
+  ephemeralVisible = false;
+  ephemeralCommitted = false;
 
   mapInstance.value.on("load", () => {
     setupMarkers();
@@ -79,9 +76,6 @@ onMounted(() => {
     }
   });
 
-  if (!mapInstance.value) return;
-
-  // Map events
   mapInstance.value.on("click", onMapClick);
   mapInstance.value.on("contextmenu", onContextMenu);
   mapInstance.value.on("mousemove", onMapMouseMove);
@@ -107,6 +101,7 @@ function onMapClick(e: MapMouseEvent) {
   if (!endWp) {
     routeStore.addWaypoint({ id: "end", coord: [lng, lat] });
     setupMarkers();
+    // Final step: route now that we have start & end
     routeStore.calculateRoute();
     return;
   }
@@ -117,6 +112,7 @@ function onMapClick(e: MapMouseEvent) {
     // user clicked off-route => move end
     routeStore.updateWaypoint("end", [lng, lat]);
     setupMarkers();
+    // route only once final pos is set
     routeStore.calculateRoute();
   }
 }
@@ -143,13 +139,13 @@ function onContextMenu(e: MapMouseEvent) {
    #3 onMapMouseMove => show ephemeral near route if not dragging
 ------------------------------------------------------------------ */
 function onMapMouseMove(e: MapMouseEvent) {
-  // Exit early if we're dragging any marker or map isn't initialized
+  // If we’re dragging or the map isn't ready, skip
   if (isDraggingAnyMarker || !mapInstance.value || !ephemeralMarker) {
     hideEphemeralMarker();
     return;
   }
 
-  // Exit early if we don't have start, end, or route data
+  // If no start/end or no route data => skip ephemeral
   const hasStart = routeStore.getWaypointById("start");
   const hasEnd = routeStore.getWaypointById("end");
   if (!hasStart || !hasEnd || !routeStore.routeData) {
@@ -157,33 +153,30 @@ function onMapMouseMove(e: MapMouseEvent) {
     return;
   }
 
-  // If ephemeral is committed, don't change its position
-  if (ephemeralIsCommitted) {
+  // If ephemeral is already committed => skip
+  if (ephemeralCommitted) {
     return;
   }
 
-  // Try to snap to route
+  // Snap to route
   const snapped = snapToRoute(e.lngLat.lng, e.lngLat.lat);
   if (!snapped) {
     hideEphemeralMarker();
     return;
   }
 
-  // Only show if we're close enough to the route (30 meters)
-  const DIST_ROUTE = 5;
+  // If too far from route, hide ephemeral
   if (snapped.distMeters > DIST_ROUTE) {
     hideEphemeralMarker();
     return;
   }
 
-  // Don't show if we're too close to an existing waypoint (10 meters)
-  const DIST_EXISTING = 10;
+  // If too close to an existing waypoint
   if (isTooCloseToExisting(snapped.coord, DIST_EXISTING)) {
     hideEphemeralMarker();
     return;
   }
 
-  // Update and show the ephemeral marker
   ephemeralMarker.setLngLat(snapped.coord);
   showEphemeralMarker();
 }
@@ -195,59 +188,50 @@ function onMapMouseDown(e: MapMouseEvent) {
   if (
     !mapInstance.value ||
     !ephemeralMarker ||
-    !ephemeralIsVisible ||
-    ephemeralIsCommitted
+    !ephemeralVisible ||
+    ephemeralCommitted
   ) {
     return;
   }
 
-  // Get coordinates of the ephemeral marker
   const ephemeralLL = ephemeralMarker.getLngLat();
   if (!ephemeralLL) return;
 
-  // Calculate screen distance between click and marker
   const ephemeralPt = mapInstance.value.project(ephemeralLL);
   const dx = ephemeralPt.x - e.point.x;
   const dy = ephemeralPt.y - e.point.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  // If the click is on the marker, commit it
+  // If user clicked on ephemeral marker => commit
   if (dist <= 10) {
-    ephemeralIsCommitted = true;
+    ephemeralCommitted = true;
 
-    // Create a new waypoint ID
     const newId = `wp-${Date.now()}`;
-
-    // Safely set the element ID
     const element = ephemeralMarker.getElement();
-    if (element) {
-      element.id = newId;
-    }
+    if (element) element.id = newId;
 
-    // Add the waypoint to the store
+    // Add waypoint
     routeStore.addWaypoint({
       id: newId,
       coord: [ephemeralLL.lng, ephemeralLL.lat],
     });
 
-    // Prevent other click handlers
+    // Stop map’s default click
     e.originalEvent.preventDefault();
     e.originalEvent.stopPropagation();
   }
 }
 
 /* ------------------------------------------------------------------
-   #5 onMapMouseUp => if ephemeral is committed & not dragged => finalize
+   #5 onMapMouseUp => if ephemeral committed & not dragged => finalize
 ------------------------------------------------------------------ */
 function onMapMouseUp(e: MapMouseEvent) {
-  // If the ephemeral marker was committed but not dragged, finalize it
-  if (ephemeralIsCommitted && !isDraggingEphemeral) {
-    // Calculate the route with the new waypoint
+  // If ephemeral was just clicked (committed) but not actually dragged
+  if (ephemeralCommitted && !isDraggingEphemeral) {
+    // final route calc
     routeStore.calculateRoute();
-
-    // Reset the ephemeral marker state
-    ephemeralIsVisible = false;
-    ephemeralIsCommitted = false;
+    ephemeralVisible = false;
+    ephemeralCommitted = false;
   }
 }
 
@@ -262,25 +246,19 @@ function onEphemeralDragStart(
 
   if (!ephemeralMarker) return;
 
-  // Get coordinates directly from the event target
   const ephemeralLL = e.target.getLngLat();
   if (!ephemeralLL) {
     console.warn("Ephemeral marker has no coordinate at dragstart.");
     return;
   }
 
-  // If not committed yet, commit now
-  if (!ephemeralIsCommitted) {
-    ephemeralIsCommitted = true;
+  // If we never committed ephemeral, do so now
+  if (!ephemeralCommitted) {
+    ephemeralCommitted = true;
     const newId = `wp-${Date.now()}`;
-
-    // Safely set the ID on the DOM element
     const element = ephemeralMarker.getElement();
-    if (element) {
-      element.id = newId;
-    }
+    if (element) element.id = newId;
 
-    // Add the waypoint to the store
     routeStore.addWaypoint({
       id: newId,
       coord: [ephemeralLL.lng, ephemeralLL.lat],
@@ -289,32 +267,27 @@ function onEphemeralDragStart(
 }
 
 function onEphemeralDrag(e: maplibregl.MapMouseEvent & { target: Marker }) {
-  if (!ephemeralMarker || !ephemeralIsCommitted) return;
+  if (!ephemeralMarker || !ephemeralCommitted) return;
 
-  // Get the element to find the ID
   const element = ephemeralMarker.getElement();
   if (!element || !element.id) return;
-
   const waypointId = element.id;
-  const newCoord = e.target.getLngLat();
 
-  // Update the waypoint in the store
+  const newCoord = e.target.getLngLat();
   routeStore.updateWaypoint(waypointId, [newCoord.lng, newCoord.lat]);
 }
 
 function onEphemeralDragEnd(e: maplibregl.MapMouseEvent & { target: Marker }) {
-  // Reset dragging state
+  // Drag end => finalize route
   isDraggingEphemeral = false;
   isDraggingAnyMarker = false;
 
-  // If we committed the marker, recalculate the route
-  if (ephemeralIsCommitted) {
+  if (ephemeralCommitted) {
     routeStore.calculateRoute();
   }
 
-  // Reset the ephemeral marker
   hideEphemeralMarker();
-  ephemeralIsCommitted = false;
+  ephemeralCommitted = false;
 }
 
 /* ------------------------------------------------------------------
@@ -345,9 +318,9 @@ function snapToRoute(
 function showEphemeralMarker() {
   if (!ephemeralMarker || !mapInstance.value) return;
 
-  if (!ephemeralIsVisible) {
+  if (!ephemeralVisible) {
     ephemeralMarker.addTo(mapInstance.value);
-    ephemeralIsVisible = true;
+    ephemeralVisible = true;
   }
 }
 
@@ -357,10 +330,9 @@ function showEphemeralMarker() {
 function hideEphemeralMarker() {
   if (!ephemeralMarker) return;
 
-  // Only remove from map if not committed
-  if (ephemeralIsVisible && !ephemeralIsCommitted) {
+  if (ephemeralVisible && !ephemeralCommitted) {
     ephemeralMarker.remove();
-    ephemeralIsVisible = false;
+    ephemeralVisible = false;
   }
 }
 
@@ -383,7 +355,7 @@ function isTooCloseToExisting(
 }
 
 /* ------------------------------------------------------------------
-   drawRouteLine => draws route
+   drawRouteLine => draws route line from routeData
 ------------------------------------------------------------------ */
 function drawRouteLine(routeData: GeoJSON.FeatureCollection) {
   if (!mapInstance.value) return;
@@ -411,7 +383,10 @@ function drawRouteLine(routeData: GeoJSON.FeatureCollection) {
         [bbox[0], bbox[1]],
         [bbox[2], bbox[3]],
       ],
-      { padding: 40, duration: 600 }
+      {
+        padding: 40,
+        duration: 600,
+      }
     );
   }
 }
@@ -423,6 +398,7 @@ function setupMarkers() {
   if (!mapInstance.value) return;
 
   const storeIds = routeStore.waypoints.map((wp) => wp.id);
+  // remove stale markers
   for (const id of markersMap.keys()) {
     if (!storeIds.includes(id)) {
       markersMap.get(id)?.remove();
@@ -430,6 +406,7 @@ function setupMarkers() {
     }
   }
 
+  // add or update new markers
   routeStore.waypoints.forEach((wp) => {
     if (markersMap.has(wp.id)) {
       markersMap.get(wp.id)?.setLngLat(wp.coord);
@@ -442,7 +419,7 @@ function setupMarkers() {
       .setLngLat(wp.coord)
       .addTo(mapInstance.value!);
 
-    // If user drags any store-based marker => ephemeral is hidden
+    // If user drags a store-based marker => ephemeral is hidden
     newMarker.on("dragstart", () => {
       isDraggingAnyMarker = true;
       hideEphemeralMarker();
@@ -453,6 +430,7 @@ function setupMarkers() {
     });
     newMarker.on("dragend", () => {
       isDraggingAnyMarker = false;
+      // final route call
       routeStore.calculateRoute();
     });
 
@@ -544,6 +522,12 @@ function getFeaturesNearPoint(
 function getMarkerColor(id: string): string {
   if (id === "start") return "green";
   if (id === "end") return "red";
-  return "#00afff";
+  return "#00afff"; // default for in-between markers
 }
 </script>
+
+<template>
+  <div class="relative w-full h-full">
+    <div ref="mapContainer" class="w-full h-full"></div>
+  </div>
+</template>
