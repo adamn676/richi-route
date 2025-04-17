@@ -1,118 +1,100 @@
 // src/stores/route.store.ts
 import { defineStore } from "pinia";
 import type { FeatureCollection } from "geojson";
-import { getRoute } from "@/services";
+import { getRoute } from "@/services/route.service";
 
-export interface Waypoint {
-  id: string; // "start", "end", or "wp-<timestamp>"
-  coord: [number, number]; // [lng, lat]
+type Coord = [number, number];
+
+interface ShapePoint {
+  idx: number; // index of the segment in the backbone coords
+  coord: Coord; // the drag‑to‑shape coordinate
 }
-
-/**
- * A simple variable to hold our debounce timer.
- * We only do an actual ORS call once the user stops updating for a short time.
- */
-let calcTimeout: number | null = null;
 
 export const useRouteStore = defineStore("route", {
   state: () => ({
-    waypoints: [] as Waypoint[],
-    routeData: null as FeatureCollection | null,
+    waypoints: [] as Coord[], // hard stops only
+    shapingPoints: [] as ShapePoint[], // soft shaping tweaks
+    route: null as FeatureCollection | null,
   }),
 
-  getters: {
-    getWaypointById: (state) => (id: string) =>
-      state.waypoints.find((wp) => wp.id === id),
-    orderedWaypoints: (state) => {
-      return [...state.waypoints].sort((a, b) => {
-        if (a.id === "start") return -1;
-        if (b.id === "start") return 1;
-        if (a.id === "end") return 1;
-        if (b.id === "end") return -1;
-        return state.waypoints.indexOf(a) - state.waypoints.indexOf(b);
-      });
-    },
-  },
-
   actions: {
-    addWaypoint(newWp: Waypoint) {
-      const hasStart = this.waypoints.some((wp) => wp.id === "start");
-      const hasEnd = this.waypoints.some((wp) => wp.id === "end");
+    /** Phase 1: full ORS call over hard stops only */
+    async calculateHardRoute() {
+      if (this.waypoints.length < 2) return;
+      this.route = await getRoute(this.waypoints);
+    },
 
-      if (!hasStart && newWp.id === "start") {
-        this.waypoints.unshift(newWp);
+    /** Phase 2: apply each shaping point */
+    async applyShaping() {
+      if (!this.route) return;
+
+      // **Special‑case**: only 2 hard stops → route through all shaping in one go
+      if (this.waypoints.length === 2) {
+        const coords: Coord[] = [
+          this.waypoints[0],
+          ...this.shapingPoints.map((p) => p.coord),
+          this.waypoints[1],
+        ];
+        this.route = await getRoute(coords);
         return;
       }
-      if (!hasEnd && newWp.id === "end") {
-        this.waypoints.push(newWp);
-        return;
+
+      // Otherwise, splice each leg individually
+      const original = (this.route.features[0].geometry as any)
+        .coordinates as Coord[];
+      let merged: Coord[] = original.slice();
+
+      for (const { idx, coord } of this.shapingPoints) {
+        // guard
+        if (idx < 0 || idx + 1 >= original.length) continue;
+
+        const startCoord = original[idx];
+        const endCoord = original[idx + 1];
+
+        const localGeo = await getRoute([startCoord, coord, endCoord]);
+        const localCoords = (localGeo.features[0].geometry as any)
+          .coordinates as Coord[];
+
+        // remove the two‑point straight segment, insert the curved one
+        merged.splice(idx, 2, ...localCoords);
       }
 
-      if (newWp.id === "end") {
-        this.waypoints = this.waypoints.filter((wp) => wp.id !== "end");
-        this.waypoints.push(newWp);
-        return;
-      }
+      this.route = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: merged },
+            properties: {},
+          },
+        ],
+      };
+    },
 
-      const endIndex = this.waypoints.findIndex((wp) => wp.id === "end");
-      if (endIndex === -1) {
-        this.waypoints.push(newWp);
-      } else {
-        this.waypoints.splice(endIndex, 0, newWp);
+    /** Master recalculation: backbone + shaping */
+    async recalc() {
+      await this.calculateHardRoute();
+      if (this.shapingPoints.length) {
+        await this.applyShaping();
       }
     },
 
-    updateWaypoint(id: string, newCoord: [number, number]) {
-      const wp = this.waypoints.find((w) => w.id === id);
-      if (wp) {
-        wp.coord = newCoord;
-      }
+    /** Public API: all mutations call recalc() */
+    async addWaypoint(coord: Coord) {
+      this.waypoints.push(coord);
+      await this.recalc();
     },
-
-    removeWaypoint(id: string) {
-      if (id === "start" || id === "end") {
-        console.warn(`Cannot remove waypoint "${id}"`);
-        return;
-      }
-      this.waypoints = this.waypoints.filter((wp) => wp.id !== id);
-      if (this.waypoints.length < 2) {
-        this.routeData = null;
-      } else {
-        this.calculateRoute();
-      }
+    async insertWaypoint(i: number, coord: Coord) {
+      this.waypoints.splice(i, 0, coord);
+      await this.recalc();
     },
-
-    /**
-     * Public method: we call this whenever we want to recalc the route,
-     * but we use a short debounce to avoid multiple calls in quick succession.
-     */
-    calculateRoute(delay = 200) {
-      if (calcTimeout) {
-        clearTimeout(calcTimeout);
-      }
-      calcTimeout = window.setTimeout(() => {
-        this._calculateRouteNow();
-      }, delay);
+    async insertShapingPoint(idx: number, coord: Coord) {
+      this.shapingPoints.splice(idx, 0, { idx, coord });
+      await this.recalc();
     },
-
-    /**
-     * The actual route calculation that calls getRoute().
-     * We keep it private (underscore prefix) so external code calls only "calculateRoute()".
-     */
-    async _calculateRouteNow() {
-      if (this.waypoints.length < 2) {
-        this.routeData = null;
-        return;
-      }
-
-      try {
-        const coords = this.orderedWaypoints.map((wp) => wp.coord);
-        const data = await getRoute(coords);
-        this.routeData = data;
-      } catch (err) {
-        console.error("ORS error:", err);
-        this.routeData = null;
-      }
+    async clearShaping() {
+      this.shapingPoints = [];
+      await this.recalc();
     },
   },
 });
