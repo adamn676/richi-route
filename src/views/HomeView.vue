@@ -9,8 +9,8 @@
 </template>
 
 <script setup lang="ts">
-import MapView from "@/components/map/MapView.vue";
 import AppSidebar from "@/components/layout/AppSidebar.vue";
+import MapView from "@/components/map/MapView.vue";
 </script>
 
 <style scoped>

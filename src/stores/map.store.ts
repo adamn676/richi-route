@@ -1,5 +1,7 @@
+// src/stores/map.store.ts
 import { defineStore } from "pinia";
-import maplibregl from "maplibre-gl";
+import { reactive, ref } from "vue";
+import { type Map as MaplibreMap } from "maplibre-gl";
 
 export type MapConfig = {
   apiKey: string;
@@ -8,57 +10,64 @@ export type MapConfig = {
   style: string;
 };
 
-export interface MapState {
-  config: MapConfig;
-  mapInstance: maplibregl.Map | null;
-  isMapReady: boolean;
-}
+// Use setup store so TS only has to deal with a few refs/reactives instead of
+// inferring a giant object type
+export const useMapStore = defineStore("map", () => {
+  // Config is a plain reactive object
+  const config = reactive<MapConfig>({
+    apiKey: import.meta.env.VITE_MAPTILER_API_KEY || "",
+    center: [15.439504, 47.070714], // Graz default
+    zoom: 13,
+    style: "https://api.maptiler.com/maps/streets/style.json",
+  });
 
-export const useMapStore = defineStore("map", {
-  state: (): MapState => ({
-    config: {
-      apiKey: import.meta.env.VITE_MAPTILER_KEY || "",
-      center: [15.439504, 47.070714], // Graz, Austria default center
-      zoom: 13,
-      style: "https://api.maptiler.com/maps/streets/style.json",
-    },
-    mapInstance: null,
-    isMapReady: false,
-  }),
+  // mapInstance and isMapReady are simple refs
+  const mapInstance = ref<MaplibreMap | null>(null);
+  const isMapReady = ref(false);
 
-  actions: {
-    initializeConfig() {
-      // Here we could load user preferences or saved map settings
-      if (!this.config.apiKey) {
-        console.error(
-          "MapTiler API key is not set. Please set VITE_MAPTILER_KEY in your .env file."
-        );
-      }
-    },
+  // Actions:
+  function initializeConfig() {
+    if (!config.apiKey) {
+      console.error(
+        "MapTiler API key is not set. Please define VITE_MAPTILER_API_KEY in your .env"
+      );
+    }
+  }
 
-    setMapInstance(map: maplibregl.Map) {
-      this.mapInstance = map;
-      this.isMapReady = true;
-    },
+  function setMapInstance(map: MaplibreMap) {
+    mapInstance.value = map;
+    isMapReady.value = true;
+  }
 
-    updateCenter(center: [number, number]) {
-      this.config.center = center;
-      this.mapInstance?.setCenter(center);
-    },
+  function updateCenter(center: [number, number]) {
+    config.center = center;
+    mapInstance.value?.setCenter(center);
+  }
 
-    updateZoom(zoom: number) {
-      this.config.zoom = zoom;
-      this.mapInstance?.setZoom(zoom);
-    },
+  function updateZoom(zoom: number) {
+    config.zoom = zoom;
+    mapInstance.value?.setZoom(zoom);
+  }
 
-    flyTo(center: [number, number], zoom?: number) {
-      if (!this.mapInstance) return;
+  function flyTo(center: [number, number], zoom?: number) {
+    if (!mapInstance.value) return;
+    mapInstance.value.flyTo({
+      center,
+      zoom: zoom ?? config.zoom,
+      essential: true,
+    });
+  }
 
-      this.mapInstance.flyTo({
-        center,
-        zoom: zoom || this.config.zoom,
-        essential: true,
-      });
-    },
-  },
+  return {
+    // state
+    config,
+    mapInstance,
+    isMapReady,
+    // actions
+    initializeConfig,
+    setMapInstance,
+    updateCenter,
+    updateZoom,
+    flyTo,
+  };
 });

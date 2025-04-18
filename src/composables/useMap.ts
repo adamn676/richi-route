@@ -1,22 +1,42 @@
+// // src/composables/useMap.ts
+// import { ref, onMounted, onBeforeUnmount } from "vue";
+// import maplibregl, { Map as MaplibreMap } from "maplibre-gl";
+// import { getMapTilerStyleUrl } from "@/services/maptiler.service";
+
+// export function useMap(containerId: string) {
+//   const map = ref<MaplibreMap | null>(null);
+
+//   onMounted(() => {
+//     map.value = new maplibregl.Map({
+//       container: containerId,
+//       style: getMapTilerStyleUrl("streets"),
+//       center: [15.4395, 47.0707],
+//       zoom: 13,
+//     });
+//   });
+
+//   onBeforeUnmount(() => {
+//     map.value?.remove();
+//   });
+
+//   return { map };
+// }
+
 // src/composables/useMap.ts
 import { ref, onMounted, onBeforeUnmount } from "vue";
-import maplibregl, { Map as MaplibreMap } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MaplibreMap } from "maplibre-gl";
+import { getMapTilerStyleUrl } from "@/services";
 
-// Hold reference to MapLibre map instance
-const map = ref<MaplibreMap | null>(null);
-
-/**
- * Initializes a MapLibre map and returns a ref to it
- */
 export function useMap(containerId: string) {
+  const map = ref<MaplibreMap | null>(null);
+
   onMounted(() => {
     map.value = new maplibregl.Map({
       container: containerId,
-      style: `https://api.maptiler.com/maps/streets/style.json?key=${
-        import.meta.env.VITE_MAPTILER_KEY
-      }`,
-      center: [15.4333, 47.0667],
-      zoom: 16,
+      style: getMapTilerStyleUrl("streets-v2"),
+      center: [15.4395, 47.0707], // Graz fallback
+      zoom: 13,
     });
   });
 
