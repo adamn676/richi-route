@@ -97,7 +97,8 @@ watch(
     for (const coord of wps) {
       const mk = new maplibregl.Marker({ color: "#3b82f6" })
         .setLngLat(coord)
-        .addTo(m as any);
+        //@ts-ignore
+        .addTo(m);
       hardMarkers.push(mk);
     }
   },
@@ -117,7 +118,8 @@ watch(
     for (const { coord } of sps) {
       const mk = new maplibregl.Marker({ color: "#f59e0b" })
         .setLngLat(coord)
-        .addTo(m as any);
+        //@ts-ignore
+        .addTo(m);
       softMarkers.push(mk);
     }
   },
