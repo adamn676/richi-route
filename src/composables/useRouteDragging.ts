@@ -1,12 +1,17 @@
+// useRouteDragging.ts
 import { onMounted, onBeforeUnmount, type Ref } from "vue";
 import maplibregl, {
   type MapLayerMouseEvent,
   type MapMouseEvent,
 } from "maplibre-gl";
 import { useRouteStore } from "@/stores/route.store";
+import { SEGMENTS_BASE_LAYER } from "@/config/map.config";
 
 /**
- * Enables "soft‑shaping" drag logic on your route segments.
+ * Enables “soft‑shaping” drag logic on your route segments.
+ *
+ * Listens for mousedown on the SEGMENTS_BASE_LAYER, drops a temporary marker,
+ * follows the cursor on mousemove, then commits a shaping point on mouseup.
  *
  * @param options.map  A Ref wrapping your MapLibre‑GL map instance.
  */
@@ -57,13 +62,13 @@ export function useRouteDragging(options: { map: Ref<any> }) {
       m.on("mouseup", onUp);
     };
 
-    m.on("mousedown", "segments-base", onDown);
+    m.on("mousedown", SEGMENTS_BASE_LAYER, onDown);
   });
 
   onBeforeUnmount(() => {
     const m = options.map.value;
     if (!m) return;
-    if (onDown) m.off("mousedown", "segments-base", onDown);
+    if (onDown) m.off("mousedown", SEGMENTS_BASE_LAYER, onDown);
     if (onMove) m.off("mousemove", onMove);
     if (onUp) m.off("mouseup", onUp);
   });

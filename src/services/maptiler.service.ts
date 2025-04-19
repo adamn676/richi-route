@@ -1,6 +1,5 @@
 // src/services/maptiler.service.ts
-import axios from "axios";
-
+import { apiClient } from "@/services";
 export type Coord = [number, number];
 
 export type PlaceType =
@@ -46,7 +45,7 @@ export async function reverseGeocode(
     if (types.length) {
       params.types = types.join(",");
     }
-    const res = await axios.get(url, { params });
+    const res = await apiClient.get(url, { params });
     const feat = res.data.features?.[0];
     if (!feat || !feat.place_name) return null;
     return {
@@ -75,7 +74,7 @@ export async function forwardGeocode(
     if (types.length) {
       params.types = types.join(",");
     }
-    const res = await axios.get(url, { params });
+    const res = await apiClient.get(url, { params });
     return (res.data.features || []).map((feat: any) => ({
       label: feat.place_name as string,
       coord: [feat.center[0], feat.center[1]] as Coord,

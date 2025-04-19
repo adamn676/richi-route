@@ -1,6 +1,5 @@
 // src/services/geolocation.service.ts
-
-import axios from "axios";
+import { apiClient } from "@/services";
 import type { BBox } from "geojson";
 
 /**
@@ -44,7 +43,7 @@ export async function info(
 ): Promise<GeolocationResult> {
   const key = options.apiKey ?? import.meta.env.VITE_MAPTILER_API_KEY;
   const url = "https://api.maptiler.com/geolocation/ip.json";
-  const res = await axios.get(url, { params: { key } });
+  const res = await apiClient.get(url, { params: { key } });
   if (res.status !== 200) {
     throw new Error(`Geolocation lookup failed (${res.status})`);
   }

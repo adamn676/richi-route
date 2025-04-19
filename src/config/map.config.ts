@@ -39,8 +39,35 @@ export const DIST_EXISTING = 10;
 // Map layer & source identifiers
 // ——————————————————————————————————————————————————
 
-/** GeoJSON source ID for your route line */
+/**
+ * Source ID for the full-route GeoJSON.
+ * This source holds a single LineString feature representing
+ * the entire calculated route (start → via → end).
+ */
 export const ROUTE_SOURCE_ID = "routeSource";
 
-/** Layer ID for rendering your route line */
+/**
+ * Layer ID for rendering the full-route line.
+ * Renders the LineString from ROUTE_SOURCE_ID as one continuous polyline.
+ */
 export const ROUTE_LAYER_ID = "routeLayer";
+
+/**
+ * Source ID for per‑segment GeoJSON.
+ * This source holds multiple LineString features, each one representing
+ * a pair of consecutive coordinates from the full route (i.e. each “segment”).
+ */
+export const SEGMENTS_SOURCE_ID = "segments-source";
+
+/**
+ * Layer ID for drawing each segment in its base style.
+ * Uses SEGMENTS_SOURCE_ID and renders every segment (thin blue line).
+ */
+export const SEGMENTS_BASE_LAYER = "segments-base";
+
+/**
+ * Layer ID for highlighting a single segment on hover.
+ * Also uses SEGMENTS_SOURCE_ID but applies a filter to show exactly
+ * the hovered segment in a thicker, lighter color.
+ */
+export const SEGMENTS_HIGHLIGHT_LAYER = "segments-highlight";

@@ -1,27 +1,3 @@
-// // src/composables/useMap.ts
-// import { ref, onMounted, onBeforeUnmount } from "vue";
-// import maplibregl, { Map as MaplibreMap } from "maplibre-gl";
-// import { getMapTilerStyleUrl } from "@/services/maptiler.service";
-
-// export function useMap(containerId: string) {
-//   const map = ref<MaplibreMap | null>(null);
-
-//   onMounted(() => {
-//     map.value = new maplibregl.Map({
-//       container: containerId,
-//       style: getMapTilerStyleUrl("streets"),
-//       center: [15.4395, 47.0707],
-//       zoom: 13,
-//     });
-//   });
-
-//   onBeforeUnmount(() => {
-//     map.value?.remove();
-//   });
-
-//   return { map };
-// }
-
 // src/composables/useMap.ts
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import * as maplibregl from "maplibre-gl";
