@@ -7,14 +7,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import maplibregl, { Marker } from "maplibre-gl";
+import { ref, watch, onMounted, onBeforeUnmount, type Ref } from "vue";
+import maplibregl from "maplibre-gl";
 
 import { useMap } from "@/composables/useMap";
 import { useRouteStore } from "@/stores/route.store";
 import { useNotification } from "@/composables/useNotification";
 import { useRouteCalculation } from "@/composables/useRouteCalculation";
 import { useRouteDragging } from "@/composables/useRouteDragging";
+import { useMapMarkers } from "@/composables/useMapMarkers";
 import SegmentedRouteLayer from "@/components/map/SegmentedRouteLayer.vue";
 import { SEGMENTS_BASE_LAYER } from "@/config/map.config";
 
@@ -30,12 +31,16 @@ const notify = useNotification();
 useRouteCalculation({ map });
 useRouteDragging({ map });
 
-// 4️⃣ Debounce flag so we don’t spam ORS with back‑to‑back clicks
+// 4️⃣ Initialize custom markers
+const { createWaypointMarkers, createShapingMarkers, clearMarkers } =
+  useMapMarkers(map as Ref<maplibregl.Map | null>);
+
+// 5️⃣ Debounce flag so we don’t spam ORS with back‑to‑back clicks
 const isCalc = ref(false);
 
 // 5️⃣ Keep track of Marker instances so we can clean them up
-let hardMarkers: Marker[] = [];
-let softMarkers: Marker[] = [];
+// let hardMarkers: Marker[] = [];
+// let softMarkers: Marker[] = [];
 
 /**
  * Sets up the click handler on the map:
@@ -88,19 +93,8 @@ onMounted(() => {
 watch(
   () => routeStore.waypoints.slice(),
   (wps) => {
-    const m = map.value;
-    if (!m) return;
-    // remove old markers
-    hardMarkers.forEach((mk) => mk.remove());
-    hardMarkers = [];
-    // add new markers
-    for (const coord of wps) {
-      const mk = new maplibregl.Marker({ color: "#3b82f6" })
-        .setLngLat(coord)
-        //@ts-ignore
-        .addTo(m);
-      hardMarkers.push(mk);
-    }
+    if (!map.value) return;
+    createWaypointMarkers(wps, { draggable: true });
   },
   { immediate: true }
 );
@@ -111,25 +105,16 @@ watch(
 watch(
   () => routeStore.shapingPoints.slice(),
   (sps) => {
-    const m = map.value;
-    if (!m) return;
-    softMarkers.forEach((mk) => mk.remove());
-    softMarkers = [];
-    for (const { coord } of sps) {
-      const mk = new maplibregl.Marker({ color: "#f59e0b" })
-        .setLngLat(coord)
-        //@ts-ignore
-        .addTo(m);
-      softMarkers.push(mk);
-    }
+    if (!map.value) return;
+    const coords = sps.map((sp) => sp.coord);
+    createShapingMarkers(coords, { draggable: true });
   },
   { immediate: true }
 );
 
 /** Cleanup all markers on unmount */
 onBeforeUnmount(() => {
-  hardMarkers.forEach((mk) => mk.remove());
-  softMarkers.forEach((mk) => mk.remove());
+  clearMarkers();
 });
 </script>
 

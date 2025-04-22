@@ -71,3 +71,18 @@ export const SEGMENTS_BASE_LAYER = "segments-base";
  * the hovered segment in a thicker, lighter color.
  */
 export const SEGMENTS_HIGHLIGHT_LAYER = "segments-highlight";
+
+/**
+ * Layer ID for the route outline/border.
+ * Used to create a thicker line beneath the main route line for a border effect.
+ */
+export const SEGMENTS_OUTLINE_LAYER = "segments-outline";
+
+/**
+ * Layer ID for optional pattern effects on the route line.
+ * Can be used for dashed lines, dots, or other decorative patterns on the route.
+ * Currently unused in the default implementation.
+ */
+export const SEGMENTS_PATTERN_LAYER = "segments-pattern";
+
+export const SEGMENTS_ARROWS_LAYER = "segments-arrows";
