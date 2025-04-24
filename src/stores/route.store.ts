@@ -158,3 +158,5 @@ export const useRouteStore = defineStore("route", {
     },
   },
 });
+
+export type RouteStore = ReturnType<typeof useRouteStore>;
