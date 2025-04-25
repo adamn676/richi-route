@@ -1,5 +1,3 @@
-// src/stores/route.store.ts
-
 import { defineStore } from "pinia";
 import type { FeatureCollection } from "geojson";
 import { getRoute } from "@/services/route.service";
@@ -9,7 +7,7 @@ export type Coord = [number, number];
 
 interface ShapePoint {
   idx: number; // index in the backbone coords
-  coord: Coord; // the drag-to-shape coordinate
+  coord: Coord; // the drag‑to‑shape coordinate
 }
 
 export const useRouteStore = defineStore("route", {
@@ -17,7 +15,7 @@ export const useRouteStore = defineStore("route", {
     // Hard stops (start → via… → end)
     waypoints: [] as Coord[],
 
-    // Human-readable labels for each waypoint
+    // Human‑readable labels for each waypoint
     addresses: [] as (string | null)[],
 
     // Loading flags for reverse geocoding
@@ -34,34 +32,19 @@ export const useRouteStore = defineStore("route", {
   }),
 
   actions: {
-    /**
-     * Ensures we start with exactly 2 placeholder waypoints
-     * for Start & End in the UI. (Both at [0,0], addresses null.)
-     * Call this on app startup or in onMounted of your panel
-     * so you always see 2 input fields right away.
-     */
-    initMinimumWaypoints() {
-      while (this.waypoints.length < 2) {
-        this.waypoints.push([0, 0]);
-        this.addresses.push(null);
-        this.isGeocoding.push(false);
-        this.kinds.push("address");
-      }
-    },
-
-    /** Main ORS call over hard stops only */
+    /** ORS call over hard stops only */
     async calculateHardRoute() {
       if (this.waypoints.length < 2) return;
       this.route = await getRoute(this.waypoints);
     },
 
-    /** Apply shaping points if needed */
+    /** Splice in each shaping point */
     async applyShaping() {
       if (!this.route) return;
 
-      // If exactly start/end + shaping => single global call
+      // special-case: exactly start/end + shaping -> one global ORS call
       if (this.waypoints.length === 2 && this.shapingPoints.length) {
-        const coords = [
+        const coords: Coord[] = [
           this.waypoints[0],
           ...this.shapingPoints.map((p) => p.coord),
           this.waypoints[1],
@@ -70,8 +53,8 @@ export const useRouteStore = defineStore("route", {
         return;
       }
 
-      // Otherwise, re-route each leg individually
-      const original = (this.route?.features[0].geometry as any)
+      // otherwise, reroute each leg individually
+      const original = (this.route.features[0].geometry as any)
         .coordinates as Coord[];
       let merged = original.slice();
 
@@ -82,6 +65,7 @@ export const useRouteStore = defineStore("route", {
         const localGeo = await getRoute([startCoord, coord, endCoord]);
         const localCoords = (localGeo.features[0].geometry as any)
           .coordinates as Coord[];
+        // replace the straight segment with the curved one
         merged.splice(idx, 2, ...localCoords);
       }
 
@@ -105,7 +89,7 @@ export const useRouteStore = defineStore("route", {
       }
     },
 
-    /** Reverse-geocode a single waypoint index */
+    /** Reverse‑geocode a single waypoint index */
     async geocodeWaypoint(index: number) {
       this.isGeocoding[index] = true;
       const coord = this.waypoints[index];
@@ -121,10 +105,7 @@ export const useRouteStore = defineStore("route", {
       }
     },
 
-    /**
-     * Add a new hard stop at the end + recalc + geocode
-     * (For typical usage if we want to just push a new waypoint.)
-     */
+    /** Add a new hard stop + recalc + geocode */
     async addWaypoint(coord: Coord) {
       this.waypoints.push(coord);
       this.addresses.push(null);
@@ -165,7 +146,7 @@ export const useRouteStore = defineStore("route", {
       this.addresses.splice(i, 1);
       this.isGeocoding.splice(i, 1);
       this.kinds.splice(i, 1);
-      // Clear shaping to avoid index mismatches
+      // clear all shaping to avoid idx mismatch
       this.shapingPoints = [];
       await this.recalc();
     },
@@ -174,71 +155,6 @@ export const useRouteStore = defineStore("route", {
     async clearShaping() {
       this.shapingPoints = [];
       await this.recalc();
-    },
-
-    /**
-     * Update a specific waypoint's coordinate, address, and kind,
-     * then recalc.
-     * Called when user confirms a new location in the side panel,
-     * or if we want to programmatically set an existing waypoint.
-     */
-    async updateWaypoint(
-      index: number,
-      coord: Coord,
-      address: string | null,
-      kind = "address"
-    ) {
-      if (index < 0 || index >= this.waypoints.length) return;
-      this.waypoints[index] = coord;
-      this.addresses[index] = address;
-      this.kinds[index] = kind;
-      await this.recalc();
-    },
-
-    /**
-     * The special action you'll call whenever the user clicks on the map.
-     *
-     * 1) If Start isn't set yet (addresses[0] is null), set that as the Start.
-     * 2) Else if End isn't set yet (addresses[1] is null), set that as the End.
-     * 3) Otherwise, we have Start + End =>
-     *    the old End becomes a via waypoint,
-     *    and the newly clicked coord becomes the new End.
-     */
-    async mapClick(coord: Coord) {
-      // 1) If we don't have a real Start yet
-      if (this.addresses[0] === null) {
-        await this.updateWaypoint(0, coord, null, "address");
-        await this.geocodeWaypoint(0);
-        return;
-      }
-
-      // 2) If we don't have a real End yet
-      if (this.addresses[1] === null) {
-        await this.updateWaypoint(1, coord, null, "address");
-        await this.geocodeWaypoint(1);
-        return;
-      }
-
-      // 3) We already have Start + End =>
-      //    The old End moves to "previous waypoint",
-      //    The new click becomes the new End.
-
-      // 3a) Pop the old End from the arrays
-      const iEnd = this.waypoints.length - 1;
-
-      const oldEndCoord = this.waypoints.pop()!;
-      const oldEndAddr = this.addresses.pop()!;
-      const oldEndKind = this.kinds.pop()!;
-      const oldEndGeo = this.isGeocoding.pop()!;
-
-      // 3b) Insert that old End as a "via" waypoint (second-last).
-      this.waypoints.push(oldEndCoord);
-      this.addresses.push(oldEndAddr);
-      this.kinds.push(oldEndKind);
-      this.isGeocoding.push(oldEndGeo);
-
-      // 3c) Now add the new End as the final waypoint
-      await this.addWaypoint(coord);
     },
   },
 });
