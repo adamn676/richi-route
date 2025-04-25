@@ -1,3 +1,4 @@
+// src/composables/useSegmentedRoute.ts
 import maplibregl from "maplibre-gl";
 import type { LayerSpecification } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
@@ -9,15 +10,17 @@ import {
   SEGMENTS_HIGHLIGHT_LAYER,
   SEGMENTS_ARROWS_LAYER,
 } from "@/config/map.config";
-import { routeStyle } from "@/config/mapStyle";
+import { routeStyle } from "@/config/mapStyle"; // Must be plain, non-reactive
 import { getSegments, getRouteLineForArrows } from "@/utils/geometry";
 
 /**
- * Add an arrow icon if not already present
+ * Add an arrow icon if not already present.
+ * Ensure routeStyle.arrowColor is a plain string like "#000" or "rgb(255,0,0)".
  */
 function addArrowIcon(map: maplibregl.Map) {
   if (map.hasImage("double-arrow-icon")) return;
 
+  // Use a literal string for 'fill' to avoid reactivity issues
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
       <path
@@ -32,7 +35,9 @@ function addArrowIcon(map: maplibregl.Map) {
   `.trim();
 
   const image = new Image();
-  image.onload = () => map.addImage("double-arrow-icon", image);
+  image.onload = () => {
+    map.addImage("double-arrow-icon", image);
+  };
   image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
@@ -41,6 +46,7 @@ function addArrowIcon(map: maplibregl.Map) {
  */
 function moveLayersBelowLabels(map: maplibregl.Map) {
   const styleLayers = map.getStyle().layers as LayerSpecification[];
+  // Filter label or text layers
   const labelLayers = styleLayers
     .filter((ly) => ly.id.includes("label") || ly.id.includes("text"))
     .map((ly) => ly.id);
@@ -60,17 +66,23 @@ function moveLayersBelowLabels(map: maplibregl.Map) {
   }
 }
 
+/**
+ * Main composable function that returns a `renderSegments` method
+ * for drawing your route segments with highlight & arrow layers.
+ */
 export function useSegmentedRoute() {
   function renderSegments(map: maplibregl.Map, route: FeatureCollection) {
-    // Remove old layers & sources if they exist
+    // 1) Teardown old layers & sources if they exist
     [
-      SEGMENTS_OUTLINE_LAYER,
-      SEGMENTS_BASE_LAYER,
       SEGMENTS_HIGHLIGHT_LAYER,
-    ].forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
+      SEGMENTS_BASE_LAYER,
+      SEGMENTS_OUTLINE_LAYER,
+    ].forEach((ly) => {
+      if (map.getLayer(ly)) map.removeLayer(ly);
     });
-    if (map.getSource(SEGMENTS_SOURCE_ID)) map.removeSource(SEGMENTS_SOURCE_ID);
+    if (map.getSource(SEGMENTS_SOURCE_ID)) {
+      map.removeSource(SEGMENTS_SOURCE_ID);
+    }
 
     if (map.getLayer(SEGMENTS_ARROWS_LAYER)) {
       map.removeLayer(SEGMENTS_ARROWS_LAYER);
@@ -79,27 +91,30 @@ export function useSegmentedRoute() {
       map.removeSource(SEGMENTS_ARROWS_LAYER);
     }
 
-    // Build segment data
+    // 2) Build segment data
     const segments = getSegments(route);
     const segmentGeoJSON: FeatureCollection = {
       type: "FeatureCollection",
       features: segments,
     };
 
-    // 1) Add base route source
+    // 3) Add base route source
     map.addSource(SEGMENTS_SOURCE_ID, {
       type: "geojson",
       data: segmentGeoJSON,
     });
 
-    // 2) Outline layer
+    // 4) Outline layer
     map.addLayer({
       id: SEGMENTS_OUTLINE_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE_ID,
-      layout: { "line-cap": "round", "line-join": "round" },
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
       paint: {
-        "line-color": routeStyle.outlineColor,
+        "line-color": routeStyle.outlineColor, // Must be a plain string e.g. "#312e81"
         "line-width": [
           "interpolate",
           ["linear"],
@@ -114,18 +129,21 @@ export function useSegmentedRoute() {
           12,
         ],
         "line-blur": 0.5,
-        "line-opacity": routeStyle.outlineOpacity,
+        "line-opacity": routeStyle.outlineOpacity, // e.g. 0.9
       },
     });
 
-    // 3) Base layer
+    // 5) Base layer
     map.addLayer({
       id: SEGMENTS_BASE_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE_ID,
-      layout: { "line-cap": "round", "line-join": "round" },
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
       paint: {
-        "line-color": routeStyle.baseColor,
+        "line-color": routeStyle.baseColor, // e.g. "#818cf8"
         "line-width": [
           "interpolate",
           ["linear"],
@@ -142,14 +160,17 @@ export function useSegmentedRoute() {
       },
     });
 
-    // 4) Highlight layer
+    // 6) Highlight layer
     map.addLayer({
       id: SEGMENTS_HIGHLIGHT_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE_ID,
-      layout: { "line-cap": "round", "line-join": "round" },
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+      },
       paint: {
-        "line-color": routeStyle.highlightColor,
+        "line-color": routeStyle.highlightColor, // e.g. "#c7d2fe"
         "line-width": [
           "interpolate",
           ["linear"],
@@ -177,18 +198,14 @@ export function useSegmentedRoute() {
       filter: ["==", "idx", -1],
     });
 
-    // 5) Hover logic
+    // 7) Hover logic for highlight
     map.on("mousemove", SEGMENTS_BASE_LAYER, (e) => {
-      // Instead of forcibly casting the feature to Feature<LineString, {idx: number}>
-      // we'll do a runtime check for 'idx'.
       const feature = e.features?.[0];
       if (!feature) return;
-
       let idx = -1;
       if (typeof feature.properties?.idx === "number") {
         idx = feature.properties.idx;
       }
-
       map.setFilter(SEGMENTS_HIGHLIGHT_LAYER, ["==", "idx", idx]);
       map.getCanvas().style.cursor = "pointer";
     });
@@ -197,13 +214,12 @@ export function useSegmentedRoute() {
       map.getCanvas().style.cursor = "";
     });
 
-    // 6) Move below labels
+    // 8) Move below labels
     moveLayersBelowLabels(map);
 
-    // 7) Add arrow icons
+    // 9) Add arrow icon & arrow layer
     addArrowIcon(map);
 
-    // 8) Arrow layer
     const arrowGeoJSON = getRouteLineForArrows(route);
     map.addSource(SEGMENTS_ARROWS_LAYER, {
       type: "geojson",
@@ -244,5 +260,7 @@ export function useSegmentedRoute() {
     });
   }
 
-  return { renderSegments };
+  return {
+    renderSegments,
+  };
 }

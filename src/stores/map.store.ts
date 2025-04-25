@@ -7,7 +7,7 @@ export type MapConfig = {
   apiKey: string;
   center: [number, number];
   zoom: number;
-  style: string;
+  styleUrl: string;
 };
 
 // Use setup store so TS only has to deal with a few refs/reactives instead of
@@ -18,7 +18,7 @@ export const useMapStore = defineStore("map", () => {
     apiKey: import.meta.env.VITE_MAPTILER_API_KEY || "",
     center: [15.439504, 47.070714], // Graz default
     zoom: 13,
-    style: "https://api.maptiler.com/maps/streets/style.json",
+    styleUrl: "https://api.maptiler.com/maps/streets-v2/style.json",
   });
 
   // mapInstance and isMapReady are simple refs
@@ -59,11 +59,9 @@ export const useMapStore = defineStore("map", () => {
   }
 
   return {
-    // state
     config,
     mapInstance,
     isMapReady,
-    // actions
     initializeConfig,
     setMapInstance,
     updateCenter,
