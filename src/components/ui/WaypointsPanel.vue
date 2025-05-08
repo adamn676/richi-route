@@ -1,298 +1,222 @@
+<!-- src/components/ui/WaypointsPanel.vue -->
 <template>
-  <div class="relative w-full">
-    <!-- 1) The input, bound to searchQuery -->
-    <input
-      ref="inputRef"
-      v-model="searchQuery"
-      @input="onInput"
-      @focus="onFocus"
-      @blur="onBlur"
-      type="text"
-      placeholder="Search for address or POI"
-      class="w-full px-4 py-2 border rounded"
+  <div class="bg-white shadow-lg p-4 space-y-4 overflow-y-auto h-full">
+    <h2 class="text-xl font-semibold text-gray-700">Route Planner</h2>
+
+    <div
+      v-for="(waypoint, index) in routeStore.waypoints"
+      :key="waypoint.id"
+      class="p-3 border rounded-md shadow-sm bg-gray-50"
+    >
+      <div class="flex items-center justify-between">
+        <span class="font-medium text-indigo-600">{{
+          getWaypointLabel(waypoint, index)
+        }}</span>
+        <Button
+          v-if="canRemove(waypoint)"
+          icon="pi pi-times"
+          class="p-button-text p-button-danger p-button-sm"
+          @click="removeWaypoint(waypoint.id)"
+          aria-label="Remove waypoint"
+        />
+      </div>
+
+      <AddressSearchInput
+        v-model="waypoint.userInput"
+        :waypoint-id="waypoint.id"
+        :placeholder="getPlaceholder(waypoint)"
+        :disabled="waypoint.isGeocoding"
+        :is-geocoding-externally="waypoint.isGeocoding"
+        @item-select="onAddressSelect($event, waypoint.id)"
+        @text-submit="handleTextSubmit($event, waypoint.id)"
+        @geocoding-status="
+          (status) => handleGeocodingStatus(waypoint.id, status)
+        "
+        class="mt-2"
+      />
+
+      <div
+        v-if="waypoint.isGeocoding && !internalGeocodingStatus[waypoint.id]"
+        class="mt-1 text-xs text-gray-500 flex items-center"
+      >
+        <ProgressSpinner
+          style="width: 1rem; height: 1rem; margin-right: 0.5rem"
+          strokeWidth="8"
+          animationDuration=".5s"
+        />
+        <span>{{ waypoint.address }}</span>
+      </div>
+      <div
+        v-else-if="
+          !waypoint.isGeocoding &&
+          waypoint.address &&
+          waypoint.userInput !== waypoint.address &&
+          waypoint.address !== getPlaceholder(waypoint)
+        "
+        class="mt-1 text-xs text-gray-500"
+      >
+        Current: {{ waypoint.address }}
+      </div>
+    </div>
+
+    <Button
+      label="Add Via Point"
+      icon="pi pi-plus-circle"
+      class="w-full p-button-outlined p-button-sm mt-4"
+      @click="addIntermediateStop"
+      :disabled="
+        routeStore.waypoints.filter(
+          (wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0
+        ).length < 2
+      "
     />
 
-    <!-- 2) Clear button (only when there’s text) -->
-    <button
-      v-if="searchQuery"
-      @click="clearSearch"
-      class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-      aria-label="Clear"
-    >
-      &times;
-    </button>
-
-    <!-- 3) Suggestions dropdown -->
-    <ul
-      v-if="showSuggestions && suggestions.length"
-      class="relative z-10 bg-white border mt-1 w-full overflow-auto rounded"
-    >
-      <li
-        v-for="item in suggestions"
-        :key="item.raw.id"
-        @mousedown.prevent="selectSuggestion(item)"
-        class="px-3 py-2 hover:bg-gray-100 flex justify-between items-center cursor-pointer"
-      >
-        <!-- Icon based on place type -->
-        <div class="mr-3 flex-shrink-0">
-          <Icon
-            :name="getIconForPlaceType(item)"
-            :svgClass="`icon-${getIconClassForPlaceType(item)}`"
-          />
-        </div>
-
-        <!-- Custom formatted address -->
-        <div class="flex flex-col flex-grow">
-          <span class="font-medium">{{ formatMainAddressPart(item) }}</span>
-          <span class="text-xs text-gray-500">{{
-            formatSecondaryAddressPart(item)
-          }}</span>
-        </div>
-        <!-- <span
-          class="ml-2 text-xs font-semibold px-2 py-0.5 rounded"
-          :class="{
-            'bg-blue-100 text-blue-800': item.kind === 'address',
-            'bg-yellow-100 text-yellow-800': item.kind === 'road',
-            'bg-green-100 text-green-800': item.kind === 'poi',
-            'bg-purple-100 text-purple-800':
-              item.kind === 'place' || item.kind === 'region',
-          }"
-        >
-          {{ kindLabels[item.kind] || item.kind }}
-        </span> -->
-      </li>
-    </ul>
+    <Button
+      label="Optimize Entire Route"
+      icon="pi pi-sparkles"
+      class="w-full p-button-sm mt-2"
+      @click="optimizeRoute"
+      :loading="routeStore.isCalculatingGlobalRoute"
+    />
+    <Button
+      label="Clear Shaping Points"
+      icon="pi pi-eraser"
+      class="w-full p-button-warning p-button-outlined p-button-sm mt-2"
+      @click="clearShapingPoints"
+      :disabled="routeStore.shapingPoints.length === 0"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { forwardGeocode, type Place } from "@/services/maptiler.service";
-import { useRouteStore } from "@/stores/route.store";
-import Icon from "./Icon.vue";
+import { ref, watch, onMounted, reactive } from "vue";
+import { useRouteStore, type Waypoint } from "@/stores/route.store";
+import type { Place } from "@/services/maptiler.service";
+import AddressSearchInput from "@/components/common/AddressSearchInput.vue";
+import Button from "primevue/button";
+import ProgressSpinner from "primevue/progressspinner"; // Keep for other loading states in panel
 
 const routeStore = useRouteStore();
+const internalGeocodingStatus = reactive<Record<string, boolean>>({});
 
-// reactive state
-const inputRef = ref<HTMLInputElement | null>(null);
-const searchQuery = ref("");
-const suggestions = ref<Place[]>([]);
-const showSuggestions = ref(false);
-let debounceTimer: number;
-
-// pretty names for your badges
-const kindLabels: Record<string, string> = {
-  address: "Address",
-  road: "Road",
-  poi: "POI",
-  place: "Place",
-  region: "Region",
+const handleGeocodingStatus = (waypointId: string, isLoading: boolean) => {
+  internalGeocodingStatus[waypointId] = isLoading;
 };
 
-/** Triggered on every keystroke */
-function onInput() {
-  showSuggestions.value = true;
+// The onAddressSelect method in WaypointsPanel.vue is already correct:
+// it sets waypoint.userInput = selectedPlace.label, making the selection the input's value.
+const onAddressSelect = async (selectedPlace: Place, waypointId: string) => {
+  const waypoint = routeStore.waypoints.find((wp) => wp.id === waypointId);
+  if (waypoint && selectedPlace) {
+    waypoint.coords = selectedPlace.coord;
+    waypoint.address = selectedPlace.label; // Official address
+    waypoint.userInput = selectedPlace.label; // THIS makes it the input value
+    waypoint.kind = selectedPlace.kind || waypoint.kind;
+    waypoint.isGeocoding = false;
+    await routeStore.recalc();
+  }
+};
 
-  clearTimeout(debounceTimer);
-  const query = searchQuery.value.trim();
-  debounceTimer = window.setTimeout(async () => {
-    if (!query) {
-      suggestions.value = [];
-      return;
+// New handler for when user presses Enter on raw text in AddressSearchInput
+const handleTextSubmit = async (query: string, waypointId: string) => {
+  if (!query.trim()) return;
+  const waypoint = routeStore.waypoints.find((wp) => wp.id === waypointId);
+  if (waypoint) {
+    waypoint.isGeocoding = true; // Show loading in panel
+    waypoint.address = `Searching for "${query}"...`;
+    // Call the store action that handles forward geocoding a query string
+    await routeStore.searchAndSetWaypointAddress(waypointId, query);
+    // The store action will set isGeocoding to false and update address/coords
+  }
+};
+
+const getWaypointLabel = (waypoint: Waypoint, index: number): string => {
+  if (waypoint.kind === "start") return "Start";
+  if (waypoint.kind === "end") return "End";
+  const viaWaypoints = routeStore.waypoints.filter(
+    (wp) => wp.kind !== "start" && wp.kind !== "end"
+  );
+  const viaIndex = viaWaypoints.findIndex((wp) => wp.id === waypoint.id);
+  return `Via ${viaIndex >= 0 ? viaIndex + 1 : index}`;
+};
+
+const getPlaceholder = (waypoint: Waypoint): string => {
+  // Placeholder is shown only when userInput (the value) is empty.
+  if (waypoint.isGeocoding) {
+    // Show a generic loading/searching message if the store marks it as geocoding
+    return waypoint.address?.startsWith("Searching for")
+      ? "Searching..."
+      : "Loading address...";
+  }
+
+  // If not loading and userInput is empty, show the default prompt based on kind
+  if (waypoint.kind === "start") return "Search Start or click map";
+  if (waypoint.kind === "end") return "Search End or click map";
+  if (waypoint.kind === "via") return "Search Via point or click map";
+
+  // Fallback generic placeholder (should rarely be needed if kind is always set)
+  return "Search address or click map";
+};
+
+const removeWaypoint = async (waypointId: string) => {
+  await routeStore.removeWaypoint(waypointId);
+};
+
+const addIntermediateStop = async () => {
+  await routeStore.addIntermediateStopAndPrepare();
+};
+
+const optimizeRoute = async () => {
+  await routeStore.optimizeEntireRoute();
+};
+
+const clearShapingPoints = async () => {
+  await routeStore.clearShaping();
+};
+
+const canRemove = (waypoint: Waypoint): boolean => {
+  if (waypoint.kind !== "start" && waypoint.kind !== "end") return true;
+  return routeStore.waypoints.length > 2;
+};
+
+onMounted(() => {
+  routeStore.waypoints.forEach((wp) => {
+    if (
+      !wp.userInput &&
+      wp.address &&
+      ![
+        "Start Point",
+        "End Point",
+        "Via Point",
+        "New Via Point (Search or click map)",
+        "Address not found",
+        "Address lookup failed",
+        "Loading address...",
+      ].includes(wp.address) &&
+      !wp.address?.startsWith("Searching for") &&
+      !wp.address?.startsWith("Locating via")
+    ) {
+      wp.userInput = wp.address;
+    } else if (wp.userInput === undefined) {
+      // Check for undefined specifically
+      wp.userInput = "";
     }
-    suggestions.value = await forwardGeocode(query);
-  }, 300);
-}
+    internalGeocodingStatus[wp.id] = false;
+  });
+});
 
-/** Re‑open the dropdown if there are suggestions */
-function onFocus() {
-  if (suggestions.value.length) {
-    showSuggestions.value = true;
-  }
-}
-
-/** Hide after a tiny delay so mousedown can fire */
-function onBlur() {
-  setTimeout(() => {
-    showSuggestions.value = false;
-  }, 100);
-}
-
-/**
- * Format the main part of the address based on the place type
- */
-function formatMainAddressPart(place: Place): string {
-  const c = place.components;
-
-  // For addresses (with house number)
-  if (place.kind === "address" && c.house_number && c.street) {
-    return `${c.street} ${c.house_number}`;
-  }
-
-  // For roads
-  if (place.kind === "road" && c.street) {
-    return c.street;
-  }
-
-  // For POIs, use the original label as it usually contains the POI name
-  if (place.kind === "poi") {
-    // You could extract the POI name from the raw data if needed
-    return place.label.split(",")[0];
-  }
-
-  // For places and regions
-  if (["place", "region", "locality", "neighbourhood"].includes(place.kind)) {
-    return place.label.split(",")[0];
-  }
-
-  // Default: first part of the label
-  return place.label.split(",")[0];
-}
-
-/**
- * Format the secondary part of the address (city, region, country)
- */
-function formatSecondaryAddressPart(place: Place): string {
-  const c = place.components;
-  const parts = [];
-
-  // Prioritize municipal_district over place/neighborhood
-  if (c.municipal_district) {
-    parts.push(c.municipal_district);
-  } else if (c.place) {
-    parts.push(c.place);
-  } else if (c.locality) {
-    parts.push(c.locality);
-  }
-
-  // Add county/city if not already included
-  if (c.county && !parts.includes(c.county)) {
-    parts.push(c.county);
-  }
-
-  // Add region
-  if (c.region && !parts.includes(c.region)) {
-    parts.push(c.region);
-  }
-
-  // Add country if available and not already included
-  if (c.country && parts.length < 2) {
-    parts.push(c.country);
-  }
-
-  // Add postal code at the beginning if available
-  if (c.postal_code) {
-    return `${c.postal_code} ${parts.join(", ")}`;
-  }
-
-  return parts.join(", ");
-}
-
-/**
- * Get the appropriate icon name for each place type
- */
-function getIconForPlaceType(place: Place): string {
-  const poiTypes = place.raw?.properties?.category;
-
-  // For address
-  if (place.kind === "address") {
-    return "pin";
-  }
-
-  // For road
-  if (place.kind === "road") {
-    return "directions";
-  }
-
-  // For POIs, use a more specific icon if available
-  if (place.kind === "poi") {
-    // Check for common POI types
-    // if (poiTypes) {
-    //   // You can add more mappings here based on the categories returned by MapTiler
-    //   const poiIconMap: Record<string, string> = {
-    //     food: "restaurant",
-    //     restaurant: "restaurant",
-    //     cafe: "coffee",
-    //     hotel: "hotel",
-    //     lodging: "hotel",
-    //     shopping: "shopping_cart",
-    //     store: "store",
-    //     gas_station: "local_gas_station",
-    //     hospital: "local_hospital",
-    //     pharmacy: "local_pharmacy",
-    //     bank: "account_balance",
-    //     school: "school",
-    //     university: "school",
-    //     bar: "sports_bar",
-    //     parking: "local_parking",
-    //     museum: "museum",
-    //     park: "park",
-    //   };
-
-    //   for (const type of Array.isArray(poiTypes) ? poiTypes : [poiTypes]) {
-    //     if (poiIconMap[type]) {
-    //       return poiIconMap[type];
-    //     }
-    //   }
-    // }
-    return "poi";
-
-    // Default POI icon
-    // return "place";
-  }
-
-  // For places and regions
-  if (place.kind === "place") {
-    return "location_city";
-  }
-
-  if (place.kind === "region") {
-    return "terrain";
-  }
-
-  // Default
-  return "location_on";
-}
-
-/**
- * Get appropriate CSS classes for the icon based on place type
- */
-function getIconClassForPlaceType(place: Place): string {
-  const baseClass = "w-5 h-5";
-
-  // Add color based on type
-  if (place.kind === "address") {
-    return `${baseClass} text-blue-600`;
-  }
-
-  if (place.kind === "road") {
-    return `${baseClass} text-yellow-600`;
-  }
-
-  if (place.kind === "poi") {
-    return `${baseClass} text-green-600`;
-  }
-
-  if (place.kind === "place" || place.kind === "region") {
-    return `${baseClass} text-purple-600`;
-  }
-
-  return `${baseClass} text-gray-600`;
-}
-
-/** Clears everything out */
-function clearSearch() {
-  searchQuery.value = "";
-  suggestions.value = [];
-  showSuggestions.value = false;
-  inputRef.value?.focus();
-}
-
-/** User clicked a suggestion */
-async function selectSuggestion(item: Place) {
-  searchQuery.value = item.label;
-  suggestions.value = [];
-  showSuggestions.value = false;
-  await routeStore.addPlace(item);
-}
+watch(
+  () => routeStore.waypoints,
+  (newWaypoints) => {
+    newWaypoints.forEach((wp) => {
+      if (wp.userInput === undefined) {
+        wp.userInput = "";
+      }
+      if (internalGeocodingStatus[wp.id] === undefined) {
+        internalGeocodingStatus[wp.id] = false;
+      }
+    });
+  },
+  { deep: true }
+);
 </script>

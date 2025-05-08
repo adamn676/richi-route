@@ -8,6 +8,7 @@ import axios from "axios";
 export const apiClient = axios.create({
   // baseURL can be set if you have a consistent prefix
   // e.g. baseURL: import.meta.env.VITE_API_BASE_URL || "",
+  timeout: 10000,
 });
 
 // Optionally add request interceptors

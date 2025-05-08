@@ -21,7 +21,7 @@ export function useRouteCalculation(_options: { map: Ref<any> }) {
     async () => {
       // runs calculateHardRoute + applyShaping under the hood
       await routeStore.recalc();
-    },
-    { immediate: true }
+    }
+    // { immediate: true }
   );
 }

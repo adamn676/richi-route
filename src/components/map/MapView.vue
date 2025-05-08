@@ -22,6 +22,6 @@ const { route } = storeToRefs(routeStore);
 // Use other composables
 useRouteCalculation({ map });
 useRouteDragging({ map });
-useMapInteractions(map, routeStore);
+useMapInteractions(map);
 useMarkerWatches(map, routeStore);
 </script>

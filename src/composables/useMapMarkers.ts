@@ -48,12 +48,14 @@ export function useMapMarkers(map: Ref<maplibregl.Map | null>) {
     waypoints: Coord[],
     options: { draggable?: boolean } = {}
   ) => {
+    console.log("createWaypointMarkers - waypoints:", waypoints);
     // Remove old markers
     waypointMarkers.forEach((marker) => marker.remove());
     waypointMarkers.length = 0;
 
     // Create new markers
     waypoints.forEach((coord, index) => {
+      console.log(`waypoint[${index}] coords=`, coord);
       if (!map.value) return;
 
       const el = createCustomMarkerElement(
