@@ -91,13 +91,13 @@
 // }
 
 // src/composables/useMapInteractions.ts
-import { ref, watch } from "vue";
-import type { Ref } from "vue";
-import type maplibregl from "maplibre-gl";
-import { SEGMENTS_BASE_LAYER, DIST_ROUTE } from "@/config/map.config"; // Added DIST_ROUTE
-import { useNotification } from "@/composables/useNotification";
-import { useRouteStore } from "@/stores/route.store"; // Use direct import
-import * as turf from "@turf/turf"; // For pointToLineDistance
+import { ref, watch } from 'vue';
+import type { Ref } from 'vue';
+import type maplibregl from 'maplibre-gl';
+import { SEGMENTS_BASE_LAYER, DIST_ROUTE } from '@/config/map.config'; // Added DIST_ROUTE
+import { useNotification } from '@/composables/useNotification';
+import { useRouteStore } from '@/stores/route.store'; // Use direct import
+import * as turf from '@turf/turf'; // For pointToLineDistance
 
 export function useMapInteractions(
   mapRef: Ref<maplibregl.Map | null>
@@ -108,22 +108,18 @@ export function useMapInteractions(
   const isProcessingClick = ref(false);
 
   function setupClickHandler(m: maplibregl.Map) {
-    m.on("click", async (e) => {
+    m.on('click', async (e) => {
       if (isProcessingClick.value) {
         // notify.info("Processing previous action..."); // Can be noisy
         return;
       }
       isProcessingClick.value = true;
-      console.log("Map clicked at LngLat:", e.lngLat);
+      console.log('Map clicked at LngLat:', e.lngLat);
 
       const clickPoint = turf.point([e.lngLat.lng, e.lngLat.lat]);
 
       // 1. Check if click is on an existing route segment to insert a *hard point*
-      if (
-        routeStore.route &&
-        routeStore.route.features.length > 0 &&
-        m.getLayer(SEGMENTS_BASE_LAYER)
-      ) {
+      if (routeStore.route && routeStore.route.features.length > 0 && m.getLayer(SEGMENTS_BASE_LAYER)) {
         // Query features directly on the map for the segment layer
         const features = m.queryRenderedFeatures(e.point, {
           layers: [SEGMENTS_BASE_LAYER],
@@ -139,22 +135,17 @@ export function useMapInteractions(
 
           const segmentIndex = segmentFeature.properties?.idx as number;
 
-          if (typeof segmentIndex === "number" && segmentIndex >= 0) {
+          if (typeof segmentIndex === 'number' && segmentIndex >= 0) {
             // Check distance to the actual line geometry of the segment
             const line = segmentFeature.geometry;
-            if (line.type === "LineString") {
+            if (line.type === 'LineString') {
               const distance = turf.pointToLineDistance(clickPoint, line, {
-                units: "meters",
+                units: 'meters',
               });
               console.log(`Distance to segment ${segmentIndex}: ${distance}m`);
               if (distance < DIST_ROUTE) {
-                console.log(
-                  `Clicked on segment ${segmentIndex}. Inserting waypoint after existing waypoint at index ${segmentIndex}.`
-                );
-                await routeStore.insertWaypointOnRoute(segmentIndex + 1, [
-                  e.lngLat.lng,
-                  e.lngLat.lat,
-                ]);
+                console.log(`Clicked on segment ${segmentIndex}. Inserting waypoint after existing waypoint at index ${segmentIndex}.`);
+                await routeStore.insertWaypointOnRoute(segmentIndex + 1, [e.lngLat.lng, e.lngLat.lat]);
                 isProcessingClick.value = false;
                 return;
               }
@@ -164,7 +155,7 @@ export function useMapInteractions(
       }
 
       // 2. If not on a segment, handle as adding/updating Start/End/Via waypoint
-      console.log("Not on a segment, adding/updating waypoint by click.");
+      console.log('Not on a segment, adding/updating waypoint by click.');
       await routeStore.addWaypointByClick([e.lngLat.lng, e.lngLat.lat]);
 
       // Short delay to prevent rapid-fire clicks overwhelming the system
@@ -177,7 +168,7 @@ export function useMapInteractions(
   watch(
     () => mapRef.value,
     (m) => {
-      if (m && !m.listens("click")) {
+      if (m && !m.listens('click')) {
         // Ensure handler is attached only once
         setupClickHandler(m);
       }
