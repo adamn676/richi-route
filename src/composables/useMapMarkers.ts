@@ -4,6 +4,7 @@ import { createApp } from 'vue';
 import maplibregl from 'maplibre-gl';
 import CustomMarker from '@/components/map/CustomMarker.vue';
 import type { Coord } from '@/services/maptiler.service';
+import { useRouteStore } from '@/stores/route.store';
 
 // Create a custom marker element using Vue component
 function createCustomMarkerElement(type: 'waypoint' | 'shaping', icon?: string, number?: number) {
@@ -29,6 +30,7 @@ function createCustomMarkerElement(type: 'waypoint' | 'shaping', icon?: string, 
 export function useMapMarkers(map: Ref<maplibregl.Map | null>) {
   const waypointMarkers: maplibregl.Marker[] = [];
   const shapingMarkers: maplibregl.Marker[] = [];
+  const routeStore = useRouteStore();
 
   // Clean up all markers
   const clearMarkers = () => {
@@ -38,15 +40,16 @@ export function useMapMarkers(map: Ref<maplibregl.Map | null>) {
   };
 
   // Create waypoint markers
-  const createWaypointMarkers = (waypoints: Coord[], options: { draggable?: boolean } = {}) => {
+  const createWaypointMarkers = (waypoints: { id: string; coords: Coord }[], options: { draggable?: boolean } = {}) => {
     console.log('createWaypointMarkers - waypoints:', waypoints);
     // Remove old markers
     waypointMarkers.forEach((marker) => marker.remove());
     waypointMarkers.length = 0;
 
     // Create new markers
-    waypoints.forEach((coord, index) => {
-      console.log(`waypoint[${index}] coords=`, coord);
+    waypoints.forEach((waypoint, index) => {
+      // Assuming waypoints now have an 'id'
+      console.log(`waypoint[${index}] id=${waypoint.id} coords=`, waypoint.coords);
       if (!map.value) return;
 
       const el = createCustomMarkerElement('waypoint', 'location_on', index + 1);
@@ -55,14 +58,22 @@ export function useMapMarkers(map: Ref<maplibregl.Map | null>) {
         element: el,
         draggable: options.draggable ?? true,
       })
-        .setLngLat(coord)
+        .setLngLat(waypoint.coords)
         .addTo(map.value);
 
       waypointMarkers.push(marker);
 
-      // Add drag events if needed
       if (options.draggable) {
-        // Add drag end handler here if needed
+        marker.on('dragend', () => {
+          const newCoords = marker.getLngLat();
+          const waypointId = waypoint.id;
+
+          if (waypointId) {
+            routeStore.updateWaypointCoord(waypointId, [newCoords.lng, newCoords.lat]);
+          } else {
+            console.error('Waypoint ID not found for dragged marker');
+          }
+        });
       }
     });
 
