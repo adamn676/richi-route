@@ -2,10 +2,7 @@
 <template>
   <div class="marker-container">
     <!-- Pin shape that gets rotated -->
-    <div
-      class="marker-pin"
-      :class="[`marker-${type}`, interactive ? 'interactive' : '']"
-    >
+    <div class="marker-pin" :class="[`marker-${type}`, interactive ? 'interactive' : '']">
       <div class="marker-content">
         <Icon v-if="icon" :name="icon" :svgClass="`icon-in-marker`" />
       </div>
@@ -17,18 +14,18 @@
 </template>
 
 <script setup lang="ts">
-import Icon from "@/components/ui/Icon.vue";
-import { computed } from "vue";
+import Icon from '@/components/ui/Icon.vue';
+import { computed, type PropType } from 'vue';
 
 const props = defineProps({
   type: {
-    type: String,
-    default: "waypoint",
-    validator: (val: string) => ["waypoint", "shaping"].includes(val),
+    type: String as PropType<'waypoint' | 'shaping' | 'temp-shaping'>, // Use PropType for specific strings
+    default: 'waypoint',
+    validator: (val: string) => ['waypoint', 'shaping', 'temp-shaping'].includes(val), // Add 'temp-shaping'
   },
   icon: {
     type: String,
-    default: "",
+    default: '',
   },
   size: {
     type: Number,
@@ -40,7 +37,7 @@ const props = defineProps({
   },
   iconColor: {
     type: String,
-    default: "text-white",
+    default: 'text-white',
   },
   number: {
     type: Number,

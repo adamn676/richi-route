@@ -114,7 +114,7 @@ export function useMapInteractions(
         return;
       }
       isProcessingClick.value = true;
-      console.log('Map clicked at LngLat:', e.lngLat);
+      // console.log('Map clicked at LngLat:', e.lngLat);
 
       const clickPoint = turf.point([e.lngLat.lng, e.lngLat.lat]);
 
@@ -142,9 +142,9 @@ export function useMapInteractions(
               const distance = turf.pointToLineDistance(clickPoint, line, {
                 units: 'meters',
               });
-              console.log(`Distance to segment ${segmentIndex}: ${distance}m`);
+              // console.log(`Distance to segment ${segmentIndex}: ${distance}m`);
               if (distance < DIST_ROUTE) {
-                console.log(`Clicked on segment ${segmentIndex}. Inserting waypoint after existing waypoint at index ${segmentIndex}.`);
+                // console.log(`Clicked on segment ${segmentIndex}. Inserting waypoint after existing waypoint at index ${segmentIndex}.`);
                 await routeStore.insertWaypointOnRoute(segmentIndex + 1, [e.lngLat.lng, e.lngLat.lat]);
                 isProcessingClick.value = false;
                 return;
@@ -155,7 +155,7 @@ export function useMapInteractions(
       }
 
       // 2. If not on a segment, handle as adding/updating Start/End/Via waypoint
-      console.log('Not on a segment, adding/updating waypoint by click.');
+      // console.log('Not on a segment, adding/updating waypoint by click.');
       await routeStore.addWaypointByClick([e.lngLat.lng, e.lngLat.lat]);
 
       // Short delay to prevent rapid-fire clicks overwhelming the system

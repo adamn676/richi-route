@@ -1,10 +1,10 @@
 // src/services/route.service.ts
-import axios, { type AxiosInstance } from "axios";
-import axiosRetry from "axios-retry";
-import throttle from "lodash/throttle";
+import axios, { type AxiosInstance } from 'axios';
+import axiosRetry from 'axios-retry';
+import throttle from 'lodash/throttle';
 
 const ors: AxiosInstance = axios.create({
-  baseURL: "https://api.openrouteservice.org",
+  baseURL: 'https://api.openrouteservice.org',
   headers: { Authorization: import.meta.env.VITE_ORS_API_KEY },
   timeout: 10000,
 });
@@ -19,17 +19,17 @@ const routeCache = new Map<string, any>();
 
 export async function getRoute(coordinates: [number, number][]) {
   const plain = coordinates.map(([lng, lat]) => [lng, lat]); // or JSON.parse...
-  console.log("getRoute() final body =>", plain); // ensure no Proxy
+  // console.log("getRoute() final body =>", plain); // ensure no Proxy
   const key = JSON.stringify(coordinates);
   if (routeCache.has(key)) {
     return routeCache.get(key);
   }
   const fetchRoute = async () => {
-    console.log("getRoute() called, coordinates:", coordinates);
-    const response = await ors.post("/v2/directions/cycling-regular/geojson", {
+    // console.log("getRoute() called, coordinates:", coordinates);
+    const response = await ors.post('/v2/directions/cycling-regular/geojson', {
       coordinates,
     });
-    console.log("ORS response data:", response.data); // logs the raw FeatureCollection
+    // console.log("ORS response data:", response.data); // logs the raw FeatureCollection
     return response.data;
   };
   const throttledFetch = throttle(fetchRoute, 1000, {

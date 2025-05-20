@@ -5,17 +5,17 @@
 </template>
 
 <script setup lang="ts">
-import { storeToRefs } from "pinia";
-import { useRouteStore } from "@/stores/route.store";
-import { useMap } from "@/composables/useMap";
-import { useMapInteractions } from "@/composables/useMapInteractions";
-import { useMarkerWatches } from "@/composables/useMarkerWatches";
-import { useRouteCalculation } from "@/composables/useRouteCalculation";
-import { useRouteDragging } from "@/composables/useRouteDragging";
+import { storeToRefs } from 'pinia';
+import { useRouteStore } from '@/stores/route.store';
+import { useMap } from '@/composables/useMap';
+import { useMapInteractions } from '@/composables/useMapInteractions';
+import { useMarkerWatches } from '@/composables/useMarkerWatches';
+import { useRouteCalculation } from '@/composables/useRouteCalculation';
+import { useRouteDragging } from '@/composables/useRouteDragging';
 
-import SegmentedRouteLayer from "@/components/map/SegmentedRouteLayer.vue";
+import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 
-const { map } = useMap("map");
+const { map } = useMap('map');
 const routeStore = useRouteStore();
 const { route } = storeToRefs(routeStore);
 
@@ -23,5 +23,5 @@ const { route } = storeToRefs(routeStore);
 useRouteCalculation({ map });
 useRouteDragging({ map });
 useMapInteractions(map);
-useMarkerWatches(map, routeStore);
+useMarkerWatches(map);
 </script>
