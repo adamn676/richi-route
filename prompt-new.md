@@ -1,8 +1,7 @@
-@@ -1,424 +0,0 @@
 # 🤖 AI Development Prompt: RichiRoute – Market-Leading Bicycle Route Planner 🚴
 
-**Document Version:** 1.2
-**Last Updated:** May 20, 2025
+**Document Version:** 1.3
+**Last Updated:** May 21, 2025
 **AI Persona:** Senior Frontend Engineer & Vue.js/GIS Expert
 
 **Core Objective:** Develop **RichiRoute**, a production-ready **Vue 3** bicycle route planner, with the ambition to become a market leader. Focus on intuitive UX/UI, advanced interactive route mapping, and maintainable, production-quality TypeScript code.
@@ -66,7 +65,7 @@ This section summarizes the implemented functionality _before_ the next set of t
       - **If 2 waypoints & shaping points exist:** ORS call: `[start_coord, ...sorted_shaping_coords, end_coord]`.
       - **If >2 waypoints & shaping points exist (REFINED):** Constructs a single coordinate list for ORS: `[wp1_coords, ...shaping_points_between_wp1_wp2, wp2_coords, ...shaping_points_between_wp2_wp3, wp3_coords, ...]`. This respects all intermediate hard waypoints.
     - `optimizeEntireRoute()`: Calls `recalc({ forceGlobalOptimize: true })`.
-    - ORS API calls are throttled and cached via `route.service.ts`.
+    - ORS API calls are throttled and cached via `route.service.ts`. The cache key is based on coordinates.
     - `maptiler.service.ts` handles geocoding.
     - Most explicit `recalc()` calls within actions have been removed to rely on the central watcher in `useRouteCalculation.ts`.
 
@@ -120,21 +119,35 @@ The following tasks from the previous iteration have been addressed:
 - **Task 1: Refine `route.store.ts :: applyShaping()` for Multi-Stop Routes: COMPLETED.** The logic now correctly respects all intermediate hard waypoints when shaping points are present.
 - **Task 2: Implement Client-Side Drag Preview (Catmull-Rom/Bezier): MODIFIED.** User opted against a client-side curve preview. `useRouteDragging.ts` shows a temporary marker during drag and commits the point on mouseup.
 - **Task 3: Persistent & Draggable Shaping Point Markers: COMPLETED.** Shaping points are now represented by persistent, draggable markers on the map, and dragging them updates the route.
+- **Design Sophisticated Shaping Point Radius Strategy: COMPLETED.** Decided on an automatic, primarily zoom-level dependent radius for shaping points, and a small fixed default radius for hard waypoints. This strategy leverages the OpenRouteService `radiuses` parameter. The user will not manage radiuses directly, ensuring UI simplicity.
 
 The **upcoming key tasks** are (re-prioritized if needed):
 
-1.  **"Optimize Entire Route" Button & UX (Task 4 from previous list):**
+1.  **Implement Automatic Radius Strategy for Waypoints & Shaping Points:**
+    - **Task:** Implement the designed automatic radius strategy.
+    - **Store (`route.store.ts`):**
+        - Modify `ShapePoint` interface to include `radius: number`.
+        - Update `Waypoint` interface if a default radius needs to be associated there too (or handle it in `route.service.ts`).
+        - Update actions `insertShapingPoint` and `updateShapingPointCoord` to accept, calculate (if not provided by caller), and store this `radius`.
+    - **Composables (`useRouteDragging.ts`, `useMapMarkers.ts`):**
+        - Implement logic to calculate radius based on map zoom level during `mouseup` (for new shaping points) and `dragend` (for existing shaping points) events. Pass this radius to the relevant store actions.
+    - **Service (`route.service.ts`):**
+        - Modify `getRoute` to construct the `radiuses: number[]` array for the ORS API call. Assign small fixed radiuses for hard waypoints and use the stored/calculated dynamic radiuses for shaping points.
+        - Update the ORS request cache key to include the `radiuses` array to ensure correct caching.
+    - **Testing:** Thoroughly test the radius calculation at different zoom levels and in various geographic contexts.
+
+2.  **"Optimize Entire Route" Button & UX (Task 4 from previous list, now Task 2):**
 
     - **Task:** Add a clearly visible button (e.g., in `MapControls.vue` or `WaypointsPanel.vue`) labeled "Optimize Entire Route."
     - **Action:** Clicking this button should call `routeStore.optimizeEntireRoute()`, which clears all `shapingPoints` and recalculates the route using only the hard `waypoints`.
     - **Feedback:** Provide clear visual feedback (e.g., spinner, toast notification) during this global optimization.
 
-2.  **Modifier Key for Local Splicing Override (Conceptual - Design Only for Now) (Task 5 from previous list):**
+3.  **Modifier Key for Local Splicing Override (Conceptual - Design Only for Now) (Task 5 from previous list, now Task 3):**
 
     - **Task (Design):** Think about how an `Alt/Option` key press during a drag or click could temporarily alter the default routing behavior (e.g., force a global splice if the default was local, or vice-versa).
     - **Deliverable:** A brief description of the proposed UX and how it might integrate. No implementation code for this iteration unless trivial.
 
-3.  **Surface-Type Visualization (Basic) (Task 6 from previous list):**
+4.  **Surface-Type Visualization (Basic) (Task 6 from previous list, now Task 4):**
     - **Task:** After a route is calculated and `routeStore.route` is populated, parse the ORS response to differentiate segments by surface type (e.g., "paved" vs. "unpaved/loose").
     - **Implementation:** Modify `SegmentedRouteLayer.vue` (or `useSegmentedRoute.ts`) to apply different styling (e.g., distinct colors or line patterns like dashes for unpaved) to route segments based on this data.
     - **Data Source:** Investigate the ORS GeoJSON response (`features[0].properties.segments[i].steps[j].surface` or similar, or `extras` if requested). Update `orsToFeatureCollection` (in `route.store.ts`) and `getSegments` (in `utils/geometry.ts`) if necessary to preserve and map this data appropriately for rendering.
@@ -179,31 +192,32 @@ The **upcoming key tasks** are (re-prioritized if needed):
 
 ### Route Shaping (Soft Points)
 
-_(This section describes the target state, parts of which are now implemented)_
+_(This section describes the target state, including the planned radius implementation)_
 
-- **A. Creating Shaping Points by Dragging Route Segment (Implemented - No Curve Preview):**
+- **A. Creating Shaping Points by Dragging Route Segment (Partially Implemented; Radius aspect is Next Task):**
 
   1.  User hovers over a route segment. A small, draggable "shaping handle" (e.g., a circle, the `'temp-shaping'` marker) appears on the route line directly under the mouse cursor (or is created on mousedown by `useRouteDragging.ts`).
   2.  User mousedowns on this shaping handle/segment to initiate the drag. `useRouteDragging.ts` initiates drag.
   3.  `mousemove`: The temporary shaping marker follows the cursor. No client-side curve (Catmull-Rom/Bezier) preview is shown.
-  4.  `mouseup`: `routeStore.insertShapingPoint(original_segment_idx + 1, dropped_coords)` is called. The `idx` helps order shaping points. Route recalculates via `applyShaping()`.
+  4.  `mouseup`: `routeStore.insertShapingPoint(original_segment_idx + 1, dropped_coords, calculated_radius)` will be called. The `idx` helps order shaping points. The `calculated_radius` (based on zoom) will be a new parameter. Route recalculates via `applyShaping()`.
   5.  A persistent, small, draggable marker (the `'shaping'` type) is created for this shaping point on the map (handled by `useMarkerWatches` and `useMapMarkers`).
 
-- **B. Dragging Persistent Shaping Point Markers (Implemented):**
+- **B. Dragging Persistent Shaping Point Markers (Partially Implemented; Radius aspect is Next Task):**
 
   1.  User `mousedown`s on a persistent shaping point marker.
   2.  `mousemove`: Marker follows cursor. (No live client-side curve preview for the route itself).
-  3.  `mouseup`: `routeStore.updateShapingPointCoord(shapingPointId, new_coords)` is called. Route recalculates via `applyShaping()`.
+  3.  `mouseup`: `routeStore.updateShapingPointCoord(shapingPointId, new_coords, recalculated_radius)` will be called. The `recalculated_radius` (based on zoom) will be a new parameter. Route recalculates via `applyShaping()`.
 
-- **C. Nature of Shaping Points (Implemented as described):**
+- **C. Nature of Shaping Points (Target State):**
   - Shaping points are _not_ displayed in `WaypointsPanel.vue`.
   - They do not have addresses or `userInput` fields.
   - They purely influence the geometry of the route between hard waypoints.
   - User should never see an explicit "Hard vs. Soft point" prompt.
+  - Shaping points will be assigned an automatically determined, context-aware radius (primarily based on map zoom level at the time of creation/modification). This radius will be used by ORS to allow for softer, more natural pathfinding by providing flexibility in how strictly the route adheres to the exact shaping point coordinate. This radius management is internal and not directly exposed to the user.
 
 ### Routing Logic & Optimization Strategy
 
-_(This section describes the target strategy, which is now more closely matched by the implementations)_
+_(This section describes the target strategy, including the planned radius implementation)_
 
 1.  **Default Behavior - Local Splicing Focus (Target for Shaping - Implemented for >2 Waypoints):**
 
@@ -211,7 +225,7 @@ _(This section describes the target strategy, which is now more closely matched 
       - **If 2 hard waypoints:** The route is recalculated globally between them including all shaping points: `[W1, ...all_SPs, W2]`.
       - **If >2 hard waypoints:** The route is recalculated globally respecting all intermediate hard waypoints and slotting shaping points between them: `[W1, ...SPs_between_W1_W2, W2, ...SPs_between_W2_W3, W3, ...]`. This refinement (original Task 1) is **completed**.
 
-2.  **One-Click "Optimize Entire Route" (To Be Implemented - Task 4):**
+2.  **One-Click "Optimize Entire Route" (To Be Implemented - Task 2 as per new numbering):**
 
     - A dedicated UI button.
     - Action: Clears _all_ `shapingPoints` from the store.
@@ -228,7 +242,7 @@ _(This section describes the target strategy, which is now more closely matched 
     - Waypoints created/managed via `WaypointsPanel.vue` or by clicking the map are "hard waypoints."
     - Points created by dragging a route segment become "shaping points."
 
-5.  **Modifier Key for Quick Overrides (Conceptual - To Be Designed - Task 5):**
+5.  **Modifier Key for Quick Overrides (Conceptual - To Be Designed - Task 3 as per new numbering):**
 
     - Holding `Alt/Option` during a map interaction could temporarily toggle recalculation behavior.
 
@@ -237,7 +251,7 @@ _(This section describes the target strategy, which is now more closely matched 
     - **Phase 1 (In `calculateHardRoute`):** Calculate "backbone" `W1 -> W2 -> ... -> Wn`.
     - **Phase 2 (In `applyShaping`):** When shaping points exist, they are applied _between_ their respective hard waypoints using the refined single ORS call logic. This is **completed**.
 
-7.  **Surface & Elevation Overlays (To Be Implemented - Task 6 for Surface):**
+7.  **Surface & Elevation Overlays (To Be Implemented - Task 4 as per new numbering for Surface):**
 
     - After each route calculation, parse ORS "surface" or "waytype" data.
     - Color-code rendered route segments.
@@ -245,6 +259,8 @@ _(This section describes the target strategy, which is now more closely matched 
 8.  **Visual Feedback & Controls (Ongoing / Implemented for Markers):**
     - Clear visual distinction between waypoint markers, persistent shaping point markers (small dots), and temporary drag indicators.
     - Spinners/shimmer effects during API calls (partially via `isCalculatingGlobalRoute`, can be enhanced).
+
+9.  **Utilizing ORS `radiuses` Parameter (Target State for Next Task):** The system will leverage the `radiuses` parameter in OpenRouteService API calls. Hard waypoints will be given a small, fixed radius to ensure precision while allowing for minor network snapping. Shaping points will be given dynamic, context-dependent radiuses (primarily based on map zoom level) to allow for more flexible and natural route shaping without requiring user management of this technical detail.
 
 ---
 
@@ -282,7 +298,7 @@ _(This section describes the target strategy, which is now more closely matched 
 - **Role:** Bicycle route calculation.
 - **Endpoint:** `/v2/directions/cycling-regular/geojson`.
 - **Key:** `VITE_ORS_API_KEY` in `.env`.
-- **Features to Utilize:** Coordinates, geometry, (later: surface types from `extras`, elevation).
+- **Features to Utilize:** Coordinates, geometry, `radiuses` (for nuanced control over waypoint and shaping point snapping/flexibility - *to be implemented*), (later: surface types from `extras`, elevation).
 - **Note:** API calls are throttled and responses cached by `route.service.ts`.
 
 ---
