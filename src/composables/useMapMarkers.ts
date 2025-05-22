@@ -3,12 +3,12 @@ import { type Ref, unref } from 'vue';
 import { createApp } from 'vue';
 import maplibregl, { type Map as MaplibreMap, type Marker } from 'maplibre-gl';
 import CustomMarker from '@/components/map/CustomMarker.vue';
-import type { Coord } from '@/services/maptiler.service';
-import { useRouteStore, type ShapePoint as StoreShapePoint, type Waypoint as StoreWaypoint } from '@/stores/route.store';
-import { getRadiusForZoom } from '@/utils/mapHelpers';
-import { bearing as turfBearing, point as turfPoint, nearestPointOnLine } from '@turf/turf';
-import type { Feature, Point as TurfGeoJSONPoint, LineString } from 'geojson'; // Ensure LineString is imported
-import type { BearingValue } from '@/services/route.service';
+import type { Coord } from '@/services/maptiler.service'; //
+import { useRouteStore, type ShapePoint as StoreShapePoint, type Waypoint as StoreWaypoint } from '@/stores/route.store'; //
+import { getRadiusForZoom } from '@/utils/mapHelpers'; //
+import { bearing as turfBearing, point as turfPoint, nearestPointOnLine } from '@turf/turf'; //
+import type { Feature, Point as TurfGeoJSONPoint, LineString } from 'geojson'; //
+import type { BearingValue } from '@/services/route.service'; //
 
 // createCustomMarkerElement function remains the same...
 function createCustomMarkerElement(type: 'waypoint' | 'shaping' | 'temp-shaping', icon?: string, number?: number, isDraggablePreview?: boolean) {
@@ -51,11 +51,11 @@ function createCustomMarkerElement(type: 'waypoint' | 'shaping' | 'temp-shaping'
 }
 
 export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
-  const routeStore = useRouteStore();
+  const routeStore = useRouteStore(); //
   const waypointMarkersMap = new Map<string, maplibregl.Marker>();
   const shapingMarkersMap = new Map<string, maplibregl.Marker>();
 
-  const BEARING_CONSTRAINT_RANGE = 45; // Tolerance for bearing in degrees
+  const BEARING_CONSTRAINT_RANGE = 45; // Tolerance for bearing in degrees //
 
   const clearAllMarkers = () => {
     waypointMarkersMap.forEach((marker) => marker.remove());
@@ -89,7 +89,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
         const el = createCustomMarkerElement('waypoint', 'location_on', index + 1);
         const marker = new maplibregl.Marker({
           element: el,
-          draggable: options.draggable ?? true,
+          draggable: options.draggable ?? true, //
         })
           .setLngLat(waypoint.coords)
           .addTo(map);
@@ -99,7 +99,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
           marker.on('dragend', () => {
             const newCoords = marker.getLngLat();
             console.log(`[useMapMarkers] Waypoint ${waypoint.id} dragged to:`, newCoords);
-            routeStore.updateWaypointCoord(waypoint.id, [newCoords.lng, newCoords.lat]);
+            routeStore.updateWaypointCoord(waypoint.id, [newCoords.lng, newCoords.lat]); //
           });
         }
       }
@@ -126,7 +126,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
         const el = createCustomMarkerElement('shaping');
         const marker = new maplibregl.Marker({
           element: el,
-          draggable: options.draggable ?? true,
+          draggable: options.draggable ?? true, //
         })
           .setLngLat(spData.coord)
           .addTo(map);
@@ -135,32 +135,37 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
         if (options.draggable) {
           marker.on('dragstart', () => {
             console.log(`[useMapMarkers] Shaping point ${spData.id} dragstart.`);
-            let calculatedBearingConstraint: BearingValue = null;
+            let calculatedBearingConstraint: BearingValue = null; // BearingValue can be [number,number] | null for this purpose
             const currentRoute = routeStore.route;
 
             if (currentRoute && currentRoute.features.length > 0 && currentRoute.features[0].geometry.type === 'LineString') {
-              // Use the LineString type from 'geojson' for the cast
-              const routeLineString = currentRoute.features[0].geometry as LineString;
-              const routeCoords = routeLineString.coordinates as Coord[]; // Assuming Coord is [number, number]
-              const draggedSpTurfPoint = turfPoint(spData.coord);
+              const routeLineString = currentRoute.features[0].geometry as LineString; //
+              const routeCoords = routeLineString.coordinates as Coord[]; //
+              const draggedSpTurfPoint = turfPoint(spData.coord); //
 
               const closestPointFeature = nearestPointOnLine(routeLineString, draggedSpTurfPoint, { units: 'meters' }) as Feature<
                 TurfGeoJSONPoint,
                 { index: number; dist: number; location: number }
-              >;
+              >; //
 
               if (closestPointFeature && typeof closestPointFeature.properties.index === 'number') {
                 const segmentIndex = closestPointFeature.properties.index;
-                const pointBeforeSegment = routeCoords[segmentIndex];
-                const pointAfterSegment = routeCoords[segmentIndex + 1];
+                const pointBeforeSegment = routeCoords[segmentIndex]; //
+                const pointAfterSegment = routeCoords[segmentIndex + 1]; //
 
                 if (pointBeforeSegment && pointAfterSegment) {
-                  const segmentBearing = turfBearing(turfPoint(pointBeforeSegment), turfPoint(pointAfterSegment));
-                  calculatedBearingConstraint = [segmentBearing, BEARING_CONSTRAINT_RANGE];
+                  let segmentAngle = turfBearing(turfPoint(pointBeforeSegment), turfPoint(pointAfterSegment)); //
+
+                  // Normalize segmentAngle to [0, 360) range for ORS
+                  if (segmentAngle < 0) {
+                    segmentAngle += 360;
+                  }
+
+                  calculatedBearingConstraint = [segmentAngle, BEARING_CONSTRAINT_RANGE]; // This is now a SimpleBearing
                   console.log(
                     `[useMapMarkers] SP ${spData.id} snapped to segment ${segmentIndex} (between ${JSON.stringify(pointBeforeSegment)} and ${JSON.stringify(
                       pointAfterSegment
-                    )}) with segment bearing ${segmentBearing.toFixed(2)}. Calculated bearing constraint:`,
+                    )}) with segment bearing ${segmentAngle.toFixed(2)} (normalized). Calculated bearing constraint:`,
                     JSON.stringify(calculatedBearingConstraint)
                   );
                 } else {
@@ -176,17 +181,19 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
             } else {
               console.warn(`[useMapMarkers] No valid route linestring found for bearing calculation for SP ${spData.id}.`);
             }
-            routeStore.setDraggedShapingPointBearing(calculatedBearingConstraint ? { id: spData.id, bearing: calculatedBearingConstraint } : null);
+            routeStore.setDraggedShapingPointBearing(
+              calculatedBearingConstraint ? { id: spData.id, bearing: calculatedBearingConstraint as [number, number] } : null
+            );
           });
 
           marker.on('dragend', () => {
             const newCoords = marker.getLngLat();
             const currentMapInstance = unref(mapRef);
-            let recalculatedRadius = spData.radius;
+            let recalculatedRadius = spData.radius; //
 
             if (currentMapInstance) {
               const zoom = currentMapInstance.getZoom();
-              recalculatedRadius = getRadiusForZoom(zoom);
+              recalculatedRadius = getRadiusForZoom(zoom); //
               console.log(
                 `[useMapMarkers] Shaping point ${spData.id} dragged. Coords: ${JSON.stringify(
                   newCoords
@@ -199,7 +206,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
                 )}. Map not available for zoom, using original radius: ${recalculatedRadius}`
               );
             }
-            routeStore.updateShapingPointCoord(spData.id, [newCoords.lng, newCoords.lat], recalculatedRadius);
+            routeStore.updateShapingPointCoord(spData.id, [newCoords.lng, newCoords.lat], recalculatedRadius); //
           });
         }
       }

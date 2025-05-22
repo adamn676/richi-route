@@ -2,20 +2,15 @@
 import axios, { type AxiosInstance } from 'axios';
 import axiosRetry from 'axios-retry';
 import throttle from 'lodash/throttle';
-import type {
-  FeatureCollection as GeoJSONFeatureCollection,
-  LineString as GeoJSONLineString,
-  Feature as GeoJSONFeature,
-  GeoJsonProperties, // Import GeoJsonProperties
-} from 'geojson';
-import type { OrsFeatureCollection } from '@/types'; // Assuming you'll move OrsFeatureCollection to src/types/index.ts
+import type { FeatureCollection as GeoJSONFeatureCollection, LineString as GeoJSONLineString, Feature as GeoJSONFeature, GeoJsonProperties } from 'geojson';
+import type { OrsFeatureCollection } from '@/types';
 
-// Keep original Coord and BearingValue types
 export type Coord = [number, number];
+// BearingValue can be a simple [angle, tolerance], a complex [[approachAngle, approachTolerance], [departureAngle, departureTolerance]], or null
 export type BearingValue = [number, number] | [[number, number], [number, number]] | null;
 
-// Simplified bearing type for the new two-leg strategy
-type SimpleBearing = [number, number]; // [angleDegrees, toleranceDegrees]
+// SimpleBearing is specifically [angleDegrees, toleranceDegrees]
+type SimpleBearing = [number, number];
 
 const ors: AxiosInstance = axios.create({
   baseURL: 'https://api.openrouteservice.org',
@@ -45,6 +40,9 @@ axiosRetry(ors, {
 });
 
 const routeCache = new Map<string, any>();
+
+// Define this at a scope accessible to functions that might need it, or pass as param.
+const defaultWideBearingForORS: SimpleBearing = [0, 180]; // [angle, tolerance]
 
 function handleOrsError(error: any, context: string): never {
   console.error(`[RouteService] Error in ${context}:`, error.isAxiosError ? error.toJSON() : error);
@@ -79,7 +77,6 @@ function handleOrsError(error: any, context: string): never {
   throw error;
 }
 
-// Helper: fetch a single leg, applying bearing only at its start or end OF THIS LEG
 async function fetchLeg(coords: Coord[], options?: { atStart?: SimpleBearing; atEnd?: SimpleBearing; radiuses?: number[] }): Promise<OrsFeatureCollection> {
   const plainCoords = JSON.parse(JSON.stringify(coords)) as Coord[];
   const plainRadiuses = options?.radiuses ? (JSON.parse(JSON.stringify(options.radiuses)) as number[]) : undefined;
@@ -88,12 +85,12 @@ async function fetchLeg(coords: Coord[], options?: { atStart?: SimpleBearing; at
     coordinates: Coord[];
     bearings?: (SimpleBearing | null)[];
     radiuses?: number[];
-    instructions?: boolean; // Recommended to set to false for legs if not using turn-by-turn for legs
-    preference?: string; // e.g. "recommended" or "shortest"
+    instructions?: boolean;
+    preference?: string;
   } = {
     coordinates: plainCoords,
-    instructions: false, // Often not needed for intermediate leg calculations
-    // preference: "recommended"
+    instructions: false,
+    // No preference set, to use ORS default unless bearings issue forces "shortest"
   };
 
   if (plainRadiuses && plainRadiuses.length === plainCoords.length) {
@@ -102,18 +99,45 @@ async function fetchLeg(coords: Coord[], options?: { atStart?: SimpleBearing; at
 
   if (options && (options.atStart || options.atEnd)) {
     const bArr: (SimpleBearing | null)[] = plainCoords.map(() => null);
-    if (options.atStart && bArr.length > 0) bArr[0] = options.atStart;
-    if (options.atEnd && bArr.length > 0) bArr[bArr.length - 1] = options.atEnd;
+    if (options.atStart && bArr.length > 0) {
+      bArr[0] = options.atStart;
+    } else if (bArr.length > 0) {
+      // If atStart is not provided but array exists, ensure it's explicitly null or default
+      bArr[0] = defaultWideBearingForORS; // Or null, if fetchLeg's caller ensures this logic
+    }
 
-    if (bArr.some((b) => b !== null)) {
-      requestBody.bearings = bArr;
+    if (options.atEnd && bArr.length > 0) {
+      bArr[bArr.length - 1] = options.atEnd;
+    } else if (bArr.length > 0) {
+      // If atEnd is not provided
+      bArr[bArr.length - 1] = defaultWideBearingForORS; // Or null
+    }
+    // This logic needs to be robust: if atStart/atEnd is explicitly null, what should happen?
+    // The current implementation of getRouteWithStickyShaping ALWAYS provides a non-null SimpleBearing for atStart/atEnd of legs.
+    // So, the bArr construction here based on options might be fine as is if options always contain valid bearings when provided.
+    // For safety, let's ensure bArr matches coordinate length and applies defaults if a specific option is missing but implied.
+    // Re-simplifying: getRouteWithStickyShaping calls this with defined bearings.
+    // If called elsewhere, it needs to be robust. For now, assume options.atStart/atEnd are valid SimpleBearings if provided.
+
+    const finalBearingsForLeg: (SimpleBearing | null)[] = new Array(plainCoords.length).fill(null);
+    if (plainCoords.length > 0) {
+      finalBearingsForLeg[0] = options.atStart || defaultWideBearingForORS;
+      if (plainCoords.length > 1) {
+        finalBearingsForLeg[plainCoords.length - 1] = options.atEnd || defaultWideBearingForORS;
+      } else {
+        // Single point leg, apply start bearing if also end
+        finalBearingsForLeg[0] = options.atStart || options.atEnd || defaultWideBearingForORS;
+      }
+    }
+
+    if (finalBearingsForLeg.some((b) => b !== null)) {
+      // Check if any bearing is actually set
+      requestBody.bearings = finalBearingsForLeg.map((b) => (b ? [b[0], b[1]] : null)); // Ensure it's SimpleBearing or null
     }
   }
   // console.log(`[RouteService] fetchLeg - Request Body:`, JSON.stringify(requestBody).substring(0, 300) + "...");
 
   try {
-    // Note: Consider not caching individual legs if they are always part of a larger, unique operation
-    // or ensure cache keys for legs are very specific if leg caching is desired.
     const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-regular/geojson', requestBody);
     console.log(`[RouteService] fetchLeg for coords ${JSON.stringify(coords)} - ORS response status: ${response.status}`);
     return response.data;
@@ -122,20 +146,21 @@ async function fetchLeg(coords: Coord[], options?: { atStart?: SimpleBearing; at
   }
 }
 
-// High-level API: get a “sticky” shaping route for ONE shaping point between two anchors
 export async function getRouteWithStickyShaping(
   startCoord: Coord,
   shapingPointCoord: Coord,
   endCoord: Coord,
-  shapingPointBearing: SimpleBearing,
+  shapingPointBearing: SimpleBearing, // This is a non-null SimpleBearing
   startRadius: number = 25,
   shapingPointRadius: number = 7,
   endRadius: number = 25
 ): Promise<OrsFeatureCollection> {
   console.log(`[RouteService] getRouteWithStickyShaping. SP_Coord: ${shapingPointCoord}, SP_Bearing: ${shapingPointBearing}`);
 
+  // For leg A (start to shapingPoint), the shapingPointBearing is the arrival bearing at the shapingPoint
   const legAData = await fetchLeg([startCoord, shapingPointCoord], { atEnd: shapingPointBearing, radiuses: [startRadius, shapingPointRadius] });
 
+  // For leg B (shapingPoint to end), the shapingPointBearing is the departure bearing from the shapingPoint
   const legBData = await fetchLeg([shapingPointCoord, endCoord], { atStart: shapingPointBearing, radiuses: [shapingPointRadius, endRadius] });
 
   const legAFeature = legAData.features?.[0] as GeoJSONFeature<GeoJSONLineString, any> | undefined;
@@ -147,7 +172,9 @@ export async function getRouteWithStickyShaping(
   }
 
   const coordsA = legAFeature.geometry.coordinates as Coord[];
-  const coordsB = (legBFeature.geometry.coordinates as Coord[]).slice(1);
+  // Ensure coordsB doesn't duplicate the shaping point if ORS includes it in both leg geometries
+  const coordsB = (legBFeature.geometry.coordinates as Coord[]).length > 0 ? (legBFeature.geometry.coordinates as Coord[]).slice(1) : [];
+
   const mergedCoords: Coord[] = [...coordsA, ...coordsB];
 
   const legASummary = legAFeature.properties?.summary || { distance: 0, duration: 0 };
@@ -157,27 +184,14 @@ export async function getRouteWithStickyShaping(
     duration: legASummary.duration + legBSummary.duration,
   };
 
-  // For simplicity, segments and extras are not deeply merged here.
-  // A production app would need to handle this more robustly if turn-by-turn or detailed extras are needed.
   const finalMergedFeatureProperties: GeoJsonProperties = {
     summary: mergedSummary,
-    // segments: [...(legAFeature.properties?.segments || []), ...(legBFeature.properties?.segments || [])], // Simplified
-    // extras: { ...(legAFeature.properties?.extras || {}), ...(legBFeature.properties?.extras || {}) }, // Simplified
+    way_points: [
+      [0, 0],
+      [1, coordsA.length - 1],
+      [2, mergedCoords.length - 1],
+    ],
   };
-  // Add way_points if ORS provides them and if they are useful.
-  // The way_points for legA and legB would refer to indices within those legs.
-  // Merging them requires re-calculating indices based on the new mergedCoords length.
-  // Example: legA way_points: [[0,0],[1,10]]. legB way_points: [[0,0],[1,5]] (becomes [[1,10],[2,15]] after merge if legA had 11 coords)
-  // For simplicity, let's reconstruct a basic way_points if possible, or omit.
-  // ORS provides way_points like: "way_points":[[0,0],[10,1]] means original coord 0 is at geometry index 0, original coord 1 is at geometry index 10.
-  // We can take way_points from legA, and for legB, add coordsA.length-1 to the geometry index of legB's way_points.
-  // And adjust original coordinate index for legB way_points.
-  // This part is tricky, for now, let's assign simple way_points for the merged feature
-  finalMergedFeatureProperties.way_points = [
-    [0, 0], // Start of Leg A
-    [1, coordsA.length - 1], // End of Leg A (Shaping Point)
-    [2, mergedCoords.length - 1], // End of Leg B
-  ];
 
   const finalMergedFeature: GeoJSONFeature<GeoJSONLineString, any> = {
     type: 'Feature',
@@ -200,14 +214,13 @@ export async function getRouteWithStickyShaping(
             Math.max(legAData.bbox[3], legBData.bbox[3]),
           ]
         : undefined,
-    metadata: legAData.metadata, // Assuming metadata from the first leg is sufficient or representative
+    metadata: legAData.metadata,
   };
 
   console.log('[RouteService] getRouteWithStickyShaping - Merged route calculated.');
   return finalFeatureCollection;
 }
 
-// Existing getRoute function - this will be used for non-sticky scenarios or full route recalculations
 export async function getRoute(coordinates: Coord[], radiuses?: number[], bearings?: BearingValue[]): Promise<OrsFeatureCollection> {
   const plainCoordinates = JSON.parse(JSON.stringify(coordinates)) as Coord[];
   const plainRadiuses = radiuses ? (JSON.parse(JSON.stringify(radiuses)) as number[]) : undefined;
@@ -217,71 +230,68 @@ export async function getRoute(coordinates: Coord[], radiuses?: number[], bearin
   let hasMeaningfulBearingsToSend = false;
 
   if (plainBearingsInput && plainBearingsInput.length === plainCoordinates.length) {
-    filteredBearingsForRequest = plainBearingsInput.map((bearing, index, arr) => {
-      // Only allow non-null bearings at absolute start (idx 0) or end (idx arr.length-1)
+    filteredBearingsForRequest = plainBearingsInput.map((bearingInput, index, arr) => {
+      // Process only for the absolute start (index 0) and absolute end (index arr.length - 1)
       if (index === 0 || index === arr.length - 1) {
-        // Ensure it's SimpleBearing format [val, range] or null
-        if (Array.isArray(bearing) && typeof bearing[0] === 'number' && typeof bearing[1] === 'number' && bearing.length === 2) {
-          return bearing as SimpleBearing; // It's already a SimpleBearing
-        } else if (bearing === null) {
-          return null;
+        if (Array.isArray(bearingInput) && typeof bearingInput[0] === 'number' && typeof bearingInput[1] === 'number' && bearingInput.length === 2) {
+          return bearingInput as SimpleBearing; // It's a valid SimpleBearing
+        } else if (bearingInput === null) {
+          // If the input bearing for a start/end point was null, replace it with the default wide bearing.
+          return defaultWideBearingForORS;
         }
-        // If it's the nested [[arr],[dep]] format for start/end, ORS might also error here.
-        // For simplicity, this generic getRoute assumes start/end bearings are already SimpleBearing or null.
-        // Or, if it was a nested array, it would be invalid here based on SimpleBearing | null.
-        console.warn(`[RouteService] getRoute: Bearing at start/end index ${index} has unexpected format, nullifying:`, bearing);
-        return null;
+        // Fallback for unexpected formats at start/end (e.g., complex [[in,out],[in,out]])
+        console.warn(`[RouteService] getRoute: Bearing at start/end index ${index} has unexpected format, using default. Received:`, bearingInput);
+        return defaultWideBearingForORS; // Use default wide bearing
       }
-      return null; // Intermediate bearings are nullified
+      return null; // Intermediate bearings are explicitly nullified as per existing logic in getRoute
     });
+    // Check if any bearing in the filtered list is not null
     hasMeaningfulBearingsToSend = filteredBearingsForRequest.some((b) => b !== null);
   }
 
   const cacheKeyObject: {
     coordinates: Coord[];
     radiuses?: number[];
-    bearings?: (SimpleBearing | null)[];
+    bearings?: (SimpleBearing | null)[]; // Cache key should use the bearings that will be sent
   } = { coordinates: plainCoordinates };
 
   if (plainRadiuses) {
     cacheKeyObject.radiuses = plainRadiuses;
   }
+  // Only add bearings to cache key if they are actually being sent and are meaningful
   if (hasMeaningfulBearingsToSend && filteredBearingsForRequest) {
     cacheKeyObject.bearings = filteredBearingsForRequest;
   }
   const key = JSON.stringify(cacheKeyObject);
 
-  if (routeCache.has(key) && !hasMeaningfulBearingsToSend) {
-    // Avoid cache if meaningful bearings were intended but then stripped, to re-fetch without. Or adjust cache key logic.
-    // For now, let's simplify: if a meaningful bearing was stripped leading to "Not Sent", we might want to re-fetch rather than use a cache key that didn't include it.
-    // This cache logic might need refinement if this getRoute is called in very quick succession with bearings that get stripped vs not.
-    // A simpler cache key (just coords and radiuses if bearings are stripped) might be better.
-    // However, if filteredBearingsForRequest is used in the key, it's accurate.
-    console.log('[RouteService] Returning cached route for key:', key);
+  if (routeCache.has(key)) {
+    console.log('[RouteService] Returning cached route for key:', key.substring(0, 100) + '...');
     return Promise.resolve(routeCache.get(key));
   }
 
   const fetchRouteInner = async () => {
     console.log(
       '[RouteService] getRoute (single call) - Fetching. Coordinates:',
+      plainCoordinates.length,
       plainCoordinates,
       'Radiuses:',
+      plainRadiuses ? plainRadiuses.length : 'N/A',
       plainRadiuses,
       ...(hasMeaningfulBearingsToSend && filteredBearingsForRequest
-        ? ['Bearings (filtered for start/end):', filteredBearingsForRequest]
-        : ['Bearings: Not sent'])
+        ? ['Bearings (for ORS request):', filteredBearingsForRequest.length, filteredBearingsForRequest]
+        : ['Bearings: Not sent or all nullified by filter'])
     );
 
     const requestBody: {
       coordinates: Coord[];
       radiuses?: number[];
-      bearings?: (SimpleBearing | null)[];
+      bearings?: (SimpleBearing | null)[]; // ORS expects array of [value,deviation] or nulls
       extra_info?: string[];
       instructions?: boolean;
-      preference?: string;
+      // preference?: string; // Ensure no preference is set to use ORS default
     } = {
       coordinates: plainCoordinates,
-      instructions: false, // Example
+      instructions: false,
     };
 
     if (plainRadiuses) {
@@ -292,23 +302,25 @@ export async function getRoute(coordinates: Coord[], radiuses?: number[], bearin
     }
 
     try {
+      console.log('[RouteService] getRoute (single call) - Request Body to ORS:', JSON.stringify(requestBody, null, 2).substring(0, 500) + '...');
       const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-regular/geojson', requestBody);
       console.log('[RouteService] getRoute (single call) - ORS response status:', response.status);
-      if (!hasMeaningfulBearingsToSend || (filteredBearingsForRequest && filteredBearingsForRequest.every((b) => b === null))) {
-        // Cache only if no meaningful bearings were sent, or if all bearings ended up null
-        // This prevents caching a "no-bearing" route for a key that might later imply bearings.
-        // The cache key already handles this by including the filtered bearings.
-        routeCache.set(key, response.data);
-      }
+      routeCache.set(key, response.data); // Cache the successful response
       return response.data;
     } catch (error) {
       return handleOrsError(error, 'getRoute (single call)');
     }
   };
 
+  // Throttling to prevent rapid identical requests.
+  // Note: If params change slightly but key remains same due to stringify order, this throttle keying might be imperfect.
+  // However, for distinct requests (different keys), it correctly throttles separate API calls.
   const throttledFetchRouteInner = throttle(fetchRouteInner, 1000, {
-    leading: true,
-    trailing: false,
+    leading: true, // Fire on the leading edge of the timeout
+    trailing: false, // Do not fire on the trailing edge
   });
+
+  // For direct calls (like tests), you might want to bypass throttle or use fetchRouteInner directly
+  // For now, all calls go through throttle.
   return throttledFetchRouteInner();
 }
