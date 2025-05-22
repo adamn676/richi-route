@@ -1,112 +1,22 @@
-// // useRouteDragging.ts
-// import { onMounted, onBeforeUnmount, type Ref, ref } from 'vue';
-// import maplibregl, { type MapLayerMouseEvent, type MapMouseEvent } from 'maplibre-gl';
-// import { useRouteStore } from '@/stores/route.store';
-// import { useMapMarkers } from '@/composables/useMapMarkers';
-// import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
-
-// /**
-//  * Enables "soft‑shaping" drag logic on your route segments.
-//  *
-//  * Listens for mousedown on the SEGMENTS_BASE_LAYER, drops a temporary marker,
-//  * follows the cursor on mousemove, then commits a shaping point on mouseup.
-//  *
-//  * @param options.map  A Ref wrapping your MapLibre‑GL map instance.
-//  */
-// export function useRouteDragging(options: { map: Ref<any> }) {
-//   const routeStore = useRouteStore();
-//   const { createTempMarker } = useMapMarkers(options.map);
-
-//   let onDown: ((e: MapLayerMouseEvent) => void) | null = null;
-//   let onMove: ((e: MapMouseEvent) => void) | null = null;
-//   let onUp: ((e: MapMouseEvent) => void) | null = null;
-//   let tempMarker: maplibregl.Marker | null = null;
-
-//   onMounted(() => {
-//     const m = options.map.value;
-//     if (!m) return;
-
-//     onDown = (e: MapLayerMouseEvent) => {
-//       if (!routeStore.route) return;
-//       m.dragPan.disable();
-
-//       const feat = e.features?.[0];
-//       const idx = feat?.properties?.idx as number | undefined;
-//       if (idx == null) {
-//         m.dragPan.enable();
-//         return;
-//       }
-
-//       // Create a temporary marker using our custom marker
-//       tempMarker = createTempMarker([e.lngLat.lng, e.lngLat.lat], 'shaping');
-
-//       if (!tempMarker) {
-//         m.dragPan.enable();
-//         return;
-//       }
-
-//       // Follow the cursor
-//       onMove = (ev) => {
-//         if (tempMarker) tempMarker.setLngLat(ev.lngLat);
-//       };
-//       m.on('mousemove', onMove);
-
-//       // On release, commit the shaping point
-//       onUp = async (ev) => {
-//         if (onMove) m.off('mousemove', onMove);
-//         if (onUp) m.off('mouseup', onUp);
-//         m.dragPan.enable();
-
-//         await routeStore.insertShapingPoint(/* after segment */ idx + 1, [ev.lngLat.lng, ev.lngLat.lat]);
-
-//         if (tempMarker) {
-//           tempMarker.remove();
-//           tempMarker = null;
-//         }
-//       };
-//       m.on('mouseup', onUp);
-//     };
-
-//     m.on('mousedown', SEGMENTS_BASE_LAYER, onDown);
-//   });
-
-//   onBeforeUnmount(() => {
-//     const m = options.map.value;
-//     if (!m) return;
-//     if (onDown) m.off('mousedown', SEGMENTS_BASE_LAYER, onDown);
-//     if (onMove) m.off('mousemove', onMove);
-//     if (onUp) m.off('mouseup', onUp);
-
-//     // Clean up any existing temporary marker
-//     if (tempMarker) {
-//       tempMarker.remove();
-//       tempMarker = null;
-//     }
-//   });
-// }
-
 // src/composables/useRouteDragging.ts
 import { onMounted, onBeforeUnmount, type Ref, ref } from 'vue';
 import maplibregl, { type MapLayerMouseEvent, type MapMouseEvent, type Map as MaplibreMap } from 'maplibre-gl';
 import { useRouteStore } from '@/stores/route.store';
 import { useMapMarkers } from '@/composables/useMapMarkers';
 import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
+import { getRadiusForZoom } from '@/utils/mapHelpers';
 
 export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
   const routeStore = useRouteStore();
-  // Assuming createTempMarker from useMapMarkers creates a visually distinct temporary marker
-  // and that your useMapMarkers might have a way to clear *only* these temp markers,
-  // or we manage it directly.
   const { createTempMarker } = useMapMarkers(options.map);
 
   let onDownListener: ((e: MapLayerMouseEvent) => void) | null = null;
   let onMoveListener: ((e: MapMouseEvent) => void) | null = null;
-  // onUpListener will be attached to the window to ensure it fires
   let windowOnUpListener: ((this: Window, ev: MouseEvent) => any) | null = null;
 
   let tempShapingMarker: maplibregl.Marker | null = null;
   const isDragging = ref(false);
-  const currentSegmentIdx = ref<number | null>(null); // 0-based index of the original segment
+  const currentSegmentIdx = ref<number | null>(null);
 
   const cleanupDragState = (mapInstance?: MaplibreMap | null) => {
     const m = mapInstance || options.map.value;
@@ -122,10 +32,9 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
       windowOnUpListener = null;
     }
 
-    onMoveListener = null; // Clear the reference
+    onMoveListener = null;
 
-    if (m && m.dragPan) {
-      // Check if dragPan exists
+    if (m?.dragPan) {
       try {
         m.dragPan.enable();
       } catch (err) {
@@ -142,31 +51,28 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
 
     onDownListener = (e: MapLayerMouseEvent) => {
       const m = options.map.value;
-      // Ensure map instance is still valid and it's a left-click
       if (!routeStore.route || !m || e.defaultPrevented || e.originalEvent.button !== 0) {
         return;
       }
 
       const feature = e.features?.[0];
-      const featIdx = feature?.properties?.idx as number | undefined; // This is the original segment's 0-based index
+      const featIdx = feature?.properties?.idx as number | undefined;
 
       if (featIdx == null) {
-        // featIdx must be a number (0 is valid)
         return;
       }
 
-      // Prevent initiating drag if the click was on an existing marker (waypoint or future persistent shaping point)
       if ((e.originalEvent.target as HTMLElement)?.closest('.maplibregl-marker')) {
         return;
       }
 
-      e.preventDefault(); // Prevent other map interactions like text selection or default drag
+      e.preventDefault();
       if (m.dragPan) m.dragPan.disable();
 
       currentSegmentIdx.value = featIdx;
       isDragging.value = true;
 
-      if (tempShapingMarker) tempShapingMarker.remove(); // Clean up previous one if any
+      if (tempShapingMarker) tempShapingMarker.remove();
       tempShapingMarker = createTempMarker([e.lngLat.lng, e.lngLat.lat], 'temp-shaping');
 
       onMoveListener = (ev: MapMouseEvent) => {
@@ -175,28 +81,33 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
       };
       m.on('mousemove', onMoveListener);
 
-      // Define windowOnUpListener here so it has access to the correct scope
       windowOnUpListener = async (ev: MouseEvent) => {
-        // Check if the mouseup event originated from the map canvas or is relevant
-        // For simplicity, we'll process if dragging was active.
         if (!isDragging.value) {
-          cleanupDragState(m); // Ensure cleanup if somehow called without dragging
+          cleanupDragState(m);
           return;
         }
 
-        // Convert mouse event to LngLat if possible (might need to get LngLat from the temp marker's last position)
-        // For this mouseup, the coordinates would be from the tempShapingMarker's position if ev is on window
-        // Or, if we ensure onUp is always on the map, ev.lngLat would work.
-        // The tempShapingMarker's current LngLat is the most reliable here.
         const finalLngLat = tempShapingMarker?.getLngLat();
+        const currentMapInstance = options.map.value; // Use the reactive ref to get current map instance
 
-        if (currentSegmentIdx.value != null && finalLngLat) {
-          // console.log(
-          //   `useRouteDragging: mouseup - Inserting shaping point after segment ${currentSegmentIdx.value}, at ${finalLngLat.lng}, ${finalLngLat.lat}`
-          // );
-          await routeStore.insertShapingPoint(currentSegmentIdx.value + 1, [finalLngLat.lng, finalLngLat.lat]);
+        if (currentSegmentIdx.value != null && finalLngLat && currentMapInstance) {
+          const zoom = currentMapInstance.getZoom();
+          const calculatedRadius = getRadiusForZoom(zoom);
+
+          console.log(
+            `[useRouteDragging] mouseup - Inserting shaping point after segment ${currentSegmentIdx.value}, at ${finalLngLat.lng}, ${
+              finalLngLat.lat
+            } with radius ${calculatedRadius}m (Zoom: ${zoom.toFixed(2)})`
+          );
+
+          // Call the updated store action with the calculated radius
+          await routeStore.insertShapingPoint(
+            currentSegmentIdx.value + 1, // originalSegmentIdxPlusOne
+            [finalLngLat.lng, finalLngLat.lat],
+            calculatedRadius
+          );
         }
-        cleanupDragState(m);
+        cleanupDragState(currentMapInstance); // Pass the map instance used for getZoom
       };
       window.addEventListener('mouseup', windowOnUpListener, { once: true });
     };
@@ -205,10 +116,9 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
 
   onBeforeUnmount(() => {
     const m = options.map.value;
-    cleanupDragState(m); // General cleanup
+    cleanupDragState(m);
     if (onDownListener && m) {
       m.off('mousedown', SEGMENTS_BASE_LAYER, onDownListener);
     }
-    // windowOnUpListener is removed by {once: true} or in cleanupDragState.
   });
 }
