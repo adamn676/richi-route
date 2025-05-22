@@ -6,7 +6,8 @@ import CustomMarker from '@/components/map/CustomMarker.vue';
 import type { Coord } from '@/services/maptiler.service';
 import { useRouteStore, type ShapePoint as StoreShapePoint, type Waypoint as StoreWaypoint } from '@/stores/route.store';
 import { getRadiusForZoom } from '@/utils/mapHelpers';
-import { bearing as turfBearing, point as turfPoint } from '@turf/turf'; // Using main @turf/turf package
+import { bearing as turfBearing, point as turfPoint, nearestPointOnLine } from '@turf/turf';
+import type { Feature, Point as TurfGeoJSONPoint, LineString } from 'geojson'; // Ensure LineString is imported
 import type { BearingValue } from '@/services/route.service';
 
 // createCustomMarkerElement function remains the same...
@@ -132,66 +133,50 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
         shapingMarkersMap.set(spData.id, marker);
 
         if (options.draggable) {
-          // Logic for mousedown (dragstart) to calculate initial bearings
           marker.on('dragstart', () => {
             console.log(`[useMapMarkers] Shaping point ${spData.id} dragstart.`);
-            let calculatedBearing: BearingValue = null;
+            let calculatedBearingConstraint: BearingValue = null;
             const currentRoute = routeStore.route;
 
             if (currentRoute && currentRoute.features.length > 0 && currentRoute.features[0].geometry.type === 'LineString') {
-              const routeCoords = currentRoute.features[0].geometry.coordinates as Coord[];
-              // Find the index of the shaping point's current coordinate in the route
-              // This is an approximation; SP coords might not be exactly in routeCoords
-              // A more robust way is to find the *closest point on the linestring* and its neighbors
-              // For now, let's try direct matching, assuming SP coords are on the line after shaping
+              // Use the LineString type from 'geojson' for the cast
+              const routeLineString = currentRoute.features[0].geometry as LineString;
+              const routeCoords = routeLineString.coordinates as Coord[]; // Assuming Coord is [number, number]
+              const draggedSpTurfPoint = turfPoint(spData.coord);
 
-              let spIndexInRoute = -1;
-              for (let i = 0; i < routeCoords.length; i++) {
-                if (routeCoords[i][0] === spData.coord[0] && routeCoords[i][1] === spData.coord[1]) {
-                  spIndexInRoute = i;
-                  break;
+              const closestPointFeature = nearestPointOnLine(routeLineString, draggedSpTurfPoint, { units: 'meters' }) as Feature<
+                TurfGeoJSONPoint,
+                { index: number; dist: number; location: number }
+              >;
+
+              if (closestPointFeature && typeof closestPointFeature.properties.index === 'number') {
+                const segmentIndex = closestPointFeature.properties.index;
+                const pointBeforeSegment = routeCoords[segmentIndex];
+                const pointAfterSegment = routeCoords[segmentIndex + 1];
+
+                if (pointBeforeSegment && pointAfterSegment) {
+                  const segmentBearing = turfBearing(turfPoint(pointBeforeSegment), turfPoint(pointAfterSegment));
+                  calculatedBearingConstraint = [segmentBearing, BEARING_CONSTRAINT_RANGE];
+                  console.log(
+                    `[useMapMarkers] SP ${spData.id} snapped to segment ${segmentIndex} (between ${JSON.stringify(pointBeforeSegment)} and ${JSON.stringify(
+                      pointAfterSegment
+                    )}) with segment bearing ${segmentBearing.toFixed(2)}. Calculated bearing constraint:`,
+                    JSON.stringify(calculatedBearingConstraint)
+                  );
+                } else {
+                  console.warn(
+                    `[useMapMarkers] Could not find valid segment points for bearing calculation for SP ${spData.id} on segment index ${segmentIndex}.`
+                  );
                 }
-              }
-
-              // If not found by exact match, find the closest point (more robust)
-              // This part can be complex and computationally intensive if not careful
-              // For simplicity, we proceed if exact match found, otherwise no bearing.
-              // A production version would need a robust "find point on line" and its neighbors.
-
-              if (spIndexInRoute !== -1) {
-                const pSp = turfPoint(spData.coord);
-                let bearingIn: number | null = null;
-                let bearingOut: number | null = null;
-
-                if (spIndexInRoute > 0) {
-                  const pPrev = turfPoint(routeCoords[spIndexInRoute - 1]);
-                  bearingIn = turfBearing(pPrev, pSp);
-                }
-                if (spIndexInRoute < routeCoords.length - 1) {
-                  const pNext = turfPoint(routeCoords[spIndexInRoute + 1]);
-                  bearingOut = turfBearing(pSp, pNext);
-                }
-
-                if (bearingIn !== null && bearingOut !== null) {
-                  calculatedBearing = [
-                    [bearingIn, BEARING_CONSTRAINT_RANGE],
-                    [bearingOut, BEARING_CONSTRAINT_RANGE],
-                  ];
-                } else if (bearingOut !== null) {
-                  // e.g. if SP is first point after start WP
-                  calculatedBearing = [bearingOut, BEARING_CONSTRAINT_RANGE]; // Apply as departure/general
-                } else if (bearingIn !== null) {
-                  // e.g. if SP is last point before end WP
-                  calculatedBearing = [bearingIn, BEARING_CONSTRAINT_RANGE]; // Apply as arrival/general
-                }
-                console.log(`[useMapMarkers] Calculated bearing for ${spData.id}:`, calculatedBearing);
               } else {
                 console.warn(
-                  `[useMapMarkers] Could not find exact SP coord in route for bearing calculation for ${spData.id}. No bearing constraint will be applied for this drag.`
+                  `[useMapMarkers] Could not snap SP ${spData.id} to route for bearing calculation. 'closestPointFeature.properties.index' is undefined.`
                 );
               }
+            } else {
+              console.warn(`[useMapMarkers] No valid route linestring found for bearing calculation for SP ${spData.id}.`);
             }
-            routeStore.setDraggedShapingPointBearing(calculatedBearing ? { id: spData.id, bearing: calculatedBearing } : null);
+            routeStore.setDraggedShapingPointBearing(calculatedBearingConstraint ? { id: spData.id, bearing: calculatedBearingConstraint } : null);
           });
 
           marker.on('dragend', () => {
@@ -203,25 +188,18 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
               const zoom = currentMapInstance.getZoom();
               recalculatedRadius = getRadiusForZoom(zoom);
               console.log(
-                `[useMapMarkers] Shaping point ${spData.id} dragged. Coords: ${JSON.stringify(newCoords)}, Radius: ${recalculatedRadius}m (Zoom: ${zoom.toFixed(
-                  2
-                )})`
+                `[useMapMarkers] Shaping point ${spData.id} dragged. Coords: ${JSON.stringify(
+                  newCoords
+                )}, New Radius: ${recalculatedRadius}m (Zoom: ${zoom.toFixed(2)})`
               );
             } else {
               console.warn(
                 `[useMapMarkers] Shaping point ${spData.id} dragged. Coords: ${JSON.stringify(
                   newCoords
-                )}. Map not available for zoom, original radius: ${recalculatedRadius}`
+                )}. Map not available for zoom, using original radius: ${recalculatedRadius}`
               );
             }
-
-            // Update store; recalc will use draggedShapingPointBearing from store
             routeStore.updateShapingPointCoord(spData.id, [newCoords.lng, newCoords.lat], recalculatedRadius);
-            // Clear the bearing state after the drag operation is processed (recalc is async)
-            // It might be better for recalc to clear it once used. For now, clear immediately.
-            // Or, more robustly, the watcher that triggers recalc could clear it after recalc promise resolves.
-            // Let's clear it here for now. The store action `applyShaping` will use it and then it's stale.
-            routeStore.clearDraggedShapingPointBearing();
           });
         }
       }
