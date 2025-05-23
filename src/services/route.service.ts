@@ -138,7 +138,7 @@ async function fetchLeg(coords: Coord[], options?: { atStart?: SimpleBearing; at
   // console.log(`[RouteService] fetchLeg - Request Body:`, JSON.stringify(requestBody).substring(0, 300) + "...");
 
   try {
-    const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-regular/geojson', requestBody);
+    const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-road/geojson', requestBody);
     console.log(`[RouteService] fetchLeg for coords ${JSON.stringify(coords)} - ORS response status: ${response.status}`);
     return response.data;
   } catch (error) {
@@ -303,7 +303,7 @@ export async function getRoute(coordinates: Coord[], radiuses?: number[], bearin
 
     try {
       console.log('[RouteService] getRoute (single call) - Request Body to ORS:', JSON.stringify(requestBody, null, 2).substring(0, 500) + '...');
-      const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-regular/geojson', requestBody);
+      const response = await ors.post<OrsFeatureCollection>('/v2/directions/cycling-road/geojson', requestBody);
       console.log('[RouteService] getRoute (single call) - ORS response status:', response.status);
       routeCache.set(key, response.data); // Cache the successful response
       return response.data;
