@@ -7,20 +7,16 @@
  * @returns The calculated radius in meters.
  */
 export function getRadiusForZoom(zoom: number): number {
-  // if (zoom > 17) {
-  //   // Zoomed in very close
-  //   return 5; // Try 5m (was 15m in our last working test, 10m in OptionA)
-  // }
-  // if (zoom > 14) {
-  //   // Common planning zoom (e.g., 15-17, where you are dragging)
-  //   return 7; // Try 7m (was 20m in our last working test, 15m in OptionA)
-  // }
-  // if (zoom > 11) {
-  //   // Broader area
-  //   return 15; // Was 30m, then 25m
-  // }
-  // return 30; // Low zoom, was 50m
-  return 7;
+  if (zoom > 17) {
+    return 5; // Very zoomed in, small radius for precision
+  }
+  if (zoom > 14) {
+    return 10; // Mid-level zoom
+  }
+  if (zoom > 11) {
+    return 20; // Broader area
+  }
+  return 35; // Low zoom, larger radius
 }
 
 // Add other map-related helper functions here in the future if needed.
