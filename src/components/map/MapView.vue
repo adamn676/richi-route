@@ -13,6 +13,7 @@ import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteCalculation } from '@/composables/useRouteCalculation';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 
+import { useDebugMapLayers } from '@/composables/useDebugMapLayers';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 
 const { map } = useMap('map');
@@ -24,4 +25,5 @@ useRouteCalculation({ map });
 useRouteDragging({ map });
 useMapInteractions(map);
 useMarkerWatches(map);
+useDebugMapLayers(map);
 </script>
