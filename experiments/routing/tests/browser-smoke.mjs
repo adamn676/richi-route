@@ -9,6 +9,13 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1050 }, deviceScaleFactor: 1 });
   await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+  async function openControls() {
+    for (const name of ['Comparison setup', 'Scenario notes & method', 'Benchmark details']) {
+      await page.getByText(name, { exact: true }).click();
+    }
+  }
+  async function visit(...args) { await page.goto(...args); await openControls(); }
+  async function reload(...args) { await page.reload(...args); await openControls(); }
   const errors = [];
   const external = new Set();
   page.on('pageerror', (error) => errors.push(error.message));
@@ -16,8 +23,8 @@ try {
     const url = new URL(request.url());
     if (['http:', 'https:'].includes(url.protocol) && url.hostname !== '127.0.0.1') external.add(url.href);
   });
-  await page.goto('http://127.0.0.1:5174/', { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Which route would you ride?' }).waitFor();
+  await visit('http://127.0.0.1:5174/', { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Main road or quiet road north of Graz' }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 2);
   assert.equal(await page.locator('.route-point').count(), 2);
   await page.locator('.access-note').filter({ hasText: 'Pongratz-Moore-Steg' }).waitFor();
@@ -32,7 +39,7 @@ try {
   assert.ok((await page.locator('.settings-label').innerText()).includes(correctedRun.settingsLabel));
   assert.equal(await page.locator('.route-point').count(), 2);
   assert.match(await page.locator('.view-context').innerText(), /Automatic/);
-  await page.reload({ waitUntil: 'networkidle' });
+  await reload({ waitUntil: 'networkidle' });
   assert.equal(await page.getByLabel('Saved comparison').inputValue(), correctedRunId);
   assert.equal(await page.getByRole('button', { name: 'Automatic', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.route-point').count(), 2);
@@ -55,12 +62,12 @@ try {
   assert.equal(chosenLink.searchParams.get('case'), '03-eggenberg-junction');
   assert.equal(chosenLink.searchParams.get('variant'), 'selected');
   assert.equal(chosenLink.searchParams.get('run'), correctedRunId);
-  await page.reload({ waitUntil: 'networkidle' });
+  await reload({ waitUntil: 'networkidle' });
   assert.equal(await page.getByLabel('Road-cycling scenario').inputValue(), '03-eggenberg-junction');
   assert.equal(await page.getByLabel('Saved comparison').inputValue(), correctedRunId);
   assert.equal(await page.getByRole('button', { name: 'Chosen roads', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.route-point').count(), 6);
-  assert.match(await page.locator('.view-context').innerText(), /4 chosen-road points applied/);
+  assert.match(await page.locator('.view-context').innerText(), /4 shaping points/);
   const linked = await browser.newPage();
   await linked.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
   await linked.goto(`http://127.0.0.1:5174/?case=11-western-loop&variant=edited&run=${originalRun.id}`, { waitUntil: 'networkidle' });
@@ -119,7 +126,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   assert.deepEqual(errors, []);
   assert.deepEqual([...external], []);
-  await page.goto('http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=2026-10-18T16-48-23-850Z-1fda0c74', { waitUntil: 'networkidle' });
+  await visit('http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=2026-10-18T16-48-23-850Z-1fda0c74', { waitUntil: 'networkidle' });
   assert.equal(await page.locator('.rider-rejection').count(), 2);
   assert.match(await page.locator('.rider-rejection').filter({ hasText: 'BRouter' }).innerText(), /Thalerstraße/);
   assert.match(await page.locator('.rider-rejection').filter({ hasText: 'GraphHopper' }).innerText(), /woodland/);
@@ -128,7 +135,7 @@ try {
   await page.screenshot({ path: `${output}/thal-rejected-routes-mobile.png`, fullPage: true });
   await page.getByRole('button', { name: 'Chosen roads', exact: true }).click();
   assert.equal(await page.locator('.rider-rejection').count(), 0, 'Do not transfer Automatic judgments to an unreviewed variant.');
-  await page.goto('http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=2026-10-18T17-04-18-100Z-16055074', { waitUntil: 'networkidle' });
+  await visit('http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=2026-10-18T17-04-18-100Z-16055074', { waitUntil: 'networkidle' });
   assert.match(await page.locator('.revision-note').innerText(), /original start was on an unpaved woodland track/);
   assert.match(await page.locator('.route-point').first().getAttribute('title'), /15\.392482, 47\.099327/);
   assert.equal(await page.locator('.route-point').count(), 2);
@@ -142,7 +149,7 @@ try {
     assert.equal(orsRun.includeOrs, true);
     assert.equal(orsRun.scope, '06-multiple-shapes');
     await page.setViewportSize({ width: 1440, height: 1050 });
-    await page.goto(`http://127.0.0.1:5174/?case=06-multiple-shapes&variant=selected&run=${orsRunId}`, { waitUntil: 'networkidle' });
+    await visit(`http://127.0.0.1:5174/?case=06-multiple-shapes&variant=selected&run=${orsRunId}`, { waitUntil: 'networkidle' });
     assert.equal(await page.locator('tbody tr').count(), 3);
     assert.equal(await page.getByLabel('Include local OpenRouteService', { exact: true }).isChecked(), true);
     assert.match(await page.locator('.settings-label').innerText(), /local ORS cycling-road baseline/);
@@ -164,7 +171,7 @@ try {
     assert.equal(payload.settings, orsRun.settings);
     await page.getByText('Comparison saved. Select a route to review it.', { exact: true }).waitFor();
     assert.equal(await page.locator('tbody tr').count(), 3);
-    await page.reload({ waitUntil: 'networkidle' });
+    await reload({ waitUntil: 'networkidle' });
     assert.equal(await page.getByLabel('Include local OpenRouteService', { exact: true }).isChecked(), true);
     assert.equal(await page.getByRole('button', { name: 'After an edit', exact: true }).getAttribute('aria-pressed'), 'true');
     await page.setViewportSize({ width: 390, height: 844 });
@@ -176,7 +183,7 @@ try {
   }
   if (process.argv[3]) {
     await page.setViewportSize({ width: 1440, height: 1050 });
-    await page.goto(`http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=${process.argv[3]}`, { waitUntil: 'networkidle' });
+    await visit(`http://127.0.0.1:5174/?case=04-thal-surface&variant=automatic&run=${process.argv[3]}`, { waitUntil: 'networkidle' });
     assert.match(await page.locator('.settings-label').innerText(), /BRouter surface v4 candidate/);
     assert.equal(await page.locator('.route-point').count(), 2);
     assert.equal(await page.locator('tbody tr').count(), 3);
@@ -192,7 +199,7 @@ try {
       assert.match(await page.locator('.revision-note').innerText(), /automatic deviation remains unresolved/);
       assert.equal(await page.locator('tbody tr').count(), 3);
       await page.screenshot({ path: `${output}/thal-chosen-main-road.png`, fullPage: true });
-      await page.reload({ waitUntil: 'networkidle' });
+      await reload({ waitUntil: 'networkidle' });
       assert.equal(await page.getByRole('button', { name: 'Chosen roads', exact: true }).getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('.route-point').count(), 4);
     }

@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import maplibregl, { type GeoJSONSource, type Map, type RasterTileSource, type VectorTileSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Position } from 'geojson';
 import type { Result, RoutePoint } from './types';
 import { basemapOptions, basemapSources, initialBasemap } from './basemaps';
+import { surfaceColor, surfaceLabel, type RouteInspection } from './route-inspection';
+import { compareRouteGeometry } from '../route-comparison.mjs';
 
-const props = defineProps<{ points: RoutePoint[]; routes: Result[]; highlighted: string }>();
+const props = defineProps<{ points: RoutePoint[]; routes: Result[]; highlighted: string; inspection?: RouteInspection | null; cursor?: number | null; section?: number | null; showSurfaces?: boolean }>();
+const emit = defineEmits<{ section: [index: number] }>();
 const container = ref<HTMLDivElement>();
 const mapError = ref('');
 const roadError = ref('');
 const basemap = ref(initialBasemap());
 const imageryError = ref('');
 const imageryLoading = ref(basemap.value !== 'local');
-const routeOpacity = ref(0.9);
+const routeOpacity = ref(1);
+const comparison = computed(() => compareRouteGeometry(props.routes));
+const routeCount = computed(() => props.routes.filter(route => route.normalized).length);
+const differenceIndex = ref(-1);
+const engineNames = { graphhopper: 'GraphHopper', brouter: 'BRouter', ors: 'ORS' };
+const selectedName = computed(() => {
+  const selected = props.routes.find(route => route.id === props.highlighted);
+  return selected ? engineNames[selected.engineId] : '';
+});
+const sharedLabels = computed(() => comparison.value.shared.map(ids => ids.map(id => {
+  const route = props.routes.find(route => route.id === id)!;
+  return engineNames[route.engineId];
+}).join(' + ')));
 let map: Map | undefined;
 let markers: maplibregl.Marker[] = [];
 let resize: ResizeObserver | undefined;
 let roadCheck = 0;
+let positionMarker: maplibregl.Marker | undefined;
 const failedRoadTiles = new Set<string>();
 
 function tileKey(event: object): string {
@@ -68,8 +84,8 @@ function setBasemap() {
 }
 
 function setRouteOpacity() {
-  if (!map?.getLayer('route-outline')) return;
-  for (const layer of ['route-outline', 'graphhopper-route', 'brouter-route', 'ors-route']) {
+  if (!map?.getLayer('comparison-lines')) return;
+  for (const layer of ['comparison-lines', 'selected-route', 'surface-outline', 'surface-lines', 'section-highlight']) {
     map.setPaintProperty(layer, 'line-opacity', Number(routeOpacity.value));
   }
 }
@@ -105,6 +121,18 @@ function fit() {
   const bounds = new maplibregl.LngLatBounds();
   for (const point of coordinates) bounds.extend([point[0]!, point[1]!]);
   map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 0 });
+  differenceIndex.value = -1;
+}
+
+function nextDifference() {
+  if (!map || !comparison.value.differences.length) return;
+  differenceIndex.value = (differenceIndex.value + 1) % comparison.value.differences.length;
+  const bounds = comparison.value.differences[differenceIndex.value]!.bounds;
+  const controlsHeight = container.value?.parentElement?.querySelector('.map-tools')?.clientHeight ?? 0;
+  const top = Math.min(map.getContainer().clientHeight / 2, controlsHeight + 24);
+  map.fitBounds([[bounds[0]!, bounds[1]!], [bounds[2]!, bounds[3]!]], {
+    padding: { top, bottom: 50, left: 50, right: 50 }, maxZoom: 18, duration: 0,
+  });
 }
 
 function draw() {
@@ -113,10 +141,12 @@ function draw() {
     type: 'FeatureCollection',
     features: props.routes.filter((route) => route.normalized).map((route) => ({
       type: 'Feature', geometry: route.normalized!.geometry,
-      properties: { id: route.id, engine: route.engineId, highlighted: route.id === props.highlighted },
+      properties: { id: route.id, engine: route.engineId },
     })),
   };
   (map.getSource('routes') as GeoJSONSource).setData(data);
+  map.getSource<GeoJSONSource>('comparison')!.setData(comparison.value.data);
+  map.setFilter('selected-route', ['==', ['get', 'id'], props.highlighted]);
   for (const marker of markers) marker.remove();
   markers = props.points.map((point, index) => {
     const element = document.createElement('div');
@@ -126,11 +156,57 @@ function draw() {
     element.setAttribute('aria-label', element.title);
     return new maplibregl.Marker({ element }).setLngLat(point.coord).addTo(map!);
   });
+  drawInspection();
+}
+
+function drawInspection() {
+  if (!map?.getSource('surface-sections')) return;
+  const inspection = props.inspection;
+  const surfaceMode = !!(props.showSurfaces && inspection);
+  const features = inspection?.sections.map((section, index) => ({
+    type: 'Feature' as const,
+    geometry: { type: 'LineString' as const, coordinates: inspection.coordinates.slice(section.fromIndex, section.toIndex + 1) },
+    properties: { index, color: surfaceColor(section.surface), label: surfaceLabel(section.surface) },
+  })) ?? [];
+  map.getSource<GeoJSONSource>('surface-sections')!.setData({ type: 'FeatureCollection', features });
+  map.getSource<GeoJSONSource>('selected-section')!.setData({
+    type: 'FeatureCollection',
+    features: props.section != null && features[props.section] ? [features[props.section]] : [],
+  });
+  for (const id of ['comparison-lines', 'selected-route']) {
+    map.setLayoutProperty(id, 'visibility', surfaceMode ? 'none' : 'visible');
+  }
+  for (const id of ['surface-outline', 'surface-lines', 'section-highlight']) {
+    map.setLayoutProperty(id, 'visibility', surfaceMode ? 'visible' : 'none');
+  }
+  drawCursor();
+}
+
+function drawCursor() {
+  const coord = props.cursor != null ? props.inspection?.coordinates[props.cursor] : undefined;
+  if (!map || !coord) { positionMarker?.remove(); positionMarker = undefined; return; }
+  if (!positionMarker) {
+    const element = document.createElement('div');
+    element.className = 'inspection-position';
+    element.setAttribute('aria-label', 'Selected position on route');
+    positionMarker = new maplibregl.Marker({ element }).setLngLat(coord).addTo(map);
+  } else positionMarker.setLngLat(coord);
+}
+
+function fitSection() {
+  if (!map || !props.inspection || props.section == null) return;
+  const section = props.inspection.sections[props.section];
+  if (!section) return;
+  const bounds = new maplibregl.LngLatBounds();
+  props.inspection.coordinates.slice(section.fromIndex, section.toIndex + 1).forEach(coord => bounds.extend(coord));
+  map.fitBounds(bounds, { padding: 85, maxZoom: 19, duration: 0 });
 }
 
 onMounted(() => {
   if (!container.value) return;
   try {
+    const theme = getComputedStyle(container.value);
+    const color = (name: string) => theme.getPropertyValue(name).trim();
     map = new maplibregl.Map({
       container: container.value,
       center: [15.438, 47.075], zoom: 12,
@@ -141,19 +217,23 @@ onMounted(() => {
           ...basemapSources,
           streets: { type: 'vector', tiles: [`${location.origin}/tiles/{z}/{x}/{y}.mvt`], minzoom: 9, maxzoom: 16, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> | Local GraphHopper road network' },
           routes: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          comparison: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          'surface-sections': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          'selected-section': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         },
         layers: [
-          { id: 'background', type: 'background', paint: { 'background-color': '#edf1ed' } },
+          { id: 'background', type: 'background', paint: { 'background-color': color('--map-background') } },
           { id: 'basemap-street', type: 'raster', source: 'basemap-street', layout: { visibility: basemap.value === 'street' ? 'visible' : 'none' }, paint: { 'raster-fade-duration': 0 } },
           { id: 'basemap-aerial', type: 'raster', source: 'basemap-aerial', layout: { visibility: basemap.value === 'aerial' ? 'visible' : 'none' }, paint: { 'raster-fade-duration': 0 } },
           { id: 'basemap-labels', type: 'raster', source: 'basemap-labels', layout: { visibility: basemap.value === 'aerial' ? 'visible' : 'none' }, paint: { 'raster-fade-duration': 0 } },
-          { id: 'streets-outline', type: 'line', source: 'streets', 'source-layer': 'roads', layout: { visibility: basemap.value === 'local' ? 'visible' : 'none' }, paint: { 'line-color': '#c9d2ca', 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 15, 5] } },
+          { id: 'streets-outline', type: 'line', source: 'streets', 'source-layer': 'roads', layout: { visibility: basemap.value === 'local' ? 'visible' : 'none' }, paint: { 'line-color': color('--map-road-outline'), 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 15, 5] } },
           { id: 'streets', type: 'line', source: 'streets', 'source-layer': 'roads', layout: { visibility: basemap.value === 'local' ? 'visible' : 'none' }, paint: { 'line-color': ['match', ['get', 'road_class'], ['primary', 'secondary', 'tertiary'], '#fffefa', '#ffffff'], 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 15, 3] } },
           { id: 'roads-hit', type: 'line', source: 'streets', 'source-layer': 'roads', paint: { 'line-opacity': 0, 'line-width': 16 } },
-          { id: 'route-outline', type: 'line', source: 'routes', paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.85 } },
-          { id: 'graphhopper-route', type: 'line', source: 'routes', filter: ['==', ['get', 'engine'], 'graphhopper'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#126b59', 'line-width': ['case', ['get', 'highlighted'], 6, 4] } },
-          { id: 'brouter-route', type: 'line', source: 'routes', filter: ['==', ['get', 'engine'], 'brouter'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#9b461e', 'line-width': ['case', ['get', 'highlighted'], 6, 4], 'line-dasharray': [2, 1] } },
-          { id: 'ors-route', type: 'line', source: 'routes', filter: ['==', ['get', 'engine'], 'ors'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#3156bd', 'line-width': ['case', ['get', 'highlighted'], 6, 4], 'line-dasharray': [0.5, 1.5] } },
+          { id: 'comparison-lines', type: 'line', source: 'comparison', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['get', 'shared'], '#64748b', ['match', ['get', 'engine'], 'graphhopper', color('--route-graphhopper'), 'brouter', color('--route-brouter'), color('--route-ors')]], 'line-width': 4 } },
+          { id: 'selected-route', type: 'line', source: 'routes', filter: ['==', ['get', 'id'], props.highlighted], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['match', ['get', 'engine'], 'graphhopper', color('--route-graphhopper'), 'brouter', color('--route-brouter'), color('--route-ors')], 'line-width': 6 } },
+          { id: 'section-highlight', type: 'line', source: 'selected-section', paint: { 'line-color': '#172033', 'line-width': 14 } },
+          { id: 'surface-outline', type: 'line', source: 'surface-sections', paint: { 'line-color': '#fff', 'line-width': 9 } },
+          { id: 'surface-lines', type: 'line', source: 'surface-sections', paint: { 'line-color': ['get', 'color'], 'line-width': 5 } },
         ],
       },
     });
@@ -184,9 +264,13 @@ onMounted(() => {
       }
     });
     map.on('click', 'roads-hit', (event) => {
+      if (props.showSurfaces && map?.queryRenderedFeatures(event.point, { layers: ['surface-lines'] }).length) return;
       const road = event.features?.[0]?.properties;
       if (!road || !map) return;
       inspectRoad(road, event.lngLat);
+    });
+    map.on('click', 'surface-lines', event => {
+      if (props.showSurfaces && event.features?.[0]) emit('section', Number(event.features[0].properties.index));
     });
     map.on('mouseenter', 'roads-hit', () => { if (map) map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'roads-hit', () => { if (map) map.getCanvas().style.cursor = ''; });
@@ -199,7 +283,13 @@ onMounted(() => {
 
 watch(() => [props.routes, props.points], draw);
 watch(() => props.points, fit);
-watch(() => props.highlighted, draw);
+watch(() => props.highlighted, id => {
+  if (map?.getLayer('selected-route')) map.setFilter('selected-route', ['==', ['get', 'id'], id]);
+});
+watch(() => props.routes.map(route => route.id).join('|'), () => { differenceIndex.value = -1; });
+watch(() => [props.inspection, props.showSurfaces, props.section], drawInspection);
+watch(() => props.cursor, drawCursor);
+watch(() => props.section, fitSection);
 watch(basemap, () => {
   imageryError.value = '';
   imageryLoading.value = basemap.value !== 'local';
@@ -207,7 +297,7 @@ watch(basemap, () => {
   try { localStorage.setItem('richiroute.review-basemap', basemap.value); } catch { /* Map controls still work without persistent storage. */ }
 });
 watch(routeOpacity, setRouteOpacity);
-onBeforeUnmount(() => { roadCheck++; resize?.disconnect(); markers.forEach((marker) => marker.remove()); map?.remove(); });
+onBeforeUnmount(() => { roadCheck++; resize?.disconnect(); positionMarker?.remove(); markers.forEach((marker) => marker.remove()); map?.remove(); });
 </script>
 
 <template>
@@ -219,7 +309,13 @@ onBeforeUnmount(() => { roadCheck++; resize?.disconnect(); markers.forEach((mark
       </div>
       <div class="map-tools-row">
         <button class="map-fit" @click="fit">Fit routes</button>
+        <button v-if="!showSurfaces && routeCount > 1" class="next-difference" :disabled="!comparison.differences.length" @click="nextDifference">Next difference<span v-if="comparison.differences.length"> {{ differenceIndex < 0 ? `· ${comparison.differences.length}` : `${differenceIndex + 1}/${comparison.differences.length}` }}</span></button>
         <label class="route-opacity">Route opacity<input v-model.number="routeOpacity" type="range" min="0" max="1" step="0.1" /></label>
+      </div>
+      <div v-if="!showSurfaces && routeCount" class="comparison-map-status" role="status">
+        <strong v-if="selectedName">{{ selectedName }} highlighted</strong>
+        <span v-if="routeCount > 1 && !comparison.differences.length">No distinct areas to compare</span>
+        <span v-if="sharedLabels.length">Shared sections: {{ sharedLabels.join('; ') }}</span>
       </div>
     </div>
     <div v-if="mapError || imageryError || roadError" class="map-error" role="status">

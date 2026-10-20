@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
 import { listRuns, loadScenarios, readRun, runBenchmark, saveReview } from './run.mjs';
 import { withRiderRejections } from './rider-feedback.mjs';
+import { loadRouteInspection } from './route-inspection.mjs';
 
 function benchmarkApi(): Plugin {
   let busy = false;
@@ -25,6 +26,7 @@ function benchmarkApi(): Plugin {
           if (req.method === 'GET' && url.pathname === '/scenarios') return send(200, await loadScenarios());
           if (req.method === 'GET' && url.pathname === '/runs') return send(200, await listRuns());
           if (req.method === 'GET' && url.pathname === '/run') return send(200, await withRiderRejections(await readRun(url.searchParams.get('id') ?? '')));
+          if (req.method === 'GET' && url.pathname === '/route-inspection') return send(200, await loadRouteInspection(url.searchParams.get('run') ?? '', url.searchParams.get('result') ?? ''));
           if (req.method !== 'POST' || !['/run', '/review'].includes(url.pathname)) return send(404, { error: 'Unknown endpoint.' });
           if (req.headers.origin !== `http://${req.headers.host}` || !req.headers['content-type']?.startsWith('application/json')) return send(403, { error: 'Use the local comparison page.' });
           let body = '';
@@ -37,7 +39,7 @@ function benchmarkApi(): Plugin {
           if (busy) return send(409, { error: 'Another comparison is running. Please wait.' });
           if (typeof payload.caseId !== 'string') return send(400, { error: 'Select a scenario.' });
           busy = true;
-          try { return send(200, await withRiderRejections(await runBenchmark({ caseId: payload.caseId, settings: payload.settings ?? 'baseline', includeOrs: payload.includeOrs ?? false }))); }
+          try { return send(200, await withRiderRejections(await runBenchmark({ caseId: payload.caseId, settings: payload.settings ?? 'baseline', includeOrs: payload.includeOrs ?? false, evaluationFreeze: payload.evaluationFreeze }))); }
           finally { busy = false; }
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Request failed.' });

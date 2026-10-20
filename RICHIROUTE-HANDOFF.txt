@@ -1,5 +1,398 @@
 RichiRoute: handoff to the desktop computer
 
+REVIEWED ROUTE REGRESSIONS IMPLEMENTED; CHECKPOINT 2026-10-21
+User requested a short commit message covering the accumulated changes:
+"Improve route review and routing checks". No attribution trailers. Commit
+locally after checks; do not push without instruction.
+New committed fixture experiments/routing/fixtures/reviewed-routes.json contains
+15 expectations covering all 12 scenarios: 14 protected route variants plus
+the accepted western composite as an explicitly unmet automatic-routing target.
+Coordinates, point order, source references, feedback hashes and scope notes are
+retained independently of private saved runs. Do not auto-update expected geometry
+after a failure. Original feedback and full engine responses remain in .local.
+New npm run bench:check-reviewed reroutes stored request points through BRouter,
+checks geometry in both directions, length, endpoints and ordered waypoint visits.
+Reports failures for regressions/errors; western target is target-open, not passed.
+Initial run: all 14 protected variants preserved, zero errors, one open target.
+Evidence: .local/reviewed-route-checks/2026-10-20T22-27-28-178Z/report.json.
+BRouter remains about 197 m longer than the western composite with its five main
+points and takes different roads. No new production routing rule activated.
+Existing editor-local-check now uses the committed fixtures instead of six private
+runs. npm run test:editor-local passes all 14 through real editor store/snapping/
+per-leg routing; 12 local point edits preserve distant legs with 3 requests each.
+Current checks: 28 editor unit tests, 37 benchmark tests, both production builds,
+live BRouter comparisons and editor integration pass. No new dependencies.
+Reviewed-routes tests reject missing return, extra backtracking, reversed endpoints,
+wrong waypoint order and parallel-road substitution. Geometry tolerance 1 m,
+length tolerance 2 m, sample spacing 5 m; these are geometry checks, not safety.
+NEXT after checkpoint: isolate western-loop gap. Current lookups encode
+ramp:bicycle, but surface-v4 disallows steps. Any next experiment must preserve
+the 14 routes and distinguish the accepted short ramped passage from other stairs;
+do not infer blanket permission or silently mark the composite automatic.
+User has already accepted the composite; no repeat route review needed.
+Additional service charges EUR 0.
+
+ALL 12 SCENARIOS REVIEWED; FINAL BROUTER ROUTE ACCEPTED 2026-10-21
+Rider says BRouter does everything perfectly in scenario 12 Chosen roads.
+Accepted result 12-out-and-back-selected-brouter-1 from frozen run
+2026-10-20T22-09-56-925Z-5705928f, 15.762 km. Exact quote, geometry SHA-256 and
+two per-result reviews saved in .local/feedback/12-out-and-back-selected-2026-10-21.json.
+ORS route disliked, particularly Weinzöttlstraße: rider tries to avoid it,
+while acknowledging worse roads exist. This is a preference, not an access ban.
+From Körösistraße, rider prefers the Mur cycle path. BRouter's passage under
+Keplerbruecke is praised for avoiding traffic lights. GraphHopper not explicitly
+judged in this final review. Surface tags remain unknown/gravel where recorded;
+whole-route acceptance is not explicit confirmation of paving at the turnaround.
+The 12-scenario rider review round is complete. Do not request repeats or create
+more arbitrary examples. Case 11 corrected composite is also accepted.
+NEXT WORK: consolidate accepted geometry references and targeted regression
+checks, then prioritize deterministic improvements from the reviews. Retain
+separated Mur paths where preferred, continuity on suitable quiet roads, and
+location-specific push-through exceptions. Keep temporary construction, missing
+surface data, waypoint placement mistakes and profile costs separate. Do not
+globally penalize cycle paths, ban Weinzöttlstraße or allow all stairs.
+No routing profile/UI changes in this acceptance turn; no commit/push requested.
+Additional service charges EUR 0.
+
+FINAL SCENARIO 12 READY 2026-10-21 LOCAL TIME
+User asked to continue after accepting case 11. Case 12 Chosen roads simulates
+an out/back ride from the Graz Mur start through the same intermediate road
+point twice, turning around on Schirmleitenstrasse and returning to the start.
+Draft run 2026-10-20T22-07-56-085Z-7f57e8dc retained, not reviewed: start snapped
+30 m, turnaround about 97 m, repeated shaping point was on service access.
+Revision 2 start/finish [15.432900,47.075887] matches accepted case 11 location;
+repeated point [15.414469,47.104367] is asphalt cycleway beside Am Andritzbach;
+turnaround [15.405553,47.133473] is on Schirmleitenstrasse with unknown surface.
+Do not claim the turnaround is paved. Local OSM evidence:
+.local/out-and-back-points-osm.json, ways 44866689, 110819167, 170203679.
+New freeze evaluation-2026-10-20-1b20f25f links predecessor cbdd1281 and correction.
+Verified only case 12 changed; profiles/configuration/data/patch unchanged.
+Review run 2026-10-20T22-09-56-925Z-5705928f: all six results successful. All
+requested points within 1 m in strict route order, all loops closed. Chosen roads
+GH 15.59 km, BRouter 15.76 km, ORS 16.75 km; BRouter ascent 165 m. Approximately
+3.64 km total traversal has unknown surface tags in each engine, including the
+road near turnaround; repeated outward/return traversal counts twice.
+33 tests pass. Exact link, Chosen roads, reload, local/street/aerial labels pass
+browser checks, no page errors. Screenshot inspected. One grouped difference
+area. BRouter also reports a short gravel-tagged section; preserve that label.
+URL: http://127.0.0.1:5174/?case=12-out-and-back&variant=selected&run=2026-10-20T22-09-56-925Z-5705928f
+Ask rider to stay on Chosen roads, review 1 -> 2 -> 3 -> 4 -> 5. Points 1/5 and
+2/4 overlap geographically. Point 3 is the turnaround. Which route would they
+ride, any unsuitable surface near turnaround, any awkward direction changes?
+Case 12 not yet reviewed; all earlier cases are reviewed. Extra charges EUR 0.
+
+WESTERN LOOP REVISION 2 ACCEPTED 2026-10-21
+Rider: "yes, perfect now". Complete corrected 21.4423 km composite is accepted,
+including quiet streets via Ueberfuhrgasse, short push-through steps, corrected
+point 3 and return. Do not ask to review scenario 11 again.
+Immutable accepted snapshot: .local/western-loop-reference-accepted-2026-10-21.json.
+Exact quote, SHA-256, scope and provenance:
+.local/feedback/11-western-loop-reference-accepted-2026-10-21.json.
+The preview page now says accepted; geometry and routing profiles unchanged.
+This is an accepted rider-directed composite, not an automatic engine result.
+Retain local exceptions; do not infer global permission for stairs or unknown
+surfaces. Eleven of twelve scenarios reviewed. NEXT: prepare scenario 12, the
+final unreviewed case, checking its draft marker positions before presentation.
+Additional service charges EUR 0.
+
+WESTERN LOOP PREVIEW CORRECTED VIA UEBERFUHRGASSE 2026-10-21
+Rider: quiet streets part wrong; from Schleifbachgasse turn right into
+Ueberfuhrgasse, then left into Kalvarienbergstrasse. Everything else is good.
+Exact quote and scoped acceptance saved in
+.local/feedback/11-western-loop-preview-correction-2026-10-21.json.
+Do not ask to re-review the accepted start, steps, point 3 or return.
+Preview revision 2 takes the first left branch of Ueberfuhrgasse at
+[15.419605,47.087981], via [15.4192021,47.0885759] toward Kalvarienbergstrasse.
+This exact branch interpretation awaits rider confirmation. Local OSM ways
+280884755, 464507310, 1560766072 are tagged asphalt. New corridor routed locally
+with explicit points; no global routing rules changed.
+Loop now 21.4423 km. Original preview retained as western-loop-reference-v1
+JSON/HTML/GPX; original corridor JSON retained. Revision 2 uses
+western-loop-quiet-corridor-v2.json. Builder and current preview updated.
+Same URL: http://127.0.0.1:5174/@fs/C:/repos/richi-route/experiments/routing/.local/western-loop-reference.html
+Verified exact geometry preservation for accepted ORS start, GH point-2 section,
+BRouter return, all markers and steps. New street points occur in order; joins
+remain exact. Browser checks pass for street/aerial/labels/local roads, focus
+buttons, GPX, reload, mobile width; no page errors. Screenshot inspected.
+Only the revised quiet-street connection needs confirmation. Scenario 12 remains.
+Additional service charges EUR 0. Production routing/UI and frozen run unchanged.
+
+WESTERN LOOP RIDER PREVIEW READY 2026-10-20
+User authorized the combined preview after the section-specific case 11 review.
+Private preview, no production UI/profile/scenario changes:
+http://127.0.0.1:5174/@fs/C:/repos/richi-route/experiments/routing/.local/western-loop-reference.html
+21.4769 km closed loop. Await rider confirmation; this is a composite assembled
+from feedback, not an automatic engine result or an accepted reference yet.
+Sources from frozen run 2026-10-20T21-15-08-976Z-339af2b9:
+ORS selected indices 0-45 for start; new locally routed GH corridor with explicit
+street points (western-loop-quiet-corridor.json); GH selected indices 110-399
+through Augasse, the two short steps and point 2; BRouter selected indices 509-998
+for return from corrected point 3. All joins exact; no invented connecting lines.
+Quiet corridor follows Flosslendstrasse, Schleifbachgasse, Kalvarienbergstrasse,
+Schippingerstrasse to Augasse. Named ways verified against extracted local OSM.
+Both stair ways 28589123 and 28589125 verified on composite. Marked push-through.
+Point 3 moved from [15.352822,47.081587] to [15.357768,47.077057], the shared
+through-junction where the original out/back spur begins. Original marker shown
+as a grey cross, no route visits it. Points 2/4 and start/finish retained in order.
+Preview buttons: Lendkai start, Quiet streets, Short steps, Corrected turn, Whole
+loop. Street/aerial+labels/local roads, click route for surface, GPX download.
+Surfaces preserved by source interval. Full elevation unavailable; only BRouter
+return elevations retained. Unknown surfaces remain unknown. No invented ascent.
+Artifacts in experiments/routing/.local/: western-loop-reference.json/.html/.gpx,
+build-western-reference.mjs, check-western-reference.mjs, screenshots
+western-reference-*.png. Builder asserts source continuity, closed loop, point
+order, stair coverage and removal of original stop. Browser checks passed for
+focus views, all basemaps, GPX, reload, mobile width; no page errors. Screenshots
+inspected. Original comparison and reviews unchanged. Additional charges EUR 0.
+Next: ask only for confirmation of interpreted quiet corridor and corrected turn,
+plus short steps if needed. Do not move to case 12 or tune global rules before
+addressing feedback on this preview. Scenario 12 remains the last untouched case.
+
+SCENARIO 11 SECTION REVIEW AND DIAGNOSIS 2026-10-20
+Rider knows this area very well. Chosen roads review of run
+2026-10-20T21-15-08-976Z-339af2b9 is saved in
+.local/feedback/11-western-loop-selected-2026-10-20.json with three per-result
+records. No single whole-route winner. ORS preferred initially via Lendkai under
+Keplerbruecke; short initial GH cycle path rejected. Rider reports gravel on its
+continuation after the bridge, not necessarily on the saved route itself.
+Preferred quiet corridor: Flosslendstrasse, left Schleifbachgasse, immediate right
+Kalvarienbergstrasse, Schippingerstrasse, Augasse. Exact junction geometry is not
+yet validated; original wording and street spelling preserved in the feedback.
+Point 2: only GH preferred; rider accepts the short steps down/up specifically
+here. Local ways 28589123/28589125 are concrete steps, bicycle=dismount,
+ramp:bicycle=yes. GH geometry follows both. BRouter's frozen profile explicitly
+sets allow_steps=false with cost 10000; ORS avoidance observed, cause not isolated.
+Evidence: .local/western-loop-review-osm.json. Do not globally allow all stairs.
+Point 3: all three excursions rejected; rider wants to turn right instead.
+Diagnosis: all three reach the required stop [15.352822,47.081587] and reverse
+along their approach. The scenario marker forces this excursion; do not count
+it as three independent engine failures. A future corrected through-route must
+relocate the stop explicitly, retaining the frozen run and this review.
+After point 3, BRouter is preferred. No invented review measurements.
+Eleven scenarios have rider feedback; scenario 12 remains. Case 11 needs a
+targeted rider-reference preview before moving on: quiet corridor, accepted short
+push-through connection, and corrected point 3. Do not ask to repeat the full
+comparison. No routing settings, UI or map data changed. Extra charges EUR 0.
+
+SCENARIO 10 REVIEWED; SCENARIO 11 READY 2026-10-20
+Rider clearly prefers BRouter for eastern hills Automatic. GraphHopper repeatedly
+switches between a lightly trafficked road and its adjacent cycle path. The rider
+considers those transitions/crossings less safe here than staying on the road.
+This is an attributed, location-specific judgment, not a blanket cycle-path
+penalty. Preserve the earlier preference for wide separated Mur cycle paths.
+ORS has no explicit judgment. Exact quote and two per-result reviews saved in
+.local/feedback/10-eastern-hills-automatic-2026-10-20.json. Measurements stay null.
+Ten of twelve scenarios reviewed; only 11 and 12 remain. Do not repeat case 10.
+
+Scenario 11 draft run 2026-10-20T21-00-00-313Z-2a82af91 is retained, not reviewed.
+Before rider review, revision 2 moved draft markers onto asphalt-tagged roads:
+start/finish cycleway [15.432900,47.075887], Weidweg [15.400287,47.100803],
+Koetschbergstrasse [15.352822,47.081587], Baiernstrasse [15.388014,47.062999],
+and the edited point on Gritzenkogel [15.389221,47.060161]. Evidence:
+.local/western-loop-points-osm.json. Freeze evaluation-2026-10-20-cbdd1281 records
+predecessor e133805e and this correction. Verified only case 11 changed;
+routing profiles, configuration, patched JAR and map assets remain unchanged.
+Review run 2026-10-20T21-15-08-976Z-339af2b9 has all nine results successful.
+Every requested point is within 1 m, in order; every route closes at the start.
+Chosen roads: GH 21.88 km, BRouter 23.01 km, ORS 22.60 km. BRouter ascent 165 m.
+Unknown surface lengths: GH 507 m, BRouter 718 m, ORS 506 m. These remain unknown;
+moving markers onto asphalt does not establish paving along the entire route.
+33 tests pass. Exact Chosen roads view, reload, local roads, street map and aerial
+labels pass browser checks. Screenshot visually inspected. No design changes.
+Next rider review: Chosen roads, follow points 2, 3, 4 and return to start.
+Start and finish markers 1/5 overlap. Compare preferred route and odd sections;
+Next difference visits five comparison areas. No rider judgment of case 11 yet.
+URL: http://127.0.0.1:5174/?case=11-western-loop&variant=selected&run=2026-10-20T21-15-08-976Z-339af2b9
+Additional service charges EUR 0. Continue this review sequence; keep UI work paused.
+
+SCENARIO 09 REVIEWED; SCENARIO 10 READY 2026-10-20
+Rider prefers BRouter for Raaba Automatic. ORS is possible and most direct;
+GraphHopper is also possible, but its route choice feels strange. No specific
+surface/access issue was identified. Preserve this as a preference, not rejection
+of the other engines or an independent surface/access audit. Exact quote plus
+three per-result records: .local/feedback/09-raaba-automatic-2026-10-20.json.
+Nine of twelve scenarios reviewed; three remain, 10-12. No repeat 09 requested.
+
+Scenario 10 draft run 2026-10-20T20-53-34-244Z-3c7f02e3 had different start-road
+snaps (38-59 m), destination snap 92 m and shape snap 13 m. Retained as evidence.
+Before rider review, revision 2 moved points onto asphalt-tagged Rudolfstrasse
+[15.497036,47.073601], optional Kolldorferweg [15.525520,47.087034], and
+Ragnitzstrasse [15.546857,47.091745]. Local OSM evidence in
+.local/eastern-hills-points-osm.json, ways 914271457, 107565057, 263779089.
+New freeze evaluation-2026-10-20-e133805e records predecessor 488e0943 and the
+point correction. Verified only case 10 changed; profiles/config/data unchanged.
+Review run 2026-10-20T20-55-00-080Z-7e1def61 has all six results successful and
+all requested points within 1 m. Automatic: GH 4.75 km, BRouter 4.93 km, ORS
+4.74 km. BRouter 66 m ascent. Two geometric difference areas. Surface data says
+asphalt/concrete for BRouter, asphalt for ORS, asphalt plus a short unknown gap
+for GH; these are engine tags, not rider confirmation. No rider review of 10 yet.
+33 tests and exact-view/reload/street/aerial browser checks pass. No UI changes.
+Review Automatic only first, comparing both difference areas and whether the
+road surfaces and climbs suit the rider. Extra service charges EUR 0.
+URL: http://127.0.0.1:5174/?case=10-eastern-hills&variant=automatic&run=2026-10-20T20-55-00-080Z-7e1def61
+
+SCENARIO 09 REVISION 2 READY 2026-10-20
+User asked to continue and asked how many examples remain. Answered: 12 total,
+six tuning scenarios reviewed plus evaluation 07 and 08; four remain, 09-12.
+Corrected all three draft points BEFORE rider review: start on mapped paved
+cycleway near Johann-Puch-Platz [15.472193,47.019891], optional shaping point on
+asphalt Holzweg [15.490635,47.011390], destination on asphalt St.Peter-Strasse
+[15.505608,47.000467]. Local OSM evidence: .local/raaba-endpoints-osm.json.
+New freeze evaluation-2026-10-20-488e0943 records its predecessor babe8fc1 and the
+scenario correction. Verified only scenarios.json changed, and only case 09;
+all routing profiles, map data, engine configuration and other scenarios match.
+Earlier runs and reviews remain intact with their original freezes.
+New run 2026-10-20T20-46-16-944Z-2e9dc5d3: all six results succeeded. Automatic
+GH 6.34 km, BRouter 4.87 km, ORS 4.17 km. Endpoints match exactly in all results;
+Chosen roads waypoint is within 1 m for every engine. No rider review yet.
+33 tests and exact-view/reload/local/street/aerial browser checks pass.
+Next review is Automatic: which corridor would the rider choose, and any
+unsuitable surfaces, awkward crossings or unnecessary detours?
+URL: http://127.0.0.1:5174/?case=09-raaba-junction&variant=automatic&run=2026-10-20T20-46-16-944Z-2e9dc5d3
+Keep UI design unchanged as requested. Additional charges EUR 0.
+
+SCENARIO 08 EDITED REVIEW AND DIAGNOSIS 2026-10-20
+The rider confirms BRouter is correct/preferred in After an edit. GH and ORS
+detour/U-turn at waypoint 2. The rider checked Google Street View and reports
+the connecting track is paved, with bicycles exempt from a vehicle restriction.
+Saved exact quotes and three review records in
+.local/feedback/08-andritz-edited-2026-10-20.json. Do not repeat this review.
+Local OSM way 465653027 is highway=track, bicycle=designated, with no surface or
+tracktype. Its endpoints are [15.4259617,47.1198854] and [15.4272574,47.1195221].
+Isolated local diagnostics show BOTH GH and ORS permit the 106 m connection when
+a point is placed on it, but model it at about 2 km/h. GH also gives priority 0.6.
+Thus missing paving information/conservative road-bike weighting explains the
+avoidance; this is not a bicycle ban and the local way has no gravel tag.
+Evidence: .local/andritz-connection-osm.json, andritz-track-forced-graphhopper.json,
+andritz-track-forced-ors.json. User's paved/access observation remains attributed
+to them. No public OSM edits, profile/data overrides or frozen-input changes made.
+Keep this targeted evidence for post-evaluation correction. Do not infer that
+all unknown-surface tracks are paved or that BRouter is best everywhere.
+
+NEXT CASE DRAFT ISSUE: Raaba run 2026-10-20T20-42-01-271Z-124f34be was generated
+with the unchanged freeze. All six results and browser checks pass, but the
+draft start [15.475,47.021] snaps about 195.5 m for ALL engines; end snaps 25.5 m.
+It is NOT ready for rider review. Resolve the draft endpoints before presenting
+case 09; preserve this run as evidence and track any scenario/freeze revision
+explicitly. No rider feedback or preference exists for case 09.
+
+SCENARIO 08 AUTOMATIC FEEDBACK 2026-10-20
+Rider: "brouter has the best tour, ors is doing some strange detour on the end."
+BRouter is preferred for Automatic in run 2026-10-20T17-53-45-183Z-59f6d055.
+ORS arrival is flagged; no explicit GraphHopper judgment or surface confirmation.
+Saved .local/feedback/08-andritz-automatic-2026-10-20.json and two per-result
+review records. Unmeasured rider fields remain null. Geometry inspection finds
+ORS overshoots north and returns, adding about 106 m in the arrival section
+versus BRouter. This does not mean ORS's whole route is longer than BRouter's.
+The original Chosen roads shaping point snaps 52.5 m from its draft marker for
+all engines. Preserve the frozen scenario but defer that draft-point review.
+Next review is the already-saved After an edit variant: waypoint 2 at
+[15.427,47.119] lies within 0.3 m of all three route geometries. BRouter 3.95 km,
+GH 4.65 km, ORS 4.76 km. Ask which route handles that waypoint naturally.
+Exact link, reload, point count and street/aerial layers pass browser checks.
+No new routing calculation, setting changes, design work or additional charges.
+Next URL: http://127.0.0.1:5174/?case=08-andritz-parallel&variant=edited&run=2026-10-20T17-53-45-183Z-59f6d055
+
+SCENARIO 08 READY FOR RIDER REVIEW 2026-10-20
+The user remains dissatisfied with the design but explicitly asked to continue.
+Leave UI design work paused; do not treat the current design as approved.
+Generated Andritz run 2026-10-20T17-53-45-183Z-59f6d055 using the existing freeze
+evaluation-2026-10-20-babe8fc1, thal-local-v1, with all three local engines.
+All nine results succeeded: Automatic, Chosen roads and After an edit.
+Start with Automatic. GH 3.50 km, BRouter 3.95 km, ORS 3.61 km.
+The automatic comparison has two difference areas. All engines snap the start
+about 12 m and the destination about 5 m to consistent positions. BRouter has
+15.7% unknown surface; unknown is not a guarantee of paving.
+The exact saved page, frozen settings, local roads, street/aerial tiles and
+labels passed browser checks. No rider feedback for scenario 08 yet.
+Review URL: http://127.0.0.1:5174/?case=08-andritz-parallel&variant=automatic&run=2026-10-20T17-53-45-183Z-59f6d055
+Ask the rider to use Next difference and switch engine cards, then report which
+line they would ride and any unsuitable surface or unnecessary detour.
+Scenario 07 is already reviewed; do not ask for it again. Extra charges EUR 0.
+
+ROUTE COMPARISON REDESIGNED 2026-10-20
+This supersedes the line-style experiments below. The user authorized the
+recommended comparison approach after rejecting the stacked coloured patterns.
+Routes now use solid lines. Selecting a card highlights its entire saved route
+above the comparison and updates its details. Other branches remain visible.
+Shared sections have one representative line and a label naming the engines.
+Next difference cycles through nearby geometry differences and fits the map to
+each area. The current scenario 07 run has one area at central Feldkirchen.
+Display comparison samples original segments at 5 m with a 3 m tolerance and
+matching travel direction. Differences are grouped within 30 m; areas under
+10 m combined sampled length are not navigation targets. This is a display aid,
+not a routing-quality score or proof that two paths are identical.
+Coordinates, routing settings and saved rider reviews are unchanged. No added
+dependencies or service charges. Geometry comparison is cached across selection
+changes; the scenario 07 comparison took about 16 ms locally.
+33 unit tests, build, desktop/mobile inspection, comparison smoke, and online
+street/aerial checks pass. Screenshots were inspected at the Feldkirchen split.
+Review URL: http://127.0.0.1:5174/?case=07-south-quiet&variant=automatic&run=2026-10-20T16-56-41-400Z-2ac5138f
+
+REVIEW COLOURS CHANGED 2026-10-20
+The user rejected the green-heavy design and explicitly requested three distinct
+modern route colours. The comparison now uses graphite text, white/grey panels
+and blue controls. Route colours: BRouter blue #245cdb, GraphHopper orange #d65300,
+ORS turquoise #008c95. The user rejected the heavy styling, then clarified that
+patterns were useful because solid lines hid the other routes. Restored patterns
+with wider spacing: GH solid, BRouter long dashes, ORS short rounded marks.
+All three remain 5 px with no width changes on selection. The user rejected the
+white route outline; it has been removed from the engine comparison.
+"Inspect a route" is now "Route details" to clarify the sidebar's purpose.
+CSS variables supply
+both map lines and matching legends/cards. Earlier brown/green/blue rider
+references describe the old palette: brown=BRouter, green=GH, blue=ORS.
+Surface mode uses charcoal for asphalt and retains labelled surface categories.
+Build and desktop/mobile inspection checks passed. Browser screenshots of the
+combined patterns were visually inspected. Street/aerial browser checks passed.
+Selected only / All routes switching preserves the saved coordinates.
+No routing settings, route coordinates, fees or dependencies changed.
+
+SCENARIO 07 RIDER REVIEW 2026-10-20
+For Automatic run 2026-10-20T16-56-41-400Z-2ac5138f, the rider said all routes
+are good except GraphHopper's manoeuvre directly in Feldkirchen. BRouter and ORS
+are accepted for this saved variant. GraphHopper's general corridor is acceptable,
+but its central section is flagged, not fully accepted.
+Saved geometry locates the difference at 1.970 to 2.180 km: GH indices 71 to 90
+follow mapped pedestrian ways beside the direct line between the Rudersdorfer
+Strasse approach and Triester Strasse. About 15 m extra length, not a large detour.
+ORS and BRouter agree within about 1 m in the sampled geometry comparison.
+Evidence: .local/feedback/07-feldkirchen-automatic-2026-10-20.json and three
+per-result review records in the saved run. Unmeasured review fields remain null.
+Do not repeat this review or change frozen routing settings. Scenario 08 is next.
+Earlier statements below about scenario 07 awaiting review are superseded.
+
+REVIEW UI UPDATED 2026-10-20
+The user requested elevation, exact surface locations and a better overview.
+The comparison now has a compact route-selection sidebar, map and elevation/
+surface panel together on desktop, and secondary controls after the map on phones.
+Select an engine card; BRouter is initially selected because its saved geometry
+has elevation. GH/ORS honestly show no elevation in these runs. No extra service.
+Surface summaries and the full section list select and zoom to exact saved
+geometry intervals. The profile/range control moves a map marker. Surface mode
+shows the selected engine only; switching back restores engine colours.
+Inspection derives details from existing raw response files through a read-only
+API, without rerouting or changing frozen inputs. Freeze babe8fc1 still validates.
+Unit tests cover intervals, repeated loop coordinates, unknown gaps and ORS codes.
+Desktop/mobile browser inspection, existing comparison smoke test, and build pass.
+No rider approval of scenario 07 has been recorded. Continue at the same review URL.
+
+EVALUATION STARTED 2026-10-20
+Checkpoint commit is a317c28; no push. The user authorized new-route review with
+settings fixed. First case is 07-south-quiet, revision 2, Automatic, awaiting review.
+Review URL: http://127.0.0.1:5174/?case=07-south-quiet&variant=automatic&run=2026-10-20T16-56-41-400Z-2ac5138f
+Current freeze: evaluation-2026-10-20-babe8fc1, saved in .local/evaluations.
+Settings remain thal-local-v1 with the Ries patch; GraphHopper and local ORS included.
+Before rider review, corrected draft endpoints onto mapped asphalt on
+Auer-Welsbach-Gasse and Lagerstrasse. The original destination was off-road near
+the airport and snapped about 190 m away. Prior freeze d0a4a381/run a8a673cf are
+retained as superseded evidence, not the review target. No profile changes.
+All three automatic routes now hit both points exactly and are about 4.27 km.
+Street/aerial/label tiles and local roads passed browser checks with no page errors.
+23 comparison tests and comparison build passed. No rider approval recorded yet.
+Do not tune profiles between evaluation cases. Existing baseline runs mean this
+is not a blind comparison. See the evaluation section in experiments/routing/README.md.
+
 CHECKPOINT 2026-10-20
 The user requested a local commit of the current code. No push requested.
 Both production builds and all 48 unit tests passed before committing.

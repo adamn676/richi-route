@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { createPinia, setActivePinia } from 'pinia';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { getSegments } from '../src/utils/geometry.ts';
-import { compareGeometry } from '../experiments/routing/tuning-geometry.mjs';
+import { assessReviewedRoute } from '../experiments/routing/reviewed-routes.mjs';
 
 const originalFetch = globalThis.fetch;
 let requestCount = 0;
@@ -21,28 +21,17 @@ async function idle(store) {
   }
   assert.equal(store.errorMessage, null);
 }
-const cases = [
-  ['2026-10-18T17-16-22-502Z-b6a9b42f', 'automatic'],
-  ['2026-10-18T17-16-23-154Z-53c51622', 'automatic'],
-  ['2026-10-18T17-16-23-863Z-cf312ae6', 'automatic'],
-  ['2026-10-19T17-58-35-647Z-3959e58a', 'automatic'],
-  ['2026-10-18T17-16-24-332Z-8ce416be', 'selected'],
-  ['2026-10-18T17-16-24-332Z-8ce416be', 'edited'],
-];
+const suite = JSON.parse(await fs.readFile(new URL('../experiments/routing/fixtures/reviewed-routes.json', import.meta.url), 'utf8'));
 const comparisons = [];
-for (const [runId, variant] of cases) {
-  const run = JSON.parse(await fs.readFile(`experiments/routing/.local/runs/${runId}/run.json`, 'utf8'));
-  const reference = run.results.find(result => result.variant === variant && result.id.endsWith('-brouter-1'));
+for (const reference of suite.routes.filter(route => route.expectation === 'preserve')) {
   setActivePinia(createPinia());
   const store = useRouteStore();
   store.resetRoute(reference.points.map(point => point.coord));
   await idle(store);
   const geometry = Object.values(store.legs).flatMap(leg => leg.coordinates);
-  const comparison = compareGeometry(geometry, reference.normalized.geometry.coordinates);
-  assert.equal(comparison.candidateOutside3mM, 0);
-  assert.equal(comparison.referenceMissed3mM, 0);
-  assert.ok(Math.abs(comparison.lengthDifferenceM) < 1);
-  comparisons.push({ runId, variant, distance: store.distanceMeters, referenceDistance: reference.normalized.distanceM, geometry: comparison });
+  const comparison = assessReviewedRoute(reference, geometry);
+  assert.equal(comparison.matches, true, reference.id);
+  comparisons.push({ id: reference.id, distance: store.distanceMeters, ...comparison });
 }
 
 setActivePinia(createPinia());
@@ -73,4 +62,4 @@ renderTimes.sort((a, b) => a - b);
 const report = { comparisons, localEdit: { samples: 12, requestsPerEdit: 3, medianMs: durations[6], p95Ms: durations[11] },
   syntheticConversion: { vertices: 10000, features: 1, medianMs: renderTimes[100], p95Ms: renderTimes[190], note: 'GeoJSON preparation only; not browser frame time or a before/after speedup.' } };
 await fs.writeFile('experiments/routing/.local/editor-local-check.json', JSON.stringify(report, null, 2));
-console.log(JSON.stringify(report, null, 2));
+console.log(JSON.stringify({ routesPreserved: comparisons.length, localEdit: report.localEdit, report: 'experiments/routing/.local/editor-local-check.json' }));

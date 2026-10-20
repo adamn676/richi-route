@@ -56,9 +56,11 @@
     },
     {
       "id": "07-south-quiet", "split": "evaluation", "title": "Main road or quiet road toward Feldkirchen",
+      "revision": 2,
+      "revisionNote": "Before rider review, the start moved from a service access onto Auer-Welsbach-Gasse, and the destination moved from an off-road airport-area point onto Lagerstraße. Both new points have asphalt tags in the local map. These locations still need rider review; routing settings are unchanged.",
       "focus": "Held-out main-road versus quiet-road decision south of Graz.",
       "expectedRoads": [], "reviewQuestion": "Which road corridor avoids unwanted traffic without an unsuitable surface?",
-      "points": [{"role":"stop","coord":[15.4488,47.0278]},{"role":"shape","coord":[15.4465,47.0060]},{"role":"stop","coord":[15.4438,46.9893]}]
+      "points": [{"role":"stop","coord":[15.446433,47.027449]},{"role":"shape","coord":[15.4465,47.0060]},{"role":"stop","coord":[15.449,46.994922]}]
     },
     {
       "id": "08-andritz-parallel", "split": "evaluation", "title": "Parallel choices around Andritz",
@@ -69,28 +71,36 @@
     },
     {
       "id": "09-raaba-junction", "split": "evaluation", "title": "Junction and crossing near Raaba",
+      "revision": 2,
+      "revisionNote": "Draft points moved onto a mapped paved cycleway by Johann-Puch-Platz, asphalt Holzweg and St.Peter-Straße. The earlier points were off the routed roads. Routing profiles are unchanged.",
       "focus": "Held-out awkward crossing and approach directions.",
       "expectedRoads": [], "reviewQuestion": "Check legal bicycle access, bridge or underpass choice, and unexpected U-turns.",
-      "points": [{"role":"stop","coord":[15.4750,47.0210]},{"role":"shape","coord":[15.4908,47.0125]},{"role":"stop","coord":[15.5040,47.0005]}]
+      "points": [{"role":"stop","coord":[15.472193,47.019891]},{"role":"shape","coord":[15.490635,47.011390]},{"role":"stop","coord":[15.505608,47.000467]}]
     },
     {
       "id": "10-eastern-hills", "split": "evaluation", "title": "Surface and steep shortcuts in the eastern hills",
+      "revision": 2,
+      "revisionNote": "Draft points moved onto asphalt-tagged Rudolfstraße, Kölldorferweg and Ragnitzstraße. This removes different start-road snaps and an off-road destination. Routing profiles are unchanged.",
       "focus": "Held-out surface and gradient inspection. Elevation settings differ between engines.",
       "expectedRoads": [], "reviewQuestion": "Confirm a paved reference corridor and identify actual steep or unpaved shortcuts before scoring.",
-      "points": [{"role":"stop","coord":[15.4970,47.0730]},{"role":"shape","coord":[15.5260,47.0860]},{"role":"stop","coord":[15.5490,47.0910]}]
+      "points": [{"role":"stop","coord":[15.497036,47.073601]},{"role":"shape","coord":[15.525520,47.087034]},{"role":"stop","coord":[15.546857,47.091745]}]
     },
     {
       "id": "11-western-loop", "split": "evaluation", "title": "Loop with an intermediate stop and chosen roads",
+      "revision": 2,
+      "revisionNote": "Draft markers moved onto mapped asphalt: the start/finish cycleway, Weidweg, Kötschbergstraße, Baiernstraße and the edited point on Gritzenkogel. Routing profiles and point roles are unchanged.",
       "focus": "Retain a closed loop, intermediate stop and shaping order after a local point edit.",
       "expectedRoads": [], "reviewQuestion": "Confirm the loop roads and identify which distant sections must remain unchanged.",
-      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4010,47.1010]},{"role":"stop","coord":[15.3540,47.0820]},{"role":"shape","coord":[15.3880,47.0630]},{"role":"stop","coord":[15.4325,47.0757]}],
-      "edit": {"pointIndex":3,"coord":[15.3890,47.0595]}
+      "points": [{"role":"stop","coord":[15.432900,47.075887]},{"role":"shape","coord":[15.400287,47.100803]},{"role":"stop","coord":[15.352822,47.081587]},{"role":"shape","coord":[15.388014,47.062999]},{"role":"stop","coord":[15.432900,47.075887]}],
+      "edit": {"pointIndex":3,"coord":[15.389221,47.060161]}
     },
     {
       "id": "12-out-and-back", "split": "evaluation", "title": "Out and back with a shared corridor",
+      "revision": 2,
+      "revisionNote": "Before rider review, start/finish moved onto the same mapped asphalt cycleway used in scenario 11, the repeated shaping point onto the asphalt cycleway beside Am Andritzbach, and the turnaround onto Schirmleitenstraße. The turnaround road has no surface tag; paving remains unconfirmed. Profiles are unchanged.",
       "focus": "Retain repeated coordinates and the turnaround stop instead of collapsing the return journey.",
-      "expectedRoads": [], "reviewQuestion": "Is the intended corridor preserved in both directions, including any one-way restrictions?",
-      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4148,47.1044]},{"role":"stop","coord":[15.4056,47.1326]},{"role":"shape","coord":[15.4148,47.1044]},{"role":"stop","coord":[15.4325,47.0757]}]
+      "expectedRoads": [], "reviewQuestion": "Which route would you ride out and back? Check the unknown surface near the Schirmleitenstraße turnaround and any awkward changes of road between directions.",
+      "points": [{"role":"stop","coord":[15.432900,47.075887]},{"role":"shape","coord":[15.414469,47.104367]},{"role":"stop","coord":[15.405553,47.133473]},{"role":"shape","coord":[15.414469,47.104367]},{"role":"stop","coord":[15.432900,47.075887]}]
     }
   ]
 }

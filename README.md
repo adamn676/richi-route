@@ -88,8 +88,13 @@ npm.cmd run bench:test
 npm.cmd run bench:build
 ```
 
-`node tests/editor-local-check.mjs` compares six saved reference routes and times
-local edits. It requires the existing private runs, engines and editor server.
+`npm run bench:check-reviewed` compares the local BRouter against the committed
+rider-reviewed geometry. It protects 14 route variants and separately reports
+the western-loop composite as a target that automatic routing has not yet met.
+It requires the prepared local routing assets and BRouter service.
+`npm run test:editor-local` checks the same 14 protected routes through the editor
+store and service, then checks local edits. It requires BRouter and the editor
+server; the route fixtures are committed, so historical private runs are not needed.
 `node tests/browser-editor.mjs` exercises the live editor in Chrome using the
 existing Playwright installation under `.cache/browser-tools`. It checks street
 and aerial tiles, dragging, undo/redo, preservation of distant sections, mobile

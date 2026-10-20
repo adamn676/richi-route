@@ -1,5 +1,150 @@
 # Local road-cycling comparison
 
+## Reviewed-route checks, 21 October 2026
+
+All twelve scenarios have rider feedback. `fixtures/reviewed-routes.json` retains
+15 route expectations with ordered coordinates, request points, source references,
+feedback hashes and scope notes. Fourteen protect accepted or preferred corridors;
+the western-loop composite is a separate target, not an automatic routing success.
+The extra cases cover selected/edited variants and the previously verified
+endpoints-only Eggenberg request. Historical source associations are documented
+where the rider did not provide a run identifier.
+
+Run `npm run bench:check-reviewed` with the existing local BRouter and prepared
+assets. The command validates fixture hashes, routes the stored request points,
+compares geometry in both directions, and checks endpoint and waypoint order.
+Maximum sampled separation and endpoint displacement must be at most 1 m, with
+at most 2 m length difference. The comparison samples at 5 m intervals; it measures
+geometry agreement, not road safety, access legality or paving. Surface observations
+remain in the source feedback and are not inferred from acceptance.
+
+The command exits unsuccessfully on a protected-route regression or routing error.
+An unmet target is reported as `target-open`, never as preserved. Optional
+`--settings NAME` uses an existing prepared profile without modifying it.
+Requests, raw responses, configuration evidence and results are saved under
+`.local/reviewed-route-checks/`. Do not regenerate expected geometry to make a
+failed comparison pass; investigate the data/profile change and review its scope.
+
+The initial run preserved all 14 protected variants. The western target remains
+open: with its five main points, BRouter's geometry is about 197 m longer than
+the accepted composite and takes different roads. That composite includes the
+quiet corridor via Überfuhrgasse and a specific short push-through connection.
+The lookup data includes `ramp:bicycle`, but the current profile disallows steps.
+A future scoped experiment can distinguish bicycle ramps from other stairs;
+acceptance of this connection does not authorize changing all stair routing.
+
+`npm run test:editor-local` checks the 14 protected variants through the actual
+editor store, snapping and per-leg requests. It also checks that moving a point
+preserves distant legs and uses only three requests for the tested local edit.
+The initial run passed all route checks and all twelve local edits. Offline
+`npm run bench:test` covers fixture integrity, repeated visits, lost return trips,
+extra backtracking, reversed endpoints and nearby parallel roads.
+
+## Route review interface
+
+The comparison uses graphite text, neutral panels and blue controls.
+Engine colours are BRouter blue, GraphHopper orange and ORS turquoise, with
+matching map lines, legend samples and route-card borders. GraphHopper uses a
+solid orange line, BRouter solid blue and ORS solid turquoise, without a white
+outline. Selecting an engine highlights its complete route above the comparison
+and updates the elevation/surface details. Shared stretches have one representative
+line; the map names the engines that share them. Alternative branches remain visible.
+Use Next difference to jump between areas where routes diverge. Selection keeps
+the current area in view. Use Selected only to show the engine chosen in the sidebar,
+or All routes to restore the comparison. Historical review notes below
+use the former colours: brown for BRouter, green for GraphHopper and blue for ORS.
+
+The display comparison samples saved geometry every 5 m and groups same-direction
+segments within 3 m. Nearby differences within 30 m form one review area; groups
+under 10 m combined sampled length are not navigation targets. These tolerances
+handle coordinate rounding and keep the review manageable. They do not establish
+that nearby paths are identical or measure routing quality. Original route
+coordinates remain available for selection, surface inspection and export.
+
+Select an engine in the left sidebar to inspect its saved route. BRouter is
+initially selected because these runs contain elevation in its coordinates.
+The elevation panel sits directly below the map. Move over the chart or use its
+keyboard-accessible distance slider to locate a position on the route.
+
+Surface summaries retain distinct recorded values such as asphalt, stone setts,
+gravel and unspecified paving. Click a surface to locate its first section, or
+expand the complete section list to select a specific distance interval. The
+map zooms to that section; surface colours display only the selected engine.
+Return to engine colours for the comparison.
+
+Missing surface tags stay unknown. GraphHopper and ORS have no elevation in
+these saved runs; the UI does not borrow BRouter's heights for another route.
+Distance positions use the saved geometry rather than rounded engine distances.
+ORS values are categories, following its [surface ID documentation](https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/extra-info/surface),
+so paving stones may include stone setts and cobblestones.
+
+`route-inspection.mjs` reads existing raw response files through a read-only API.
+It does not change benchmark normalization, saved results or routing requests,
+and the existing evaluation fingerprint still validates. No dependency was added.
+
+The redesign preserves map backgrounds and the review form.
+It moves setup, source notes and timing results into expandable
+sections. Desktop keeps the map and profile visible together; mobile puts
+secondary controls after the map. Native Vue controls and CSS remain in use.
+
+Validation includes interval endpoints, loops, unknown tails, invalid intervals
+and missing heights. `node experiments/routing/tests/browser-inspection.mjs`
+checks route selection, keyboard scrubbing, rendered surface layers, section
+zoom, absent elevation, details-error recovery and mobile width. It makes no
+routing requests. The existing comparison and frozen-evaluation browser checks
+also cover the reorganized controls.
+
+## Fixed-settings evaluation, 20 October 2026
+
+Rider review received for scenario 07 Automatic: BRouter and ORS accepted;
+GraphHopper's general corridor accepted with its central Feldkirchen manoeuvre
+flagged. Saved geometry places the difference at 1.970 to 2.180 km on mapped
+pedestrian ways, with about 15 m extra distance. The exact localization comes
+from geometry inspection. The rider identified central Feldkirchen, not indices.
+Feedback and three result reviews are saved privately. Routing settings remain
+fixed; scenario 08 is next.
+
+The first new review is scenario 07 revision 2, Automatic:
+http://127.0.0.1:5174/?case=07-south-quiet&variant=automatic&run=2026-10-20T16-56-41-400Z-2ac5138f
+
+Before rider review, its draft start and destination were moved onto mapped
+asphalt on Auer-Welsbach-Gasse and Lagerstraße. The old airport-area destination
+was off-road and snapped about 190 metres away. The revised automatic routes
+reach both points exactly: GraphHopper 4281 m, BRouter 4269 m, ORS 4266 m.
+These are routing results, not rider approvals.
+
+Freeze `evaluation-2026-10-20-babe8fc1` keeps `thal-local-v1`, the Ries bicycle
+turn patch, local GraphHopper and local ORS. Its private manifest contains
+the profile/configuration/scenario snapshots, verified map-asset hashes and
+patched BRouter JAR hash. Runs reject changes to these inputs and retain the
+freeze ID and fingerprint. The page preserves them when repeating a comparison.
+Engine selection cannot change in a loaded frozen run.
+
+For the next case, use the same freeze:
+
+```powershell
+node experiments/routing/run.mjs --case 08-andritz-parallel --settings thal-local-v1 --include-ors true --evaluation-freeze evaluation-2026-10-20-babe8fc1
+```
+
+Record problems without tuning profiles during this round. Existing baseline
+runs mean this is not a blind comparison; only the tuned settings were withheld
+from these cases. Map-source dates and elevation differences remain limitations.
+This compares engine requests, not the editor's complete snapping/dragging workflow.
+
+`node experiments/routing/freeze-evaluation.mjs` creates a new manifest for a
+deliberate new round; do not use it to silently accept changes during this one.
+The earlier freeze `evaluation-2026-10-20-d0a4a381` and run ending `a8a673cf` are
+retained as superseded evidence of the endpoint-placement problem.
+
+Validation: 23 comparison unit tests and comparison build pass. The browser check
+below verifies the saved link, Automatic mode, three routes, fixed engine choice,
+repeat-request settings, reload, local road tiles, street map and aerial labels.
+The superseded manifest also correctly rejects the revised scenario.
+
+```powershell
+node experiments/routing/tests/browser-evaluation.mjs 2026-10-20T16-56-41-400Z-2ac5138f --imagery
+```
+
 This experiment compares GraphHopper 11.1 and BRouter 1.7.10 around Graz/Styria,
 with optional local OpenRouteService 10.1.0 using `cycling-road`.
 It does not modify the original editor. There is no hosted routing fallback.

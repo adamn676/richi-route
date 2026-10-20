@@ -37,6 +37,7 @@ export interface Result {
 }
 export interface RunSummary { id: string; createdAt: string; scope: string; status: string; resultCount: number; settings?: string; settingsLabel?: string }
 export interface Run extends RunSummary {
+  evaluationFreeze?: string;
   includeOrs?: boolean;
   results: Result[];
   scenarios: Scenario[];

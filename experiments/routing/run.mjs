@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { engines, route, variants } from './engines.mjs';
 import { candidateProfile, settingsFor } from './profiles.mjs';
+import { validateEvaluation } from './evaluation.mjs';
 
 export const root = fileURLToPath(new URL('.', import.meta.url));
 const runsRoot = path.join(root, '.local/runs');
@@ -24,7 +25,7 @@ async function sha256(file) {
   return hash.digest('hex');
 }
 
-async function provenance(settings, includeOrs) {
+export async function provenance(settings, includeOrs) {
   const assets = await readJson(path.join(root, '.local/assets.json'));
   const brouterPatch = await readJson(path.join(root, '.local/brouter/patch.json'));
   if (brouterPatch.patch !== engines.brouter.patch ||
@@ -35,7 +36,7 @@ async function provenance(settings, includeOrs) {
     if (await sha256(path.join(root, '.local', asset.file)) !== asset.sha256) throw new Error(`Asset changed: ${asset.file}. Run setup and investigate before comparing.`);
   }
   const snapshots = {};
-  const files = ['graphhopper.yml', 'compose.yml', 'scenarios.json', 'engines.mjs', 'profiles.mjs', 'run.mjs', 'brouter-patch/OsmNode.java', '.local/brouter/profiles2/richi-road.brf', '.local/brouter/profiles2/lookups.dat'];
+  const files = ['graphhopper.yml', 'compose.yml', 'scenarios.json', 'engines.mjs', 'profiles.mjs', 'run.mjs', 'evaluation.mjs', 'brouter-patch/OsmNode.java', '.local/brouter/profiles2/richi-road.brf', '.local/brouter/profiles2/lookups.dat'];
   files.push('../../src/config/thal-preference.json');
   if (includeOrs) files.push('ors.yml', 'ors-patch/Dockerfile', 'ors-patch/ORSOSMReader.java');
   if (settings !== 'baseline') files.push(`.local/brouter/profiles2/${settingsFor(settings).brouterProfile}.brf`);
@@ -78,8 +79,8 @@ async function provenance(settings, includeOrs) {
   };
 }
 
-/** @param {{ split?: string, caseId?: string, settings?: string, repetitions?: number, includeOrs?: boolean, onProgress?: (message: string) => void }} options */
-export async function runBenchmark({ split = 'tuning', caseId, settings = 'baseline', repetitions = 1, includeOrs = false, onProgress = () => {} } = {}) {
+/** @param {{ split?: string, caseId?: string, settings?: string, repetitions?: number, includeOrs?: boolean, evaluationFreeze?: string, onProgress?: (message: string) => void }} options */
+export async function runBenchmark({ split = 'tuning', caseId, settings = 'baseline', repetitions = 1, includeOrs = false, evaluationFreeze, onProgress = () => {} } = {}) {
   const preset = settingsFor(settings);
   if (typeof includeOrs !== 'boolean') throw new Error('includeOrs must be a boolean.');
   const engineIds = includeOrs ? ['graphhopper', 'brouter', 'ors'] : ['graphhopper', 'brouter'];
@@ -88,8 +89,10 @@ export async function runBenchmark({ split = 'tuning', caseId, settings = 'basel
   const suite = await loadScenarios();
   const cases = suite.scenarios.filter((item) => caseId ? item.id === caseId : split === 'all' || item.split === split);
   if (!cases.length) throw new Error('No matching scenario.');
+  if (evaluationFreeze !== undefined && (typeof evaluationFreeze !== 'string' || !validId(evaluationFreeze))) throw new Error('Invalid evaluation freeze ID.');
+  if (evaluationFreeze && cases.some(scenario => scenario.split !== 'evaluation')) throw new Error('A frozen evaluation must contain only evaluation cases.');
   if (settings !== 'baseline') {
-    if (cases.some(scenario => scenario.split !== 'tuning')) throw new Error('Experimental settings are limited to tuning cases until frozen.');
+    if (!evaluationFreeze && cases.some(scenario => scenario.split !== 'tuning')) throw new Error('Experimental settings are limited to tuning cases until frozen.');
     const profile = candidateProfile(await readFile(path.join(root, '.local/brouter/profiles2/richi-road.brf'), 'utf8'), settings);
     const target = path.join(root, `.local/brouter/profiles2/${preset.brouterProfile}.brf`);
     try { await writeFile(target, profile, { flag: 'wx' }); }
@@ -98,6 +101,12 @@ export async function runBenchmark({ split = 'tuning', caseId, settings = 'basel
       if (await readFile(target, 'utf8') !== profile) throw new Error('Candidate profile changed on disk; preserve it and create a new settings version.');
     }
   }
+  const evidence = await provenance(settings, includeOrs);
+  let frozen;
+  if (evaluationFreeze) {
+    frozen = await readJson(path.join(root, '.local/evaluations', `${evaluationFreeze}.json`));
+    validateEvaluation(frozen, settings, includeOrs, evidence);
+  }
   const run = {
     schemaVersion: 1,
     id: new Date().toISOString().replaceAll(/[:.]/g, '-') + '-' + randomUUID().slice(0, 8),
@@ -105,7 +114,8 @@ export async function runBenchmark({ split = 'tuning', caseId, settings = 'basel
     suiteStatus: suite.status, settings, settingsLabel: preset.label + (includeOrs ? '; local ORS cycling-road baseline' : ''),
     engines: { graphhopper: engines.graphhopper, brouter: { ...engines.brouter, profile: preset.brouterProfile }, ...(includeOrs ? { ors: engines.ors } : {}) },
     includeOrs,
-    provenance: await provenance(settings, includeOrs), scenarios: cases, results: [],
+    ...(frozen ? { evaluationFreeze, evaluationFingerprint: frozen.fingerprint } : {}),
+    provenance: evidence, scenarios: cases, results: [],
   };
   const directory = path.join(runsRoot, run.id);
   await mkdir(directory, { recursive: true });
@@ -179,8 +189,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const args = process.argv.slice(2);
   const options = {};
   for (let i = 0; i < args.length; i += 2) {
-    const name = { '--split': 'split', '--case': 'caseId', '--settings': 'settings', '--repetitions': 'repetitions', '--include-ors': 'includeOrs' }[args[i]];
-    if (!name || !args[i + 1]) throw new Error('Usage: npm run bench:run -- [--split tuning|evaluation|all] [--case ID] [--settings baseline|cyclepath-v1|network-v2|traffic-v3] [--repetitions 1..10] [--include-ors true|false]');
+    const name = { '--split': 'split', '--case': 'caseId', '--settings': 'settings', '--repetitions': 'repetitions', '--include-ors': 'includeOrs', '--evaluation-freeze': 'evaluationFreeze' }[args[i]];
+    if (!name || !args[i + 1]) throw new Error('Usage: npm run bench:run -- [--split tuning|evaluation|all] [--case ID] [--settings NAME] [--repetitions 1..10] [--include-ors true|false] [--evaluation-freeze ID]');
     if (name === 'includeOrs' && !['true', 'false'].includes(args[i + 1])) throw new Error('--include-ors must be true or false.');
     options[name] = name === 'repetitions' ? Number(args[i + 1]) : name === 'includeOrs' ? args[i + 1] === 'true' : args[i + 1];
   }

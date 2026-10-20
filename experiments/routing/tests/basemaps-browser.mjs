@@ -36,7 +36,7 @@ try {
     if (response.url().includes('maps.wien.gv.at/basemap/') && response.ok()) successfulTiles.add(response.url());
   });
   await page.goto('http://127.0.0.1:5174/', { waitUntil: 'networkidle' });
-  await page.locator('tbody tr').first().waitFor();
+  await page.locator('.route-choice').first().waitFor();
   assert.equal(await page.getByRole('button', { name: 'Street map', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.ok([...successfulTiles].some((url) => url.includes('/geolandbasemap/')), 'Street tiles must actually load.');
   await page.screenshot({ path: `${output}/mur-automatic-street.png`, fullPage: true });
@@ -75,6 +75,7 @@ try {
   assert.deepEqual(localRequests, []);
   await localPage.close();
   await page.getByLabel('Road-cycling scenario').selectOption('03-eggenberg-junction');
+  await page.getByText('Scenario notes & method', { exact: true }).click();
   await page.locator('.revision-note').filter({ hasText: 'Scenario revision 2' }).waitFor();
   await page.getByRole('button', { name: 'Street map', exact: true }).click();
   await settleMap();
@@ -104,7 +105,7 @@ try {
   await roadFailure.goto('http://127.0.0.1:5174/');
   await roadFailure.getByText('The local road service is running, but some road details could not load.', { exact: false }).waitFor();
   assert.doesNotMatch(await roadFailure.locator('.map-error').innerText(), /bench:up/);
-  await roadFailure.locator('tbody tr').first().waitFor();
+  await roadFailure.locator('.route-choice').first().waitFor();
   const routeRows = await roadFailure.locator('tbody tr').count();
   blockRoadTiles = false;
   await Promise.all([
