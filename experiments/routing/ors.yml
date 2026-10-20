@@ -1,0 +1,16 @@
+server:
+  port: 8082
+ors:
+  engine:
+    init_threads: 1
+    profile_default:
+      enabled: false
+      graph_path: /home/ors/graphs-missing-endpoint-v1
+      build:
+        source_file: /data/steiermark.osm.pbf
+        elevation: false
+    profiles:
+      cycling-road:
+        enabled: true
+        build:
+          elevation: false

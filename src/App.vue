@@ -1,21 +1,9 @@
-<!-- src/App.vue -->
-<template>
-  <Toast />
-  <DebugControls />
-  <router-view />
-</template>
-
+<template><HomeView /></template>
 <script setup lang="ts">
-import Toast from 'primevue/toast';
-import DebugControls from '@/components/debug/DebugControls.vue';
-// Root shell
-</script>
+import { onBeforeUnmount } from 'vue';
+import HomeView from './views/HomeView.vue';
+import { useRouteStore } from './stores/route.store';
+import { startDraftPersistence } from './services/draft.service';
 
-<style>
-#app,
-body {
-  margin: 0;
-  height: 100vh;
-  width: 100vw;
-}
-</style>
+onBeforeUnmount(startDraftPersistence(useRouteStore()));
+</script>

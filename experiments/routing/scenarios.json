@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "region": "Graz and surrounding Styria",
+  "status": "draft-needs-richard-review",
+  "provenance": "Generated coordinates and candidate corridors. No field inspection or suitability claim. Review every point and expected road before scoring.",
+  "scenarios": [
+    {
+      "id": "01-mur-north", "split": "tuning", "title": "Main road or quiet road north of Graz",
+      "focus": "Compare automatic choices with a deliberate quieter corridor near the Mur.",
+      "accessNote": {"text": "Construction at Pongratz-Moore-Steg: the city notice requires pushing through the east-bank corridor. Local route data marks about 60 m as gravel and dismount. Check this if your route follows the Mur path; it is not uninterrupted cycling.", "sourceUrl": "https://www.graz.at/cms/beitrag/10421066/8770127/", "checkedDate": "2026-10-18"},
+      "expectedRoads": [], "reviewQuestion": "Which paved roads are acceptable here, and which busy sections should be avoided?",
+      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4148,47.1044]},{"role":"stop","coord":[15.4056,47.1326]}]
+    },
+    {
+      "id": "02-parallel-mur", "split": "tuning", "title": "Parallel road and riverside cycle path",
+      "focus": "Check snapping and deliberate selection between nearby parallel ways.",
+      "expectedRoads": [], "reviewQuestion": "Does each shaping point identify the intended paved road rather than the adjacent path?",
+      "points": [{"role":"stop","coord":[15.4363,47.0632]},{"role":"shape","coord":[15.4407,47.0475]},{"role":"stop","coord":[15.4488,47.0278]}],
+      "edit": {"pointIndex":1,"coord":[15.4430,47.0475]}
+    },
+    {
+      "id": "03-eggenberg-junction", "split": "tuning", "title": "Awkward junction west of the station",
+      "revision": 2,
+      "revisionNote": "Destination moved from the building to Herbersteinstraße. Chosen roads now uses four points on the south-side cycle path. Engine preferences are unchanged; this candidate still needs your review.",
+      "focus": "From Europaplatz to Herbersteinstraße. Compare the automatic route with the south-side cycle path toward Karl-Morre-Straße, using your feedback.",
+      "expectedRoads": ["South-side cycle path along Eggenberger Straße toward Karl-Morre-Straße", "Herbersteinstraße destination approach; no entry into Schloss Eggenberg park"],
+      "expectedRoadsSource": "User review of scenario 03 Automatic on 2026-10-18. Candidate point placement still needs rider review.",
+      "reviewQuestion": "In Chosen roads, does the route cross south early and stay on the intended cycle path? Is the new arrival point on Herbersteinstraße appropriate?",
+      "points": [{"role":"stop","coord":[15.4185,47.0714]},{"role":"shape","coord":[15.417489,47.070942]},{"role":"shape","coord":[15.414,47.070531]},{"role":"shape","coord":[15.4073,47.069938]},{"role":"shape","coord":[15.403403,47.070410]},{"role":"stop","coord":[15.395033,47.071639]}]
+    },
+    {
+      "id": "04-thal-surface", "split": "tuning", "title": "Potential unpaved shortcut near Thal",
+      "revision": 3,
+      "revisionNote": "The corrected road start and destination stay in place. Chosen roads now uses two visible points on Thalstraße to request the main road instead of the narrow cycle-path deviation. These replace the old unreviewed intermediate point. Automatic still uses only the endpoints and is unchanged; BRouter's automatic deviation remains unresolved.",
+      "focus": "Compare automatic route choice with explicitly staying on Thalstraße through the narrow cycle-path section.",
+      "expectedRoads": ["Thalstraße"], "expectedRoadsSource": "Rider prefers the main road through the remaining narrow cycle-path deviation; placement of the two road points is inferred from the reviewed green route.",
+      "reviewQuestion": "In Chosen roads, does brown now follow the main-road line you would ride? This is a deliberate road selection, not a fix to Automatic routing.",
+      "points": [{"role":"stop","coord":[15.392482,47.099327]},{"role":"shape","coord":[15.378424,47.099507]},{"role":"shape","coord":[15.37562,47.097028]},{"role":"stop","coord":[15.3428,47.0759]}]
+    },
+    {
+      "id": "05-mariatrost-climb", "split": "tuning", "title": "Hahnhofweg to Roseggerweg: road and climb choices",
+      "revision": 2,
+      "revisionNote": "The draft destination was on a gravel track and the original start led through service roads or paths. Start now lies on mapped asphalt on Hahnhofweg, and destination on mapped asphalt on Roseggerweg. Chosen roads uses a mapped asphalt point on Eckmichlstraße instead of the old unreviewed point. These placements still need rider review.",
+      "focus": "Review road and surface choices from Hahnhofweg to Roseggerweg. GraphHopper and ORS have no elevation in this experiment, so this is not a controlled comparison of grade preferences.",
+      "expectedRoads": [], "reviewQuestion": "In Automatic, are the start and destination sensible, and which route would you ride? Identify any unpaved section, unnecessary detour or climb you would avoid.",
+      "points": [{"role":"stop","coord":[15.474345,47.090869]},{"role":"shape","coord":[15.509557,47.102374]},{"role":"stop","coord":[15.503735,47.105271]}]
+    },
+    {
+      "id": "06-multiple-shapes", "split": "tuning", "title": "Several chosen roads through western Graz",
+      "revision": 2,
+      "revisionNote": "Points 1 and 2 stay in place. Point 3 now lies on Alte Poststraße at Andreas-Hofer-Straße, and point 4 on Heinrich-Heine-Straße, replacing the northern detour and dead end. Point 5 now marks the road arrival on Reininghausstraße, about 100 m from the old destination marker. Routing settings are unchanged. These replacement locations need your review.",
+      "focus": "Review the corrected approach south toward Reininghausstraße while preserving the quieter opening through point 2. After an edit moves only point 3 about 140 m west to Vinzenzgasse at Andreas-Hofer-Straße.",
+      "expectedRoads": [], "reviewQuestion": "In Chosen roads, are the new points 3 and 4 sensible, and would you ride brown or green from point 2 to the road arrival at point 5?",
+      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4160,47.0830]},{"role":"shape","coord":[15.406859,47.077267]},{"role":"shape","coord":[15.404583,47.066835]},{"role":"stop","coord":[15.404496,47.064171]}],
+      "edit": {"pointIndex":2,"coord":[15.404995,47.077212]}
+    },
+    {
+      "id": "07-south-quiet", "split": "evaluation", "title": "Main road or quiet road toward Feldkirchen",
+      "focus": "Held-out main-road versus quiet-road decision south of Graz.",
+      "expectedRoads": [], "reviewQuestion": "Which road corridor avoids unwanted traffic without an unsuitable surface?",
+      "points": [{"role":"stop","coord":[15.4488,47.0278]},{"role":"shape","coord":[15.4465,47.0060]},{"role":"stop","coord":[15.4438,46.9893]}]
+    },
+    {
+      "id": "08-andritz-parallel", "split": "evaluation", "title": "Parallel choices around Andritz",
+      "focus": "Held-out snapping and parallel-road selection with a small shaping edit.",
+      "expectedRoads": [], "reviewQuestion": "Do the two positions select distinct intended roads, and are both road-bike suitable?",
+      "points": [{"role":"stop","coord":[15.4215,47.1060]},{"role":"shape","coord":[15.4245,47.1190]},{"role":"stop","coord":[15.4220,47.1340]}],
+      "edit": {"pointIndex":1,"coord":[15.4270,47.1190]}
+    },
+    {
+      "id": "09-raaba-junction", "split": "evaluation", "title": "Junction and crossing near Raaba",
+      "focus": "Held-out awkward crossing and approach directions.",
+      "expectedRoads": [], "reviewQuestion": "Check legal bicycle access, bridge or underpass choice, and unexpected U-turns.",
+      "points": [{"role":"stop","coord":[15.4750,47.0210]},{"role":"shape","coord":[15.4908,47.0125]},{"role":"stop","coord":[15.5040,47.0005]}]
+    },
+    {
+      "id": "10-eastern-hills", "split": "evaluation", "title": "Surface and steep shortcuts in the eastern hills",
+      "focus": "Held-out surface and gradient inspection. Elevation settings differ between engines.",
+      "expectedRoads": [], "reviewQuestion": "Confirm a paved reference corridor and identify actual steep or unpaved shortcuts before scoring.",
+      "points": [{"role":"stop","coord":[15.4970,47.0730]},{"role":"shape","coord":[15.5260,47.0860]},{"role":"stop","coord":[15.5490,47.0910]}]
+    },
+    {
+      "id": "11-western-loop", "split": "evaluation", "title": "Loop with an intermediate stop and chosen roads",
+      "focus": "Retain a closed loop, intermediate stop and shaping order after a local point edit.",
+      "expectedRoads": [], "reviewQuestion": "Confirm the loop roads and identify which distant sections must remain unchanged.",
+      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4010,47.1010]},{"role":"stop","coord":[15.3540,47.0820]},{"role":"shape","coord":[15.3880,47.0630]},{"role":"stop","coord":[15.4325,47.0757]}],
+      "edit": {"pointIndex":3,"coord":[15.3890,47.0595]}
+    },
+    {
+      "id": "12-out-and-back", "split": "evaluation", "title": "Out and back with a shared corridor",
+      "focus": "Retain repeated coordinates and the turnaround stop instead of collapsing the return journey.",
+      "expectedRoads": [], "reviewQuestion": "Is the intended corridor preserved in both directions, including any one-way restrictions?",
+      "points": [{"role":"stop","coord":[15.4325,47.0757]},{"role":"shape","coord":[15.4148,47.1044]},{"role":"stop","coord":[15.4056,47.1326]},{"role":"shape","coord":[15.4148,47.1044]},{"role":"stop","coord":[15.4325,47.0757]}]
+    }
+  ]
+}

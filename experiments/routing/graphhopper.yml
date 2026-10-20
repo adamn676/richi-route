@@ -1,0 +1,26 @@
+graphhopper:
+  datareader.file: /work/.local/data/steiermark.osm.pbf
+  graph.location: /work/.local/graph-cache
+  profiles:
+    - name: racingbike
+      custom_model_files: [racingbike.json]
+  profiles_ch:
+    - profile: racingbike
+  profiles_lm: []
+  graph.encoded_values: racingbike_priority,racingbike_access,roundabout,racingbike_average_speed,bike_road_access,mtb_rating,hike_rating,country,road_class,surface,smoothness
+  # First baseline has no elevation. Steep-road comparisons need a separate import.
+  graph.elevation.provider: noop
+  import.osm.ignored_highways: construction
+  routing.timeout_ms: 60000
+  graph.dataaccess.default_type: RAM_STORE
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1
+logging:
+  level: INFO

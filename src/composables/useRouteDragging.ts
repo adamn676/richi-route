@@ -1,124 +1,139 @@
-// src/composables/useRouteDragging.ts
-import { onMounted, onBeforeUnmount, type Ref, ref } from 'vue';
-import maplibregl, { type MapLayerMouseEvent, type MapMouseEvent, type Map as MaplibreMap } from 'maplibre-gl';
-import { useRouteStore } from '@/stores/route.store';
-import { useMapMarkers } from '@/composables/useMapMarkers';
+import { onBeforeUnmount, watch, type Ref } from 'vue';
+import type {
+  Map as MaplibreMap,
+  MapLayerMouseEvent,
+  MapLayerTouchEvent,
+  MapMouseEvent,
+  MapTouchEvent,
+  Marker,
+} from 'maplibre-gl';
 import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
-import { getRadiusForZoom } from '@/utils/mapHelpers';
+import { createPreviewMarker } from '@/composables/useMapMarkers';
+import { useRouteStore } from '@/stores/route.store';
 
-export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }) {
+interface DragState {
+  fromId: string;
+  toId: string;
+  start: { x: number; y: number };
+  marker: Marker;
+  moved: boolean;
+  restorePan: boolean;
+}
+
+const suppressedClicks = new WeakMap<MaplibreMap, { x: number; y: number; until: number }>();
+
+export function consumeRouteDragClick(map: MaplibreMap, point: { x: number; y: number }): boolean {
+  const suppressed = suppressedClicks.get(map);
+  if (!suppressed) return false;
+  suppressedClicks.delete(map);
+  return performance.now() < suppressed.until && Math.hypot(point.x - suppressed.x, point.y - suppressed.y) < 20;
+}
+
+export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): void {
   const routeStore = useRouteStore();
-  const { createTempMarker } = useMapMarkers(options.map);
+  let drag: DragState | null = null;
 
-  let onDownListener: ((e: MapLayerMouseEvent) => void) | null = null;
-  let onMoveListener: ((e: MapMouseEvent) => void) | null = null;
-  let windowOnUpListener: ((this: Window, ev: MouseEvent) => any) | null = null;
-
-  let tempShapingMarker: maplibregl.Marker | null = null;
-  const isDragging = ref(false);
-  const currentSegmentIdx = ref<number | null>(null);
-
-  const cleanupDragState = (mapInstance?: MaplibreMap | null) => {
-    const m = mapInstance || options.map.value;
-    if (tempShapingMarker) {
-      tempShapingMarker.remove();
-      tempShapingMarker = null;
+  function onMouseMove(event: MapMouseEvent): void {
+    move(event);
+  }
+  function onTouchMove(event: MapTouchEvent): void {
+    if (event.points.length !== 1) {
+      cleanup();
+      return;
     }
-    if (m && onMoveListener) {
-      m.off('mousemove', onMoveListener);
+    move(event);
+  }
+  function move(event: MapMouseEvent | MapTouchEvent): void {
+    if (!drag) return;
+    if (Math.hypot(event.point.x - drag.start.x, event.point.y - drag.start.y) >= 6) {
+      drag.moved = true;
     }
-    if (windowOnUpListener) {
-      window.removeEventListener('mouseup', windowOnUpListener);
-      windowOnUpListener = null;
-    }
+    if (drag.moved) drag.marker.setLngLat(event.lngLat);
+  }
 
-    onMoveListener = null;
+  function cleanup(): void {
+    const map = options.map.value;
+    map?.off('mousemove', onMouseMove);
+    map?.off('touchmove', onTouchMove);
+    map?.off('mouseup', finish);
+    map?.off('touchend', finish);
+    map?.off('touchcancel', cleanup);
+    window.removeEventListener('mouseup', finish);
+    window.removeEventListener('touchend', finish);
+    if (drag?.restorePan) map?.dragPan.enable();
+    drag?.marker.remove();
+    drag = null;
+  }
 
-    if (m?.dragPan) {
+  function finish(): void {
+    const current = drag;
+    const map = options.map.value;
+    if (current && map && current.moved) {
+      const position = current.marker.getLngLat();
+      const pixel = map.project(position);
+      suppressedClicks.set(map, { x: pixel.x, y: pixel.y, until: performance.now() + 700 });
       try {
-        m.dragPan.enable();
-      } catch (err) {
-        // console.warn("Could not enable dragPan, map might be unmounted.", err);
+        routeStore.insertShapingPoint(current.fromId, current.toId, [position.lng, position.lat]);
+      } catch (error) {
+        console.error('Formpunkt konnte nicht gesetzt werden:', error);
+        routeStore.errorMessage = error instanceof Error ? error.message : 'Formpunkt konnte nicht gesetzt werden.';
       }
     }
-    isDragging.value = false;
-    currentSegmentIdx.value = null;
-  };
+    cleanup();
+  }
 
-  onMounted(() => {
-    const mapInstance = options.map.value;
-    if (!mapInstance) return;
+  function start(event: MapLayerMouseEvent | MapLayerTouchEvent): void {
+    const map = options.map.value;
+    if (!map || drag || !routeStore.route) return;
+    if (event.type === 'mousedown' && event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) return;
+    const feature = event.features?.[0];
+    const { fromId, toId } = feature?.properties ?? {};
+    if (typeof fromId !== 'string' || typeof toId !== 'string') return;
+    if (event.originalEvent.target instanceof HTMLElement && event.originalEvent.target.closest('.maplibregl-marker')) return;
 
-    onDownListener = (e: MapLayerMouseEvent) => {
-      const m = options.map.value;
-      if (!routeStore.route || !m || e.defaultPrevented || e.originalEvent.button !== 0) {
-        return;
-      }
-
-      const feature = e.features?.[0];
-      const featIdx = feature?.properties?.idx as number | undefined;
-
-      if (featIdx == null) {
-        return;
-      }
-
-      if ((e.originalEvent.target as HTMLElement)?.closest('.maplibregl-marker')) {
-        return;
-      }
-
-      e.preventDefault();
-      if (m.dragPan) m.dragPan.disable();
-
-      currentSegmentIdx.value = featIdx;
-      isDragging.value = true;
-
-      if (tempShapingMarker) tempShapingMarker.remove();
-      tempShapingMarker = createTempMarker([e.lngLat.lng, e.lngLat.lat], 'temp-shaping');
-
-      onMoveListener = (ev: MapMouseEvent) => {
-        if (!isDragging.value || !tempShapingMarker) return;
-        tempShapingMarker.setLngLat(ev.lngLat);
-      };
-      m.on('mousemove', onMoveListener);
-
-      windowOnUpListener = async (ev: MouseEvent) => {
-        if (!isDragging.value) {
-          cleanupDragState(m);
-          return;
-        }
-
-        const finalLngLat = tempShapingMarker?.getLngLat();
-        const currentMapInstance = options.map.value; // Use the reactive ref to get current map instance
-
-        if (currentSegmentIdx.value != null && finalLngLat && currentMapInstance) {
-          const zoom = currentMapInstance.getZoom();
-          const calculatedRadius = getRadiusForZoom(zoom);
-
-          console.log(
-            `[useRouteDragging] mouseup - Inserting shaping point after segment ${currentSegmentIdx.value}, at ${finalLngLat.lng}, ${
-              finalLngLat.lat
-            } with radius ${calculatedRadius}m (Zoom: ${zoom.toFixed(2)})`
-          );
-
-          // Call the updated store action with the calculated radius
-          await routeStore.insertShapingPoint(
-            currentSegmentIdx.value + 1, // originalSegmentIdxPlusOne
-            [finalLngLat.lng, finalLngLat.lat],
-            calculatedRadius
-          );
-        }
-        cleanupDragState(currentMapInstance); // Pass the map instance used for getZoom
-      };
-      window.addEventListener('mouseup', windowOnUpListener, { once: true });
+    event.preventDefault();
+    const restorePan = map.dragPan.isEnabled();
+    if (restorePan) map.dragPan.disable();
+    drag = {
+      fromId,
+      toId,
+      start: { x: event.point.x, y: event.point.y },
+      marker: createPreviewMarker(map, [event.lngLat.lng, event.lngLat.lat]),
+      moved: false,
+      restorePan,
     };
-    mapInstance.on('mousedown', SEGMENTS_BASE_LAYER, onDownListener);
-  });
+    map.on('mousemove', onMouseMove);
+    map.on('touchmove', onTouchMove);
+    map.on('mouseup', finish);
+    map.on('touchend', finish);
+    map.on('touchcancel', cleanup);
+    window.addEventListener('mouseup', finish, { once: true });
+    window.addEventListener('touchend', finish, { once: true });
+  }
+
+  function onMouseDown(event: MapLayerMouseEvent): void { start(event); }
+  function onTouchStart(event: MapLayerTouchEvent): void { start(event); }
+  function onHover(): void { if (options.map.value) options.map.value.getCanvas().style.cursor = 'grab'; }
+  function onLeave(): void { if (options.map.value) options.map.value.getCanvas().style.cursor = ''; }
+
+  watch(options.map, (map, previous) => {
+    previous?.off('mousedown', SEGMENTS_BASE_LAYER, onMouseDown);
+    previous?.off('touchstart', SEGMENTS_BASE_LAYER, onTouchStart);
+    previous?.off('mouseenter', SEGMENTS_BASE_LAYER, onHover);
+    previous?.off('mouseleave', SEGMENTS_BASE_LAYER, onLeave);
+    if (!map) return;
+    map.on('mousedown', SEGMENTS_BASE_LAYER, onMouseDown);
+    map.on('touchstart', SEGMENTS_BASE_LAYER, onTouchStart);
+    map.on('mouseenter', SEGMENTS_BASE_LAYER, onHover);
+    map.on('mouseleave', SEGMENTS_BASE_LAYER, onLeave);
+  }, { immediate: true });
 
   onBeforeUnmount(() => {
-    const m = options.map.value;
-    cleanupDragState(m);
-    if (onDownListener && m) {
-      m.off('mousedown', SEGMENTS_BASE_LAYER, onDownListener);
-    }
+    cleanup();
+    const map = options.map.value;
+    map?.off('mousedown', SEGMENTS_BASE_LAYER, onMouseDown);
+    map?.off('touchstart', SEGMENTS_BASE_LAYER, onTouchStart);
+    map?.off('mouseenter', SEGMENTS_BASE_LAYER, onHover);
+    map?.off('mouseleave', SEGMENTS_BASE_LAYER, onLeave);
   });
 }

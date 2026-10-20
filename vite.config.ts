@@ -1,23 +1,17 @@
-import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
-import tailwindcss from "@tailwindcss/vite";
-import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import { fileURLToPath, URL } from 'node:url';
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
+  envDir: false,
+  plugins: [vue()],
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
+    host: '127.0.0.1', port: 5173, strictPort: true,
     proxy: {
-      "/ors-api": {
-        target: "https://api.openrouteservice.org",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ors-api/, ""),
-      },
+      '/routing': { target: 'http://127.0.0.1:17777', rewrite: path => path.replace(/^\/routing/, '') },
+      '/geocoding': { target: 'http://127.0.0.1:2322', rewrite: path => path.replace(/^\/geocoding/, '') },
+      '/tiles': { target: 'http://127.0.0.1:8989', rewrite: path => path.replace(/^\/tiles/, '/mvt') },
     },
   },
 });

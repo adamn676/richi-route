@@ -1,0 +1,7 @@
+{
+  "id": "thal-local-v1",
+  "nogos": "15.377673,47.098973,5,50",
+  "acceptedOn": "2026-10-20",
+  "reviewRunId": "2026-10-19T21-01-39-289Z-2152b0bd",
+  "reason": "Rider prefers Thalstrasse to the adjacent narrow cycle path. A finite weight keeps deliberate path selection possible. The 5 m radius selects map geometry; it is not a path-width measurement."
+}

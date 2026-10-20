@@ -1,210 +1,246 @@
 <template>
-  <div class="bg-white shadow-lg p-4 space-y-4 overflow-y-auto h-full">
-    <h2 class="text-xl font-semibold text-gray-700">Route Planner</h2>
+  <div class="planner">
+    <header class="planner__header">
+      <span class="planner__eyebrow">GRAZ · RENNRAD</span>
+      <h1>RichiRoute</h1>
+      <p>Lokales Rennrad-Routing · bevorzugt befestigte Wege.</p>
+    </header>
 
-    <div v-for="(waypoint, index) in routeStore.waypoints" :key="waypoint.id" class="p-3 border rounded-md shadow-sm bg-gray-50">
-      <div class="flex items-center justify-between">
-        <span class="font-medium text-indigo-600">{{ getWaypointLabel(waypoint, index) }}</span>
-        <Button
-          v-if="canRemove(waypoint)"
-          icon="pi pi-times"
-          class="p-button-text p-button-danger p-button-sm"
-          @click="removeWaypoint(waypoint.id)"
-          aria-label="Remove waypoint"
+    <div class="planner__draft" aria-live="polite">
+      <p v-if="routeStore.draftError" class="planner__error">{{ routeStore.draftError }}</p>
+      <p v-else class="planner__help">{{ draftLabel }}</p>
+      <button v-if="routeStore.draftError" type="button" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</button>
+    </div>
+
+    <section class="planner__summary" aria-label="Streckendaten" aria-live="polite">
+      <div><strong>{{ distanceLabel }}</strong><span>Distanz</span></div>
+      <div><strong>{{ ascentLabel }}</strong><span>Aufstieg</span></div>
+    </section>
+    <ElevationProfile :points="routeStore.points" :legs="routeStore.legs" />
+    <div class="planner__legend" aria-label="Oberflächenfarben">
+      <span><i class="surface asphalt" />Asphalt</span>
+      <span><i class="surface paved" />Befestigt</span>
+      <span><i class="surface rough" />Holprig</span>
+      <span><i class="surface unpaved" />Unbefestigt</span>
+      <span><i class="surface unknown" />Unbekannt</span>
+      <span><i class="surface air" />Luftlinie</span>
+    </div>
+
+    <p v-if="routeStore.errorMessage" class="planner__error" role="alert">{{ routeStore.errorMessage }}</p>
+    <button v-if="routeStore.errorMessage" type="button" @click="routeStore.retryRouting()">Erneut versuchen</button>
+    <p v-else-if="routeStore.hasAirLines" class="planner__hint" role="status">
+      Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.
+    </p>
+
+    <div class="planner__heading">
+      <h2>Streckenpunkte</h2>
+      <span>{{ routeStore.pendingLegCount || routeStore.pendingSnapCount ? 'Berechnung läuft …' : 'Klick auf die Karte' }}</span>
+    </div>
+    <ol class="planner__stops">
+      <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop">
+        <div class="planner__stop-head">
+          <label :for="`address-${point.id}`">{{ labelFor(point.kind, index) }}</label>
+          <div v-if="point.kind === 'via'" class="planner__stop-actions">
+            <button
+              type="button"
+              :disabled="viaIds.indexOf(point.id) === 0"
+              :aria-label="`${labelFor(point.kind, index)} nach oben verschieben`"
+              title="Nach oben"
+              @click="run(() => routeStore.moveWaypoint(point.id, -1))"
+            >↑</button>
+            <button
+              type="button"
+              :disabled="viaIds.indexOf(point.id) === viaIds.length - 1"
+              :aria-label="`${labelFor(point.kind, index)} nach unten verschieben`"
+              title="Nach unten"
+              @click="run(() => routeStore.moveWaypoint(point.id, 1))"
+            >↓</button>
+            <button
+              type="button"
+              :aria-label="`${labelFor(point.kind, index)} löschen`"
+              title="Stopp löschen"
+              @click="run(() => routeStore.removeWaypoint(point.id))"
+            >×</button>
+          </div>
+        </div>
+        <AddressSearchInput
+          :waypoint-id="point.id"
+          :model-value="point.userInput"
+          :placeholder="point.kind === 'start' ? 'Start suchen oder Karte anklicken' : 'Adresse suchen oder Karte anklicken'"
+          @update:model-value="(value) => routeStore.setWaypointQuery(point.id, value)"
+          @item-select="(place) => run(() => routeStore.setWaypointPlace(point.id, place))"
+          @text-submit="(query) => run(() => routeStore.searchAndSetWaypointAddress(point.id, query))"
         />
-      </div>
+        <small v-if="point.isGeocoding">Adresse wird ermittelt …</small>
+        <small v-else-if="point.address && point.address !== point.userInput">Bisher: {{ point.address }}</small>
+        <small v-else-if="point.coord && !point.address">
+          Punkt: {{ point.coord[1].toFixed(5) }}° N, {{ point.coord[0].toFixed(5) }}° E
+        </small>
+        <small v-else-if="!point.coord">Noch kein Punkt gesetzt</small>
+        <small v-if="point.snapPending">Straßenpunkt wird gesucht …</small>
+        <small v-if="point.snapError" role="alert">{{ point.snapError }}</small>
+      </li>
+    </ol>
 
-      <AddressSearchInput
-        v-model="waypoint.userInput"
-        :waypoint-id="waypoint.id"
-        :placeholder="getPlaceholder(waypoint)"
-        :disabled="waypoint.isGeocoding"
-        :is-geocoding-externally="waypoint.isGeocoding"
-        @item-select="(place: Place) => onAddressSelect(place, waypoint.id)"
-        @text-submit="(query: string) => handleTextSubmit(query, waypoint.id)"
-        @geocoding-status="(status: boolean) => handleChildInputLoading(waypoint.id, status)"
-        class="mt-2"
-      />
+    <button
+      type="button"
+      class="planner__add"
+      :disabled="!hasEndpoints"
+      @click="addStop"
+    >+ Zwischenstopp hinzufügen</button>
 
-      <div v-if="waypoint.isGeocoding && !childInputLoadingStatus[waypoint.id]" class="mt-1 text-xs text-gray-500 flex items-center">
-        <ProgressSpinner style="width: 1rem; height: 1rem; margin-right: 0.5rem" strokeWidth="8" animationDuration=".5s" />
-        <span>{{ waypoint.address }}</span>
-      </div>
-
-      <div
-        v-else-if="
-          !waypoint.isGeocoding && waypoint.address && waypoint.userInput !== waypoint.address && isValidAddressForCurrentDisplay(waypoint.address) // Helper to avoid showing default prompts
-        "
-        class="mt-1 text-xs text-gray-500"
-      >
-        Current: {{ waypoint.address }}
-      </div>
+    <div class="planner__tools">
+      <button type="button" :disabled="!routeStore.canUndo" @click="routeStore.undo()">↶ Rückgängig</button>
+      <button type="button" :disabled="!routeStore.canRedo" @click="routeStore.redo()">↷ Wiederholen</button>
+      <button
+        type="button"
+        :disabled="!routeStore.route"
+        @click="run(() => routeStore.optimizeEntireRoute())"
+      >Gesamte Route optimieren</button>
+      <button
+        type="button"
+        :disabled="!routeStore.shapingPoints.length"
+        @click="run(() => routeStore.clearShaping())"
+      >Formpunkte entfernen</button>
     </div>
-
-    <div class="action-buttons space-y-2 pt-4">
-      <Button
-        label="Add Via Point"
-        icon="pi pi-plus-circle"
-        class="w-full p-button-outlined p-button-sm"
-        @click="addIntermediateStop"
-        :disabled="routeStore.waypoints.filter((wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0).length < 2"
-      />
-      <Button
-        label="Optimize Entire Route"
-        icon="pi pi-sparkles"
-        class="w-full p-button-sm"
-        @click="optimizeRoute"
-        :loading="routeStore.isCalculatingGlobalRoute"
-      />
-      <Button
-        label="Clear Shaping Points"
-        icon="pi pi-eraser"
-        class="w-full p-button-warning p-button-outlined p-button-sm"
-        @click="clearShapingPoints"
-        :disabled="routeStore.shapingPoints.length === 0"
-      />
-    </div>
+    <button type="button" class="planner__export" :disabled="Boolean(exportReason)" :title="exportReason ?? 'Berechnete Strecke als GPX-Track herunterladen'" @click="downloadGpx">GPX herunterladen</button>
+    <p v-if="exportReason && hasEndpoints" class="planner__help">{{ exportReason }}</p>
+    <button v-if="!hasEndpoints" type="button" class="planner__add" @click="routeStore.resetRoute([[15.474345, 47.090869], [15.503735, 47.105271]])">Beispiel: Hahnhofweg → Roseggerweg</button>
+    <button v-else type="button" class="planner__add" @click="routeStore.resetRoute()">Neue Route</button>
+    <p class="planner__help">
+      Karte anklicken: Start, Ziel, dann Stopps. Auf die Linie klicken: Stopp setzen.
+      Linie ziehen: Formpunkt setzen. Nur betroffene Abschnitte werden neu berechnet.
+    </p>
+    <p class="planner__help">Unbefestigte Abschnitte bleiben möglich und werden farbig markiert. Adresssuche benötigt den optionalen lokalen Suchdienst. Straßenkarte und Luftbilder benötigen Internet.</p>
+    <p class="planner__credit">Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende</a></p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { watch, onMounted, reactive, nextTick } from 'vue'; // Removed unused imports like computed
-import { useRouteStore, type Waypoint } from '@/stores/route.store';
-import type { Place } from '@/services/maptiler.service';
+import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue';
 import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
-import Button from 'primevue/button';
-import ProgressSpinner from 'primevue/progressspinner';
-// Icon, getIconForPlaceType, useMapStore, turf are NOT needed here anymore,
-// as AddressSearchInput handles its own dropdown.
+import ElevationProfile from '@/components/ui/ElevationProfile.vue';
+import { useRouteStore, type Waypoint } from '@/stores/route.store';
+import { saveDraftNow } from '@/services/draft.service';
+import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 
 const routeStore = useRouteStore();
+const exportReason = computed(() => gpxUnavailableReason(routeStore));
+const draftLabel = computed(() => ({
+  idle: 'Speichert automatisch in diesem Browser.',
+  saving: 'Wird in diesem Browser gespeichert …',
+  saved: 'In diesem Browser gespeichert.',
+  restored: 'Gespeicherte Route wiederhergestellt.',
+  error: '',
+}[routeStore.draftStatus]));
 
-// Tracks the internal loading state of each AddressSearchInput child
-// Used to coordinate the display of the inline spinner
-const childInputLoadingStatus = reactive<Record<string, boolean>>({});
-
-const handleChildInputLoading = (waypointId: string, isLoading: boolean) => {
-  childInputLoadingStatus[waypointId] = isLoading;
-};
-
-const onAddressSelect = async (selectedPlace: Place, waypointId: string) => {
-  const waypoint = routeStore.waypoints.find((wp) => wp.id === waypointId);
-  if (waypoint && selectedPlace) {
-    console.log(`WaypointsPanel: Address selected for ${waypointId} - ${selectedPlace.label}`);
-    // Update the store. This change in waypoint.coords will trigger useMarkerWatches.
-    waypoint.coords = selectedPlace.coord;
-    waypoint.address = selectedPlace.label;
-    waypoint.userInput = selectedPlace.label; // Sync userInput with selected address
-    waypoint.kind = selectedPlace.kind || waypoint.kind;
-    waypoint.isGeocoding = false; // Selection implies geocoding operation is done
-    await routeStore.recalc();
-  }
-};
-
-const handleTextSubmit = async (query: string, waypointId: string) => {
-  if (!query.trim()) return;
-  console.log(`WaypointsPanel: Text submitted for ${waypointId} - ${query}`);
-  // Let the store handle the full geocoding process and state updates
-  await routeStore.searchAndSetWaypointAddress(waypointId, query);
-};
-
-const getWaypointLabel = (waypoint: Waypoint, index: number): string => {
-  if (waypoint.kind === 'start') return 'Start';
-  if (waypoint.kind === 'end') return 'End';
-  const viaWaypoints = routeStore.waypoints.filter((wp) => wp.kind !== 'start' && wp.kind !== 'end');
-  const viaIndex = viaWaypoints.findIndex((wp) => wp.id === waypoint.id);
-  // Adjust index based on whether the first point is a start point that counts
-  const baseIndexAdjustment = routeStore.waypoints[0]?.kind === 'start' && index > 0 ? 1 : 0;
-  return `Via ${viaIndex >= 0 ? viaIndex + 1 : index - baseIndexAdjustment + 1}`;
-};
-
-const defaultPlaceholders = [
-  'Start Point',
-  'End Point',
-  'Via Point',
-  'New Via Point (Search or click map)',
-  'Loading address...',
-  'Searching for...',
-  'Address not found',
-  'Address lookup failed',
-  'Location not found',
-];
-
-const isValidAddressForCurrentDisplay = (address: string | null): boolean => {
-  if (!address) return false;
-  return !defaultPlaceholders.includes(address) && !address.startsWith('Searching for') && !address.startsWith('Loading');
-};
-
-const getPlaceholder = (waypoint: Waypoint): string => {
-  // This placeholder is shown by the browser if waypoint.userInput is empty.
-  // If waypoint.userInput has a value (e.g., from map click geocoding), that value is shown, not the placeholder.
-  if (waypoint.isGeocoding && waypoint.address) {
-    return waypoint.address; // e.g., "Loading address..." or "Searching for..."
-  }
-
-  // For initial state or after a map click (where userInput was set to the address)
-  // if userInput is then cleared by the user, show these generic prompts.
-  // OR, if userInput is empty and address is a default prompt.
-  if (waypoint.kind === 'start') return 'Search Start or click map';
-  if (waypoint.kind === 'end') return 'Search End or click map';
-  // For a new via point, address might be "New Via Point...", which is fine as placeholder if userInput is empty
-  if (waypoint.address === 'New Via Point (Search or click map)') return waypoint.address;
-
-  return 'Search address or click map'; // Generic fallback
-};
-
-const removeWaypoint = async (waypointId: string) => {
-  await routeStore.removeWaypoint(waypointId);
-};
-
-const addIntermediateStop = async () => {
-  await routeStore.addIntermediateStopAndPrepare();
-  await nextTick();
-  const newViaPoint = routeStore.waypoints.find(
-    (wp) => wp.address === 'New Via Point (Search or click map)' && wp.coords[0] === 0 && wp.coords[1] === 0 && wp.kind === 'via'
-  );
-  if (newViaPoint) {
-    // Focusing the input inside the child component from here is tricky.
-    // It's simpler to let the user click into it.
-    // For automatic focus, AddressSearchInput would need to expose its inputElement
-    // or have a focus() method, and WaypointsPanel would need to get a ref to AddressSearchInput.
-    console.log('New via point added, user can click to edit:', newViaPoint.id);
-  }
-};
-const optimizeRoute = async () => {
-  await routeStore.optimizeEntireRoute();
-};
-const clearShapingPoints = async () => {
-  await routeStore.clearShaping();
-};
-const canRemove = (waypoint: Waypoint): boolean => {
-  return (waypoint.kind !== 'start' && waypoint.kind !== 'end') || routeStore.waypoints.length > 2;
-};
-
-onMounted(() => {
-  routeStore.waypoints.forEach((wp) => {
-    // If userInput is undefined, or if it's empty AND address is a specific geocoded one, sync them.
-    // This ensures that if a map click populates 'address' and 'userInput', it shows.
-    // If 'userInput' was then cleared, placeholder logic takes over.
-    if (wp.userInput === undefined) {
-      wp.userInput = wp.address && !defaultPlaceholders.includes(wp.address) ? wp.address : '';
-    }
-    childInputLoadingStatus[wp.id] = false;
-  });
+function downloadGpx() {
+  const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `richiroute-${new Date().toISOString().slice(0, 10)}.gpx`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const viaIds = computed(() => routeStore.waypoints.filter((point) => point.kind === 'via').map((point) => point.id));
+const hasEndpoints = computed(() => {
+  const stops = routeStore.waypoints;
+  return Boolean(stops[0]?.coord && stops[stops.length - 1]?.coord);
 });
+const distanceLabel = computed(() => {
+  if (!routeStore.route) return '—';
+  const value = (routeStore.distanceMeters / 1000).toLocaleString('de-AT', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${routeStore.hasAirLines ? 'ca. ' : ''}${value} km`;
+});
+const ascentLabel = computed(() =>
+  routeStore.ascentMeters === null ? '—' : `${Math.round(routeStore.ascentMeters)} hm`);
 
-watch(
-  () => routeStore.waypoints,
-  (newWaypoints) => {
-    newWaypoints.forEach((wp) => {
-      if (wp.userInput === undefined) {
-        wp.userInput = wp.address && !defaultPlaceholders.includes(wp.address) ? wp.address : '';
-      }
-      if (childInputLoadingStatus[wp.id] === undefined) {
-        childInputLoadingStatus[wp.id] = false;
-      }
-    });
-  },
-  { deep: true }
-);
+function labelFor(kind: Waypoint['kind'], index: number): string {
+  if (kind === 'start') return 'Start';
+  if (kind === 'end') return 'Ziel';
+  return `Zwischenstopp ${index}`;
+}
+
+async function run(action: () => void | Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    console.error('Editor-Aktion fehlgeschlagen:', error);
+    routeStore.errorMessage = error instanceof Error ? error.message : 'Die Aktion konnte nicht ausgeführt werden.';
+  }
+}
+
+async function addStop(): Promise<void> {
+  let id: string | undefined;
+  await run(() => { id = routeStore.addIntermediateStopAndPrepare(); });
+  await nextTick();
+  if (id) document.getElementById(`address-${id}`)?.focus();
+}
+
+function onShortcut(event: KeyboardEvent): void {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+  const target = event.target;
+  if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName))) return;
+  if (event.key.toLowerCase() === 'z' && !event.shiftKey && routeStore.canUndo) {
+    event.preventDefault();
+    routeStore.undo();
+  } else if ((event.key.toLowerCase() === 'y' || (event.key.toLowerCase() === 'z' && event.shiftKey)) && routeStore.canRedo) {
+    event.preventDefault();
+    routeStore.redo();
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onShortcut));
+onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 </script>
+
+<style scoped>
+.planner { display: grid; gap: 1rem; padding: 1.4rem; color: #19343c; }
+.planner__header h1 { margin: .15rem 0; font-size: 1.85rem; letter-spacing: -.06em; line-height: 1.15; }
+.planner__header p, .planner__help { color: #60757b; font-size: .82rem; line-height: 1.5; margin: .2rem 0 0; }
+.planner__eyebrow { font-size: .68rem; letter-spacing: .15em; font-weight: 800; color: #0d7d72; }
+.planner__summary { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.planner__summary > div { display: grid; gap: .1rem; border: 1px solid #dde7e5; border-radius: .75rem; padding: .75rem .9rem; background: white; }
+.planner__summary strong { font-size: 1.3rem; letter-spacing: -.04em; }
+.planner__summary span, .planner__heading span { font-size: .73rem; color: #62777b; }
+.planner__legend { display: flex; flex-wrap: wrap; column-gap: .75rem; row-gap: .4rem; }
+.planner__legend span { display: inline-flex; align-items: center; gap: .25rem; font-size: .67rem; color: #577077; }
+.surface { display: inline-block; width: .8rem; height: .24rem; border-radius: .3rem; background: #1d7f69; }
+.surface.asphalt { background: #147568; }
+.surface.paved { background: #277bb1; }
+.surface.rough { background: #bd6f28; }
+.surface.unpaved { background: #dc5442; }
+.surface.unknown { background: #74818a; }
+.surface.air { background: transparent; border-top: 2px dashed #b33c4b; border-radius: 0; }
+.planner__error, .planner__hint { margin: 0; padding: .7rem; border-radius: .55rem; font-size: .8rem; line-height: 1.4; }
+.planner__error { color: #812f23; background: #fff1ed; }
+.planner__hint { color: #68502b; background: #fff7e7; }
+.planner__heading { display: flex; justify-content: space-between; align-items: baseline; }
+.planner__heading h2 { font-size: 1rem; margin: 0; }
+.planner__stops { display: grid; gap: .65rem; margin: 0; padding: 0; list-style: none; }
+.planner__stop { padding: .8rem; border: 1px solid #dde7e5; border-radius: .75rem; background: #fff; }
+.planner__stop-head { display: flex; align-items: center; justify-content: space-between; min-height: 1.7rem; margin-bottom: .3rem; }
+.planner__stop label { font-weight: 700; font-size: .81rem; }
+.planner__stop small { display: block; color: #65767a; font-size: .69rem; margin-top: .4rem; }
+.planner__stop-actions { display: flex; gap: .2rem; }
+.planner__stop-actions button { min-width: 1.9rem; min-height: 1.9rem; font-size: 1.1rem; }
+.planner button { cursor: pointer; border: 1px solid #cddbd9; border-radius: .5rem; background: white; color: #16515a; }
+.planner button:hover:not(:disabled) { border-color: #08796f; background: #e9f5f1; }
+.planner button:focus-visible { outline: 2px solid #086c78; outline-offset: 2px; }
+.planner button:disabled { cursor: not-allowed; opacity: .45; }
+.planner__add { min-height: 2.6rem; font-weight: 700; }
+.planner .planner__export { min-height: 2.7rem; background: #0b706c; color: white; font-weight: 700; }
+.planner .planner__export:hover:not(:disabled) { background: #095f5c; }
+.planner__draft button { margin-top: .5rem; padding: .5rem; }
+.planner__tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.planner__tools button { min-height: 2.5rem; padding: .35rem; font-size: .76rem; }
+.planner__tools button:nth-child(3) { grid-column: span 2; background: #0b706c; color: white; border: 0; font-weight: 700; }
+.planner__tools button:nth-child(3):hover:not(:disabled) { background: #095f5c; }
+.planner__credit { margin: 0; font-size: .65rem; color: #7b8a8e; }
+.planner__credit a { color: inherit; text-decoration: underline; }
+</style>

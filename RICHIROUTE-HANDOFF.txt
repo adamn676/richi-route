@@ -1,0 +1,183 @@
+RichiRoute: handoff to the desktop computer
+
+CHECKPOINT 2026-10-20
+The user requested a local commit of the current code. No push requested.
+Both production builds and all 48 unit tests passed before committing.
+The comparison now uses native buttons, removing its leftover PrimeVue imports.
+Private routing data, caches, browser artifacts and environment files stay ignored.
+Earlier statements below about no commit describe the state at those dates.
+
+UPDATE 2026-10-20: AUTOMATIC DRAFT SAVING AND GPX EXPORT
+The current route now saves in browser localStorage at 127.0.0.1:5173 under
+richiroute.route-draft.v1. It keeps ordered stops/shaping points, exact leg geometry,
+surface spans and elevations. Finished legs restore without routing requests;
+pending snaps/missing legs resume. One current draft only, no account/cloud sync.
+Undo history is session-only. New Route saves an empty draft. Storage failures are
+visible; malformed drafts remain untouched until explicit replacement. Other-tab
+writes pause saving here. The sidebar has GPX herunterladen for fully routed
+tracks with known elevation; pending work and air legs cannot be exported.
+Key files: src/domain/route-draft.ts, src/services/draft.service.ts,
+src/domain/route-gpx.ts. App.vue starts persistence before rendering the editor.
+28 unit tests, root build, tests/browser-route-files.mjs and the full existing
+tests/browser-editor.mjs passed. The existing MapLibre bundle warning remains.
+GPX XML/coordinates/elevation were checked, not physical cycling-device import.
+No new dependency, service, fee, commit or push. Thal review is complete.
+Next phase is fresh-route evaluation with fixed settings, not repeated Thal review.
+
+UPDATE 2026-10-19: LOCAL EDITOR INTEGRATION
+Restart fix 2026-10-20: the comparison Vite config now uses node_modules/.vite-routing.
+Sharing the editor's default node_modules/.vite cache caused HTTP 504 Outdated
+Optimize Dep and a blank comparison page when both servers started together.
+Both pages and a comparison reload were checked in the browser after separation.
+The local BRouter also has the rider-confirmed ries-bicycle-turn-v1 exception
+for Riesstrasse -> Stiftingtalstrasse near Schillingsdorf, OSM relation 1597055.
+It removes the reproduced 260 m turnaround while retaining restrictions at
+other turns and for motorcars. Build with npm run bench:brouter:patch; Compose
+uses the separate patched JAR. See experiments/routing/brouter-patch/README.md.
+After map updates run node tests/ries-junction-local.mjs. Public OSM unchanged.
+The user authorized selective editor integration after reviewing D:\rr and the
+critical audit. The active editor now uses local BRouter richi-surface-v4, Vue,
+Pinia and MapLibre, without hosted routing or AI inference. EUR 0 additional
+service charges remains the constraint. npm run dev serves it at 127.0.0.1:5173;
+the original comparison remains at 5174. See README.md and the final integration
+section in experiments/routing/README.md for current commands and evidence.
+The previous source, including uncommitted changes, is archived privately under
+experiments/routing/.local/editor-before-integration-2026-10-19/. No commit/push.
+Address search needs an optional local Photon installation, not supplied here.
+Surface-v4 still prefers paving rather than guaranteeing paved-only routing.
+Thal Automatic local preference thal-local-v1 is accepted and active as of 2026-10-20.
+Run 2026-10-19T21-01-39-289Z-2152b0bd follows the rider-preferred main road without
+shaping points. Twelve saved route variants and the Ries correction are unchanged.
+The user confirmed "didnt we already review that??? all same route and good".
+Do not ask for the same review again. The editor and comparison share the finite
+avoidance weight in src/config/thal-preference.json; surface-v4 itself is unchanged.
+node tests/thal-editor-local.mjs verifies both directions, explicit path selection,
+snapping, a short path trip and undo through the editor's service and store.
+This is a local preference, not general width-aware routing or a path closure.
+See the Thal local preference preview section in experiments/routing/README.md.
+Do not declare the engine evaluation complete.
+The remaining text below is the original transfer handoff and includes stale scope.
+
+USER AND SCOPE
+Richard is moving this project from a Windows laptop to a more powerful desktop.
+RichiRoute is strictly a ROAD-CYCLING route planner. Do not broaden it to hiking,
+gravel or e-bikes. The user is very cost-sensitive. Target EUR 0 additional
+service charges: local engines, free map data, no cloud hosting or subscriptions.
+Do not automatically call hosted ORS or MapTiler until quota/billing is understood.
+The existing ChatGPT plan is separate from routing infrastructure costs.
+
+FIRST TASK ON THE NEW COMPUTER
+Richard explicitly wants Codex CLI in PowerShell, signed in with his existing
+ChatGPT account. Do not redirect him to installing the ChatGPT desktop app.
+Help set up the development environment. Inspect installed Git, Node.js and Docker
+before installing missing tools. Reinstall project dependencies; node_modules was
+deliberately excluded from this transfer. Preserve the existing code and local
+files. Do not assume the old laptop's absolute paths exist on the new computer.
+The .env files contain existing keys. Never print their values or commit them.
+
+PROJECT
+Vue 3 + TypeScript + Vite, Pinia, MapLibre GL, MapTiler, OpenRouteService,
+PrimeVue and Tailwind. The root README.md is only the original Vue template.
+Read RichiRoute.md for the original vision and prompt-new.md for later decisions.
+prompt-v1.2.md and prompt.md contain earlier context. These documents contain
+stale implementation claims; check actual code. The user's road-cycling-only
+instruction overrides older references to other cycling profiles.
+
+PRODUCT INTENT
+Choose start, destination and intermediate stops. Drag a route onto chosen roads.
+Shaping points stay out of the address panel. Preserve roads deliberately selected
+elsewhere when making a local edit. Offer explicit whole-route optimization.
+Later notes reject artificial Catmull-Rom/Bezier drag previews.
+Original documentation describes local replacement of route sections; later notes
+call global requests with all shaping points 'local splicing'. These are not the
+same guarantee. We have not yet chosen an engine or proven route quality.
+
+AUTHORIZED NEXT DELIVERABLE
+An isolated routing comparison experiment in this repository, independent of the
+current editor. Compare local GraphHopper and local BRouter, with ORS optional and
+off by default because of cost. Begin around Graz/Styria, not all of Austria.
+Use the existing Vue/MapLibre stack for a simple comparison map and a repeatable
+runner. Save requests/results, engine versions, profile settings and data dates.
+Use 12 draft road-cycling scenarios initially. Mark generated locations and
+expected roads as needing Richard's review; do not invent evidence of suitability.
+Include main road vs quiet road, parallel roads/cycle paths, awkward junctions,
+unwanted unpaved shortcuts, steep shortcuts, several shaping points, loops and
+out-and-back routes. Compare automatic route quality AND deliberate road selection.
+Komoot is a competitor/reference, not ground truth. Manual exports are optional.
+Expand toward 40 cases and independent rider reviews after the first experiment.
+Keep tuning and evaluation cases separate. Measure unwanted sections, required
+corrections, response time and unknown road attributes. Do not promise Komoot-level
+quality merely from self-hosting or from adding sliders or AI.
+
+IMPLEMENTATION STATUS
+No benchmark code, routing-engine installations, container images or map data
+were created/downloaded on the laptop. Only investigation and a baseline build
+were performed. This archive and handoff are the only migration artifacts.
+At packaging time the current commit was e6e8b13 ('new') and git status was clean.
+Previously observed user changes are now part of that commit. Inspect fresh status.
+The archive includes .git and ignored briefs/env/lockfiles, but excludes dependency
+and build directories. Do not replace the source tree with a fresh remote clone.
+
+CODE FINDINGS TO RECHECK
+- src/utils/geometry.ts assigns idx per pair of route geometry coordinates.
+  useRouteDragging passes that index to insertShapingPoint, but the store treats
+  it as a position between hard waypoints. Shaping points can be omitted.
+- route.service.ts hardcodes cycling-road, which is appropriate to the scope.
+  It strips intermediate bearings; sticky two-leg handling is a special case.
+- Sticky shaping handles only two hard waypoints and one shaping point.
+- Moving a hard waypoint clears all shaping points under the existing behavior.
+- Routing lacks cancellation/revision protection; old responses can overwrite
+  newer edits. The throttle is created within each getRoute call.
+- useRouteCalculation watches whole waypoint objects, including geocoding state.
+
+BASELINE BUILD
+npm run build on the laptop reported existing TypeScript errors, including unused
+variables/imports and obsolete _WaypointsPanel.vue calls with wrong argument types
+or a missing insertIntermediateStop method. Errors involved CustomMarker.vue,
+_WaypointsPanel.vue, useMapInteractions.ts, useMarkerWatches.ts,
+useRouteDragging.ts, route.service.ts, route.store.ts and types/index.ts.
+Do not report the existing app build as passing. Keep benchmark checks isolated
+where practical, and distinguish pre-existing failures from new failures.
+
+FREE ENGINE/DATA SOURCES INVESTIGATED
+These URLs and release metadata were checked on 2026-10-17. Downloads have NOT run.
+GraphHopper release 11.1:
+https://github.com/graphhopper/graphhopper/releases/download/11.1/graphhopper-web-11.1.jar
+47,331,301 bytes; SHA256:
+8462f758d9ea49edaded557cec5c687a0a24f004ec371cd4daaeb0534824ea33
+Config reference:
+https://raw.githubusercontent.com/graphhopper/graphhopper/11.1/config-example.yml
+Built-in racingbike.json and bike_elevation.json are possible starting profiles.
+Inspect the pinned version's required encoded values and Java runtime requirements.
+
+BRouter release v1.7.10:
+https://github.com/abrensch/brouter/releases/download/v1.7.10/brouter-1.7.10.zip
+6,724,983 bytes; SHA256:
+023fec3ba997758e8cd7ab9e1bae52e962af3f00b57683e3de86b84ffad01532
+Profile candidate: misc/profiles2/fastbike.brf. Inspect its defaults before use.
+Java entry point: btools.server.RouteServer with segment directory, profiles
+directory, custom profiles directory, port 17777 and thread count arguments.
+
+Styria OSM PBF:
+https://download.openstreetmap.fr/extracts/europe/austria/steiermark.osm.pbf
+HEAD size 178,155,794 bytes; Last-Modified 2026-10-17 01:31:03 GMT.
+Geofabrik does not expose the guessed austria/steiermark-latest.osm.pbf URL.
+
+BRouter prepared tile covering Graz (different coverage/data preparation):
+https://brouter.de/brouter/segments4/E15_N45.rd5
+HEAD size 130,022,207 bytes; Last-Modified 2026-10-17 01:03:01 GMT.
+Record this dataset difference; it is not a perfectly controlled same-data test.
+Combined downloads above are about 362 MB, plus container images and elevation.
+Keep generated data, caches, private runs and archives out of Git.
+
+WORKING PREFERENCES
+Proceed with authorized reversible work. Avoid repeated confirmation questions.
+Ask for permissions when the environment requires them and explain why.
+Do not spawn agents unless the user or applicable instructions request delegation.
+Use unslop for prose and deslop for the actual task diff where available.
+The user's Victoria-specific BOOM instructions do not apply to this repository.
+
+CHAT CONTINUITY
+This is a summary of the previous chat, not an export of its complete transcript.
+If handoff between computers is unavailable, start a new Codex chat in the extracted
+project and ask it to read this file, help finish setup, and resume the experiment.

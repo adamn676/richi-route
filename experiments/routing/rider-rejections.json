@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "rejections": [
+    {
+      "caseId": "04-thal-surface",
+      "variant": "automatic",
+      "engineId": "brouter",
+      "geometrySha256": "50fad81af589fb65361f8eb77a673e18610df34051f8ce5e584e262a4c6fb3d9",
+      "recordedDate": "2026-10-18",
+      "sourceRunId": "2026-10-18T16-48-23-850Z-1fda0c74",
+      "sourceResultId": "04-thal-surface-automatic-brouter-1",
+      "reason": "Unpaved from Thalerstraße. The rider rules out this route for road cycling."
+    },
+    {
+      "caseId": "04-thal-surface",
+      "variant": "automatic",
+      "engineId": "graphhopper",
+      "geometrySha256": "8975f4ac68cae61f382a18ff9b45279d43da6a3edbcc218b92bb93a23ac4ba71",
+      "recordedDate": "2026-10-18",
+      "sourceRunId": "2026-10-18T16-48-23-850Z-1fda0c74",
+      "sourceResultId": "04-thal-surface-automatic-graphhopper-1",
+      "reason": "The rider identifies the woodland shortcut as unpaved and unsuitable for this road-cycling route."
+    }
+  ]
+}

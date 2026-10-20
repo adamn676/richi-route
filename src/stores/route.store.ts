@@ -1,578 +1,495 @@
-// src/stores/route.store.ts
 import { defineStore } from 'pinia';
-import type { FeatureCollection as GeoJSONFeatureCollection, GeoJsonProperties } from 'geojson';
-import { getRoute, getRouteWithStickyShaping, type BearingValue, type Coord } from '@/services/route.service';
-import type { OrsFeatureCollection } from '@/types';
-import { reverseGeocode, type Place, forwardGeocode } from '@/services/maptiler.service';
-import { DEFAULT_WAYPOINT_ORS_RADIUS } from '@/config/map.config';
-import { useDebugStore, type DebugRadiusVisualization, type DebugBearingVisualization } from '@/stores/debug.store';
+import type { FeatureCollection, LineString } from 'geojson';
+import {
+  airLeg,
+  distanceMeters,
+  insertBetween,
+  isPlaced,
+  legId,
+  LegScheduler,
+  reconcileLegs,
+  sameEndpoints,
+  type Coord,
+  type LegRequest,
+  type RouteLeg,
+  type RoutePoint,
+  type ShapePoint,
+  type SurfaceSpan,
+  type Waypoint,
+} from '../domain/route-model.ts';
+import { routingEngine } from '../services/route.service.ts';
+import { forwardGeocode, type Place } from '../services/geocoding.service.ts';
+import type { RouteDraft } from '../domain/route-draft.ts';
 
-let waypointIdCounter = 0;
-const newWaypointId = () => `wp-${waypointIdCounter++}`;
+export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
 
-let shapePointIdCounter = 0;
-const newShapePointId = () => `sp-${shapePointIdCounter++}`;
-
-export interface ShapePoint {
-  id: string;
-  idx: number;
-  coord: Coord;
-  radius: number;
+interface RouteFeatureProperties {
+  legId: string;
+  fromId: string;
+  toId: string;
+  status: RouteLeg['status'];
+  surfaces: SurfaceSpan[];
 }
 
-export interface Waypoint {
-  id: string;
-  coords: Coord;
-  address: string | null;
-  isGeocoding: boolean;
-  kind: string;
-  userInput?: string;
+export type EditorRoute = FeatureCollection<LineString, RouteFeatureProperties>;
+
+interface HistoryEntry {
+  points: RoutePoint[];
+  legs: Record<string, RouteLeg>;
+}
+
+interface PendingOperations {
+  scheduler: LegScheduler;
+  snaps: Map<string, AbortController>;
+  geocodes: Map<string, AbortController>;
+}
+
+const pending = new WeakMap<object, PendingOperations>();
+const routeFailureMessage = 'Routing fehlgeschlagen. Betroffene Abschnitte bleiben als gestrichelte Luftlinie sichtbar.';
+
+function newId(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function waypoint(kind: Waypoint['kind'], coord: Coord | null = null): Waypoint {
+  return {
+    id: newId('stop'),
+    type: 'stop',
+    kind,
+    coord,
+    address: null,
+    userInput: '',
+    isGeocoding: false,
+  };
+}
+
+function validCoord(coord: Coord): void {
+  if (
+    !Number.isFinite(coord[0]) ||
+    !Number.isFinite(coord[1]) ||
+    Math.abs(coord[0]) > 180 ||
+    Math.abs(coord[1]) > 90
+  ) {
+    throw new Error('Bitte einen gültigen Punkt auf der Karte wählen.');
+  }
+}
+
+function sameCoord(left: Coord, right: Coord): boolean {
+  return left[0] === right[0] && left[1] === right[1];
+}
+
+function clonePoint(point: RoutePoint): RoutePoint {
+  if (point.type === 'shape') return { ...point, coord: [...point.coord] };
+  return {
+    ...point,
+    coord: point.coord ? [...point.coord] : null,
+    isGeocoding: false,
+  };
+}
+
+function snapshot(store: RouteStore): HistoryEntry {
+  return { points: store.points.map(clonePoint), legs: { ...store.legs } };
+}
+
+function operationsFor(store: RouteStore): PendingOperations {
+  let operations = pending.get(store);
+  if (!operations) {
+    operations = {
+      snaps: new Map(),
+      geocodes: new Map(),
+      scheduler: new LegScheduler(
+        (from, to, signal) => routingEngine.routeLeg(from, to, signal),
+        (request, leg) => {
+          const current = store.legs[request.id];
+          if (!current || !sameEndpoints(current, request)) return;
+          if (leg.status === 'routed') {
+            const placed = store.points.filter(isPlaced);
+            const endpoints = [
+              { id: leg.fromId, coord: leg.coordinates[0], requested: leg.fromCoord, key: 'fromCoord' as const },
+              { id: leg.toId, coord: leg.coordinates[leg.coordinates.length - 1], requested: leg.toCoord, key: 'toCoord' as const },
+            ];
+            const isOuter = (id: string) => id === placed[0].id || id === placed[placed.length - 1].id;
+            if (endpoints.some(end => !isOuter(end.id) && distanceMeters(end.requested, end.coord) > 2)) {
+              const message = 'Ein Abschnitt erreicht den Zwischenpunkt auf einem anderen Weg. Bitte diesen Punkt verschieben.';
+              store.legs = { ...store.legs, [request.id]: airLeg(request, message) };
+              store.errorMessage = message;
+              return;
+            }
+            // Match outer endpoints in route context, preserving the user's original click.
+            for (const end of endpoints.filter(end => isOuter(end.id))) {
+              store.points = store.points.map(point => point.id === end.id ? { ...point, coord: [...end.coord], routingCoord: undefined } : point);
+              leg[end.key] = [...end.coord];
+            }
+          }
+          store.legs = { ...store.legs, [request.id]: leg };
+        },
+        (_request, error) => {
+          console.error('Streckenabschnitt konnte nicht berechnet werden:', error);
+          store.errorMessage = routeFailureMessage;
+        },
+        (count) => { store.pendingLegCount = count; },
+      ),
+    };
+    pending.set(store, operations);
+  }
+  return operations;
+}
+
+function cancelRequests(store: RouteStore): void {
+  const operations = operationsFor(store);
+  for (const controller of operations.snaps.values()) controller.abort();
+  for (const controller of operations.geocodes.values()) controller.abort();
+  operations.snaps.clear();
+  operations.geocodes.clear();
+  operations.scheduler.cancelAll();
 }
 
 export const useRouteStore = defineStore('route', {
   state: () => ({
-    waypoints: [
-      { id: newWaypointId(), coords: [0, 0] as Coord, address: 'Start Point', isGeocoding: false, kind: 'start', userInput: '' },
-      { id: newWaypointId(), coords: [0, 0] as Coord, address: 'End Point', isGeocoding: false, kind: 'end', userInput: '' },
-    ] as Waypoint[],
-    shapingPoints: [] as ShapePoint[],
-    route: null as OrsFeatureCollection | null,
-    isCalculatingGlobalRoute: false,
-    draggedShapingPointInfo: null as { id: string; bearing: [number, number] } | null,
+    points: [waypoint('start'), waypoint('end')] as RoutePoint[],
+    legs: {} as Record<string, RouteLeg>,
+    undoStack: [] as HistoryEntry[],
+    redoStack: [] as HistoryEntry[],
+    pendingLegCount: 0,
+    errorMessage: null as string | null,
+    draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
+    draftError: null as string | null,
   }),
 
-  actions: {
-    setDraggedShapingPointBearing(info: { id: string; bearing: [number, number] } | null) {
-      this.draggedShapingPointInfo = info;
+  getters: {
+    waypoints: (state): Waypoint[] => state.points.filter((point): point is Waypoint => point.type === 'stop'),
+    shapingPoints: (state): ShapePoint[] => state.points.filter((point): point is ShapePoint => point.type === 'shape'),
+    canUndo: (state): boolean => state.undoStack.length > 0,
+    canRedo: (state): boolean => state.redoStack.length > 0,
+    pendingSnapCount: (state): number => state.points.filter(point => point.snapPending).length,
+    hasAirLines: (state): boolean => Object.values(state.legs).some((leg) => leg.status === 'air'),
+    distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
+    ascentMeters: (state): number | null => {
+      const legs = Object.values(state.legs);
+      return legs.length > 0 && legs.every((leg) => leg.ascentMeters !== null)
+        ? legs.reduce((sum, leg) => sum + (leg.ascentMeters ?? 0), 0)
+        : null;
     },
-    clearDraggedShapingPointBearing() {
-      this.draggedShapingPointInfo = null;
-    },
-
-    _addWaypointInternal(coord: Coord, kind: string, address: string | null = null, userInputInitialValue: string = ''): Waypoint {
-      const newId = newWaypointId();
-      const defaultAddressText = kind === 'start' ? 'Start Point' : kind === 'end' ? 'End Point' : 'Via Point';
-      const finalAddress = address ?? defaultAddressText;
-      const finalUserInput = userInputInitialValue || finalAddress || '';
+    route: (state): EditorRoute | null => {
+      const placed = state.points.filter(isPlaced);
+      if (placed.length < 2) return null;
       return {
-        id: newId,
-        coords: coord,
-        address: finalAddress,
-        isGeocoding: false,
-        kind: kind,
-        userInput: finalUserInput,
+        type: 'FeatureCollection',
+        features: placed.slice(0, -1).flatMap((from, index) => {
+          const to = placed[index + 1];
+          const leg = state.legs[legId(from.id, to.id)];
+          if (!leg) return [];
+          return [{
+            type: 'Feature' as const,
+            geometry: { type: 'LineString' as const, coordinates: leg.coordinates },
+            properties: {
+              legId: leg.id,
+              fromId: leg.fromId,
+              toId: leg.toId,
+              status: leg.status,
+              surfaces: leg.surfaces,
+            },
+          }];
+        }),
       };
     },
+  },
 
-    // START: ADD THIS METHOD BACK
-    async addWaypointByClick(coord: Coord) {
-      console.log('[RouteStore] addWaypointByClick called with:', coord);
-      const startWp = this.waypoints.find((wp) => wp.kind === 'start');
-      const endWp = this.waypoints.find((wp) => wp.kind === 'end');
-
-      let targetWaypointId: string | null = null;
-
-      // Ensure startWp and endWp are the first two waypoints if they exist with [0,0]
-      // This logic assumes start is waypoints[0] and end is waypoints[1] for initial [0,0] checks
-      const initialStartWp = this.waypoints[0];
-      const initialEndWp = this.waypoints[1];
-
-      if (initialStartWp && initialStartWp.kind === 'start' && initialStartWp.coords[0] === 0 && initialStartWp.coords[1] === 0) {
-        console.log('[RouteStore] addWaypointByClick - Updating Start waypoint.');
-        initialStartWp.coords = coord;
-        targetWaypointId = initialStartWp.id;
-      } else if (initialEndWp && initialEndWp.kind === 'end' && initialEndWp.coords[0] === 0 && initialEndWp.coords[1] === 0 && this.waypoints.length === 2) {
-        // Only update end if it's the second default point and still [0,0]
-        console.log('[RouteStore] addWaypointByClick - Updating End waypoint.');
-        initialEndWp.coords = coord;
-        targetWaypointId = initialEndWp.id;
-      } else {
-        console.log('[RouteStore] addWaypointByClick - Adding new Via waypoint.');
-        const newWp = this._addWaypointInternal(coord, 'via', 'Loading address...', '');
-        const endIndex = this.waypoints.findIndex((wp) => wp.kind === 'end');
-        if (endIndex !== -1) {
-          this.waypoints.splice(endIndex, 0, newWp);
-        } else {
-          // Fallback if no 'end' waypoint, though this should ideally not happen with default setup
-          this.waypoints.push(newWp);
-        }
-        targetWaypointId = newWp.id;
-      }
-
-      if (targetWaypointId) {
-        await this.geocodeWaypoint(targetWaypointId);
-      }
-      // Recalculation is handled by the watcher on waypoints
+  actions: {
+    restoreDraft(draft: RouteDraft) {
+      cancelRequests(this);
+      this.points = draft.points;
+      this.legs = draft.legs;
+      this.undoStack = [];
+      this.redoStack = [];
+      this.errorMessage = this.points.find(p => p.snapError)?.snapError ??
+        Object.values(this.legs).find(l => l.error)?.error ?? null;
+      this._resumePendingSnaps();
+      this._reconcile();
     },
-    // END: ADD THIS METHOD BACK
-
-    async addIntermediateStopAndPrepare() {
-      const newWp = this._addWaypointInternal([0, 0] as Coord, 'via', 'New Via Point (Search or click map)', ''); // Added "as Coord"
-      const endIndex = this.waypoints.findIndex((wp) => wp.kind === 'end');
-      if (endIndex !== -1) {
-        this.waypoints.splice(endIndex, 0, newWp);
-      } else {
-        this.waypoints.push(newWp);
-      }
+    resetRoute(coords: Coord[] = []) {
+      coords.forEach(validCoord);
+      this._remember();
+      cancelRequests(this);
+      this.points = coords.length >= 2
+        ? coords.map((coord, index) => waypoint(index === 0 ? 'start' : index === coords.length - 1 ? 'end' : 'via', [...coord]))
+        : [waypoint('start'), waypoint('end')];
+      this.legs = {};
+      for (const point of this.points) if (point.coord) this._snapPoint(point.id, point.coord);
+      this._reconcile();
+    },
+    _remember() {
+      this.undoStack = [...this.undoStack.slice(-49), snapshot(this)];
+      this.redoStack = [];
+      this.errorMessage = null;
     },
 
-    async searchAndSetWaypointAddress(waypointId: string, query: string) {
-      const waypoint = this.waypoints.find((wp) => wp.id === waypointId);
-      if (!waypoint) return;
-      waypoint.isGeocoding = true;
-      waypoint.userInput = query;
-      waypoint.address = `Searching for "${query}"...`;
-      try {
-        const places = await forwardGeocode(query);
-        if (places.length > 0) {
-          const firstPlace = places[0];
-          waypoint.coords = firstPlace.coord;
-          waypoint.address = firstPlace.label;
-          waypoint.userInput = firstPlace.label; // Keep userInput in sync with selected address
-          waypoint.kind = firstPlace.kind || waypoint.kind;
-        } else {
-          waypoint.address = 'Location not found';
-        }
-      } catch (error) {
-        console.error('[RouteStore] Forward geocode error:', error);
-        waypoint.address = 'Search failed';
-      } finally {
-        waypoint.isGeocoding = false;
-      }
-    },
-
-    _updateDebugVisuals(
-      pointsForOrs: { coords: Coord; radius: number; type: 'waypoint' | 'shaping_point'; id: string }[],
-      bearingsForOrs: (BearingValue | null)[],
-      requestPayload: any
-    ) {
-      const debugStore = useDebugStore();
-      if (!debugStore.showDebugVisuals) return;
-
-      const radiusVisuals: DebugRadiusVisualization[] = pointsForOrs.map((p) => ({
-        id: p.id,
-        center: p.coords,
-        radius: p.radius,
-        type: p.type,
+    _reconcile(optimize = false) {
+      const operations = operationsFor(this);
+      const result = reconcileLegs(this.points, this.legs, optimize);
+      this.legs = result.legs;
+      const candidates: LegRequest[] = optimize
+        ? result.requests
+        : Object.values(result.legs)
+            .filter((leg) =>
+              leg.status === 'air' &&
+              !leg.error &&
+              !operations.snaps.has(leg.fromId) &&
+              !operations.snaps.has(leg.toId))
+            .map(({ id, fromId, toId, fromCoord, toCoord }) => ({
+              id, fromId, toId, fromCoord, toCoord,
+            }));
+      const requests = candidates.filter(leg => [leg.fromId, leg.toId].every(id => {
+        const point = this.points.find(point => point.id === id);
+        return point && !point.snapPending && !point.snapError;
       }));
-      debugStore.updateRadiusVisuals(radiusVisuals);
-
-      const bearingVisuals: DebugBearingVisualization[] = [];
-      pointsForOrs.forEach((p, index) => {
-        const bearingInfo = bearingsForOrs[index];
-        if (Array.isArray(bearingInfo) && bearingInfo.length === 2 && typeof bearingInfo[0] === 'number' && typeof bearingInfo[1] === 'number') {
-          bearingVisuals.push({
-            id: p.id + '_bearing',
-            origin: p.coords,
-            bearing: bearingInfo[0],
-            tolerance: bearingInfo[1],
-            length: 50, // Default length in meters
-          });
-        }
-      });
-      debugStore.updateBearingVisuals(bearingVisuals);
-      debugStore.setLastOrsRequestPayload(requestPayload);
+      operations.scheduler.update(this.legs, requests, optimize);
     },
 
-    async calculateHardRoute() {
-      console.log('[RouteStore] calculateHardRoute CALLED');
-      const debugStore = useDebugStore();
+    _snapPoint(id: string, coord: Coord) {
+      const operations = operationsFor(this);
+      operations.snaps.get(id)?.abort();
+      operations.geocodes.get(id)?.abort();
+      operations.geocodes.delete(id);
+      const controller = new AbortController();
+      operations.snaps.set(id, controller);
+      this.points = this.points.map(point => point.id === id ? {
+        ...point, snapPending: true, snapError: undefined,
+        ...(point.type === 'stop' && point.kind !== 'via' ? { routingCoord: coord } : {}),
+      } : point);
 
-      if (this.waypoints.length < 2) {
-        this.route = null;
-        debugStore.clearVisuals();
+      void routingEngine.snap(coord, controller.signal)
+        .then((snapped) => {
+          if (operations.snaps.get(id) !== controller) return;
+          validCoord(snapped);
+          const current = this.points.find((point) => point.id === id);
+          if (current?.coord && sameCoord(current.coord, coord)) {
+            this.points = this.points.map((point) =>
+              point.id === id ? { ...point, coord: [...snapped] } : point);
+          }
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || operations.snaps.get(id) !== controller) return;
+          console.error('Straßen-Snapping fehlgeschlagen:', error);
+          const message = error instanceof Error ? error.message : 'Kein geeigneter Straßenpunkt gefunden.';
+          this.points = this.points.map(point => point.id === id ? { ...point, snapError: message } : point);
+          this.errorMessage = message;
+        })
+        .finally(() => {
+          if (operations.snaps.get(id) !== controller) return;
+          operations.snaps.delete(id);
+          this.points = this.points.map(point => point.id === id ? { ...point, snapPending: false } : point);
+          this._reconcile();
+        });
+    },
+
+    addWaypointByClick(coord: Coord) {
+      validCoord(coord);
+      const target =
+        this.waypoints.find((point) => point.kind === 'start' && !point.coord) ??
+        this.waypoints.find((point) => point.kind === 'end' && !point.coord) ??
+        this.waypoints.filter((point) => point.kind === 'via' && !point.coord).pop();
+      if (target) {
+        this.updateWaypointCoord(target.id, coord);
         return;
       }
-      const validWaypoints = this.waypoints.filter((wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0);
-      if (validWaypoints.length < 2) {
-        this.route = null;
-        debugStore.clearVisuals();
-        return;
-      }
+      const stop = waypoint('via', [...coord]);
+      const endIndex = this.points.findIndex((point) => point.type === 'stop' && point.kind === 'end');
+      this._remember();
+      this.points = [...this.points.slice(0, endIndex), stop, ...this.points.slice(endIndex)];
+      this._snapPoint(stop.id, coord);
+      this._reconcile();
+    },
 
-      const coords = validWaypoints.map((wp) => wp.coords);
-      const radiuses = validWaypoints.map(() => DEFAULT_WAYPOINT_ORS_RADIUS); // All hard waypoints get default radius
-      const bearings = validWaypoints.map(() => null as BearingValue); // Bearings for hard waypoints usually null unless specific constraints are needed
+    addIntermediateStopAndPrepare(): string {
+      const endIndex = this.points.findIndex((point) => point.type === 'stop' && point.kind === 'end');
+      const stop = waypoint('via');
+      this._remember();
+      this.points = [...this.points.slice(0, endIndex), stop, ...this.points.slice(endIndex)];
+      this._reconcile();
+      return stop.id;
+    },
 
-      const pointsForDebug = validWaypoints.map((wp) => ({
-        coords: wp.coords,
-        radius: DEFAULT_WAYPOINT_ORS_RADIUS,
-        type: 'waypoint' as 'waypoint' | 'shaping_point',
-        id: wp.id,
-      }));
-      const orsRequestPayload = { coordinates: coords, radiuses, bearings, profile: 'cycling-regular', instructions: false };
-      this._updateDebugVisuals(pointsForDebug, bearings, orsRequestPayload);
+    insertWaypointOnRoute(fromId: string, toId: string, coord: Coord) {
+      validCoord(coord);
+      const stop = waypoint('via', [...coord]);
+      const updated = insertBetween(this.points, fromId, toId, stop);
+      this._remember();
+      this.points = updated;
+      this._snapPoint(stop.id, coord);
+      this._reconcile();
+    },
 
-      console.log('[RouteStore] calculateHardRoute - Coords:', coords.length, 'Radiuses:', radiuses.length, 'Bearings (raw for getRoute):', bearings.length);
+    insertShapingPoint(fromId: string, toId: string, coord: Coord) {
+      validCoord(coord);
+      const shape: ShapePoint = { id: newId('shape'), type: 'shape', coord: [...coord] };
+      const updated = insertBetween(this.points, fromId, toId, shape);
+      this._remember();
+      this.points = updated;
+      this._snapPoint(shape.id, coord);
+      this._reconcile();
+    },
+
+    updateWaypointCoord(id: string, coord: Coord, address: string | null = null) {
+      validCoord(coord);
+      const current = this.waypoints.find((point) => point.id === id);
+      if (!current) throw new Error('Der ausgewählte Stopp existiert nicht mehr.');
+      if (current.coord && sameCoord(current.coord, coord) && current.address === address) return;
+      this._remember();
+      this.points = this.points.map((point) =>
+        point.id === id && point.type === 'stop'
+          ? { ...point, coord: [...coord], address, userInput: address ?? '', isGeocoding: false }
+          : point);
+      this._snapPoint(id, coord);
+      this._reconcile();
+    },
+
+    updateShapingPointCoord(id: string, coord: Coord) {
+      validCoord(coord);
+      const current = this.shapingPoints.find((point) => point.id === id);
+      if (!current) throw new Error('Der Formpunkt existiert nicht mehr.');
+      if (sameCoord(current.coord, coord)) return;
+      this._remember();
+      this.points = this.points.map((point) =>
+        point.id === id && point.type === 'shape' ? { ...point, coord: [...coord] } : point);
+      this._snapPoint(id, coord);
+      this._reconcile();
+    },
+
+    setWaypointQuery(id: string, text: string) {
+      const stop = this.waypoints.find((point) => point.id === id);
+      if (!stop) throw new Error('Der ausgewählte Stopp existiert nicht mehr.');
+      const operations = operationsFor(this);
+      operations.geocodes.get(id)?.abort();
+      operations.geocodes.delete(id);
+      this.points = this.points.map((point) =>
+        point.id === id && point.type === 'stop'
+          ? { ...point, userInput: text, isGeocoding: false }
+          : point);
+    },
+
+    setWaypointPlace(id: string, place: Place) {
+      if (!place.label.trim()) throw new Error('Der Adressvorschlag enthält keine Bezeichnung.');
+      this.updateWaypointCoord(id, place.coord, place.label);
+    },
+
+    async searchAndSetWaypointAddress(id: string, query: string): Promise<void> {
+      const trimmed = query.trim();
+      if (trimmed.length < 3) throw new Error('Bitte mindestens drei Zeichen eingeben.');
+      const stop = this.waypoints.find((point) => point.id === id);
+      if (!stop) throw new Error('Der ausgewählte Stopp existiert nicht mehr.');
+      const operations = operationsFor(this);
+      operations.geocodes.get(id)?.abort();
+      const controller = new AbortController();
+      operations.geocodes.set(id, controller);
+      this.points = this.points.map((point) =>
+        point.id === id && point.type === 'stop'
+          ? { ...point, userInput: trimmed, isGeocoding: true }
+          : point);
       try {
-        const data = await getRoute(coords, radiuses, bearings);
-        this.route = data;
-        if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse(data);
+        const places = await forwardGeocode(trimmed, controller.signal);
+        if (operations.geocodes.get(id) !== controller) return;
+        const current = this.waypoints.find((point) => point.id === id);
+        if (current?.userInput !== trimmed) return;
+        if (!places.length) throw new Error(`Keine Adresse für „${trimmed}“ gefunden.`);
+        this.setWaypointPlace(id, places[0]);
       } catch (error) {
-        console.error('[RouteStore] Error in calculateHardRoute getRoute:', error);
-        this.route = null;
-        if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse({ error: String(error) });
-        // debugStore.clearVisuals(); // Clearing visuals might be too aggressive here, maybe only on full failure.
-      }
-    },
-
-    _buildFullPointListForSingleCall(): {
-      coords: Coord[];
-      radiuses: number[];
-      bearings: BearingValue[];
-      debugPoints: { coords: Coord; radius: number; type: 'waypoint' | 'shaping_point'; id: string }[];
-    } | null {
-      const validWaypoints = this.waypoints.filter((wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0);
-      if (validWaypoints.length < 2) {
-        return null;
-      }
-
-      const sortedShapingPoints = [...this.shapingPoints].sort((a, b) => a.idx - b.idx);
-
-      const finalCoordsForORS: Coord[] = [];
-      const finalRadiusesForORS: number[] = [];
-      const finalBearingsForORS: BearingValue[] = [];
-      const finalDebugPoints: { coords: Coord; radius: number; type: 'waypoint' | 'shaping_point'; id: string }[] = [];
-
-      let currentShapingPointProcessingIdx = 0;
-      for (let i = 0; i < validWaypoints.length; i++) {
-        finalCoordsForORS.push(validWaypoints[i].coords);
-        finalRadiusesForORS.push(DEFAULT_WAYPOINT_ORS_RADIUS); // Hard waypoints get default radius
-        finalBearingsForORS.push(null); // Default bearing for hard waypoints unless specifically set
-        finalDebugPoints.push({ coords: validWaypoints[i].coords, radius: DEFAULT_WAYPOINT_ORS_RADIUS, type: 'waypoint', id: validWaypoints[i].id });
-
-        if (i < validWaypoints.length - 1) {
-          const targetSegmentOriginalIndex = i;
-          while (
-            currentShapingPointProcessingIdx < sortedShapingPoints.length &&
-            sortedShapingPoints[currentShapingPointProcessingIdx].idx === targetSegmentOriginalIndex + 1
-          ) {
-            const sp = sortedShapingPoints[currentShapingPointProcessingIdx];
-            finalCoordsForORS.push(sp.coord);
-            finalRadiusesForORS.push(sp.radius); // Shaping points use their own stored radius
-            finalDebugPoints.push({ coords: sp.coord, radius: sp.radius, type: 'shaping_point', id: sp.id });
-
-            if (this.draggedShapingPointInfo && this.draggedShapingPointInfo.id === sp.id) {
-              finalBearingsForORS.push(this.draggedShapingPointInfo.bearing as BearingValue);
-            } else {
-              finalBearingsForORS.push(null); // Default bearing for shaping points if not being dragged with a constraint
-            }
-            currentShapingPointProcessingIdx++;
-          }
-        }
-      }
-
-      if (finalCoordsForORS.length < 2) return null;
-      // console.log('[RouteStore] _buildFullPointListForSingleCall - Final Radiuses:', finalRadiusesForORS);
-      return { coords: finalCoordsForORS, radiuses: finalRadiusesForORS, bearings: finalBearingsForORS, debugPoints: finalDebugPoints };
-    },
-
-    async applyShaping() {
-      // console.log('[RouteStore] applyShaping CALLED. Active Dragged SP Info:', JSON.stringify(this.draggedShapingPointInfo));
-      const debugStore = useDebugStore();
-
-      const validWaypoints = this.waypoints.filter((wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0);
-      if (validWaypoints.length < 2) {
-        this.route = null;
-        this.clearDraggedShapingPointBearing();
-        debugStore.clearVisuals();
-        return;
-      }
-
-      if (this.draggedShapingPointInfo && this.shapingPoints.length > 0) {
-        const activeSp = this.shapingPoints.find((sp) => sp.id === this.draggedShapingPointInfo!.id);
-
-        if (activeSp && validWaypoints.length === 2 && this.shapingPoints.length === 1 && this.shapingPoints[0].id === activeSp.id) {
-          const startWp = validWaypoints[0];
-          const endWp = validWaypoints[1];
-          const spSimpleBearing = this.draggedShapingPointInfo.bearing;
-
-          const debugPointsForSticky: { coords: Coord; radius: number; type: 'waypoint' | 'shaping_point'; id: string }[] = [
-            { coords: startWp.coords, radius: DEFAULT_WAYPOINT_ORS_RADIUS, type: 'waypoint', id: startWp.id },
-            { coords: activeSp.coord, radius: activeSp.radius, type: 'shaping_point', id: activeSp.id },
-            { coords: endWp.coords, radius: DEFAULT_WAYPOINT_ORS_RADIUS, type: 'waypoint', id: endWp.id },
-          ];
-          const bearingsForStickyDebug: (BearingValue | null)[] = [null, spSimpleBearing, null];
-
-          const orsRequestPayload = {
-            startCoord: startWp.coords,
-            shapingCoord: activeSp.coord,
-            endCoord: endWp.coords,
-            shapingBearing: spSimpleBearing,
-            startRadius: DEFAULT_WAYPOINT_ORS_RADIUS,
-            shapingRadius: activeSp.radius, // Use the shaping point's actual radius
-            endRadius: DEFAULT_WAYPOINT_ORS_RADIUS,
-          };
-          this._updateDebugVisuals(debugPointsForSticky, bearingsForStickyDebug, orsRequestPayload);
-
-          console.log(
-            `[RouteStore] Attempting STICKY SHAPING for SP ${activeSp.id} between ${startWp.id} and ${endWp.id} with bearing ${JSON.stringify(
-              spSimpleBearing
-            )} and radius ${activeSp.radius}`
-          );
-          try {
-            const data = await getRouteWithStickyShaping(
-              startWp.coords,
-              activeSp.coord,
-              endWp.coords,
-              spSimpleBearing, // This is SimpleBearing [angle, tolerance]
-              DEFAULT_WAYPOINT_ORS_RADIUS, // startRadius for ORS
-              activeSp.radius, // shapingRadius for ORS
-              DEFAULT_WAYPOINT_ORS_RADIUS // endRadius for ORS
-            );
-            this.route = data;
-            if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse(data);
-          } catch (error) {
-            console.error('[RouteStore] Error in STICKY applyShaping:', error);
-            if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse({ error: String(error) });
-            // debugStore.clearVisuals(); // Potential fallback might repopulate
-            const pointList = this._buildFullPointListForSingleCall(); // Fallback to standard shaping
-            if (pointList) {
-              const fallbackOrsRequest = {
-                coordinates: pointList.coords,
-                radiuses: pointList.radiuses,
-                bearings: pointList.bearings,
-                profile: 'cycling-regular',
-                instructions: false,
-              };
-              this._updateDebugVisuals(pointList.debugPoints, pointList.bearings, fallbackOrsRequest); // Update debug for fallback
-              try {
-                this.route = await getRoute(pointList.coords, pointList.radiuses, pointList.bearings);
-                if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse(this.route);
-              } catch (fallbackError) {
-                console.error('[RouteStore] Error in STICKY fallback getRoute:', fallbackError);
-                this.route = null; // Set route to null on fallback error
-                if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse({ error: String(fallbackError) });
-                debugStore.clearVisuals(); // Clear visuals on final failure
-              }
-            } else {
-              this.route = null; // No points for fallback
-              debugStore.clearVisuals();
-            }
-          } finally {
-            this.clearDraggedShapingPointBearing();
-          }
-          return; // Exit after handling sticky shaping
-        } else if (activeSp) {
-          // console.warn(
-          //   `[RouteStore] Sticky shaping for SP ${activeSp.id} in a more complex route (multiple WPs/SPs) is not yet implemented. Falling back to standard shaping.`
-          // );
-        }
-      }
-
-      // console.log('[RouteStore] Proceeding with standard shaping (single call).');
-      const pointList = this._buildFullPointListForSingleCall();
-      if (pointList) {
-        const orsRequestPayload = {
-          coordinates: pointList.coords,
-          radiuses: pointList.radiuses,
-          bearings: pointList.bearings, // Bearings from _buildFullPointListForSingleCall
-          profile: 'cycling-regular',
-          instructions: false,
-        };
-        this._updateDebugVisuals(pointList.debugPoints, pointList.bearings, orsRequestPayload);
-        try {
-          const data = await getRoute(pointList.coords, pointList.radiuses, pointList.bearings);
-          this.route = data;
-          if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse(data);
-        } catch (error) {
-          console.error('[RouteStore] Error in standard applyShaping getRoute:', error);
-          this.route = null;
-          if (debugStore.showDebugVisuals) debugStore.setLastOrsResponse({ error: String(error) });
-          debugStore.clearVisuals();
-        }
-      } else {
-        // No valid points for standard shaping, might need to just use hard route or clear
-        await this.calculateHardRoute(); // Or simply set route to null if no valid waypoints
-      }
-      this.clearDraggedShapingPointBearing(); // Ensure this is cleared if not handled by sticky
-    },
-
-    async recalc(options: { forceGlobalOptimize?: boolean } = {}) {
-      // console.log(
-      //   `[RouteStore] recalc CALLED - Options: ${JSON.stringify(options)}, ShapingPoints: ${this.shapingPoints.length}, DraggedSPId: ${JSON.stringify(
-      //     this.draggedShapingPointInfo?.id
-      //   )}`
-      // );
-      this.isCalculatingGlobalRoute = true;
-      const debugStore = useDebugStore();
-
-      if (options?.forceGlobalOptimize) {
-        this.shapingPoints = []; // Clear shaping points
-        this.clearDraggedShapingPointBearing(); // Clear any dragged info
-        // debugStore.clearVisuals(); // Visuals will be updated by calculateHardRoute
-        await this.calculateHardRoute();
-      } else {
-        const validWaypoints = this.waypoints.filter((wp) => wp.coords[0] !== 0 || wp.coords[1] !== 0);
-        if (validWaypoints.length < 2 && this.shapingPoints.length === 0) {
-          this.route = null;
-          this.clearDraggedShapingPointBearing();
-          debugStore.clearVisuals();
-        } else if (this.shapingPoints.length > 0 || this.draggedShapingPointInfo) {
-          await this.applyShaping();
-        } else {
-          await this.calculateHardRoute();
-        }
-      }
-      this.isCalculatingGlobalRoute = false;
-    },
-
-    async geocodeWaypoint(waypointId: string) {
-      const waypoint = this.waypoints.find((wp) => wp.id === waypointId);
-      if (!waypoint) return;
-
-      // Avoid geocoding if it's a default placeholder
-      if (
-        waypoint.coords[0] === 0 &&
-        waypoint.coords[1] === 0 &&
-        (waypoint.address === 'Start Point' ||
-          waypoint.address === 'End Point' ||
-          waypoint.address === 'Via Point' || // Covers case where it's added but not yet geocoded by click
-          !waypoint.address || // Covers null or empty string
-          waypoint.address === 'New Via Point (Search or click map)') &&
-        (!waypoint.userInput || waypoint.userInput === 'Loading address...' || waypoint.userInput === waypoint.address) // also check userInput
-      ) {
-        waypoint.isGeocoding = false;
-        // Ensure userInput reflects placeholder if it was 'Loading address...'
-        if (waypoint.address && (waypoint.userInput === 'Loading address...' || !waypoint.userInput)) {
-          waypoint.userInput = waypoint.address;
-        }
-        return;
-      }
-
-      waypoint.isGeocoding = true;
-      const currentAddressDisplay = waypoint.address; // Store current address in case geocoding fails
-      waypoint.address = 'Loading address...'; // Visual feedback
-      // waypoint.userInput = 'Loading address...'; // Update userInput as well
-
-      try {
-        const place = await reverseGeocode(waypoint.coords);
-        const newAddress = place?.label ?? 'Address not found';
-        waypoint.address = newAddress;
-        waypoint.userInput = newAddress; // Keep userInput in sync
-        waypoint.kind = place?.kind || waypoint.kind; // Update kind if available
-      } catch (err) {
-        console.error('[RouteStore] Geocode waypoint error:', err);
-        // Revert to previous address if not 'Loading address...', otherwise indicate failure
-        waypoint.address = currentAddressDisplay && currentAddressDisplay !== 'Loading address...' ? currentAddressDisplay : 'Address lookup failed';
-        if (!waypoint.userInput || waypoint.userInput === 'Loading address...') {
-          // also revert userInput if it was placeholder
-          waypoint.userInput = waypoint.address;
-        }
+        if (controller.signal.aborted || operations.geocodes.get(id) !== controller) return;
+        console.error('Adresssuche fehlgeschlagen:', error);
+        this.errorMessage = error instanceof Error ? error.message : 'Adresssuche fehlgeschlagen.';
       } finally {
-        waypoint.isGeocoding = false;
-      }
-    },
-
-    async insertShapingPoint(originalSegmentIdxPlusOne: number, coord: Coord, radius: number) {
-      const newId = newShapePointId();
-      this.shapingPoints.push({ id: newId, idx: originalSegmentIdxPlusOne, coord, radius });
-      this.shapingPoints.sort((a, b) => a.idx - b.idx); // Ensure order for _buildFullPointListForSingleCall
-    },
-
-    async updateShapingPointCoord(id: string, newCoords: Coord, radius: number) {
-      const point = this.shapingPoints.find((sp) => sp.id === id);
-      if (point) {
-        point.coord = newCoords;
-        point.radius = radius; // Update radius as well
-      } else {
-        // If the point was somehow removed (e.g., during a rapid drag/clear operation)
-        // ensure draggedShapingPointInfo is cleared if it matches.
-        if (this.draggedShapingPointInfo && this.draggedShapingPointInfo.id === id) {
-          this.clearDraggedShapingPointBearing();
+        if (operations.geocodes.get(id) === controller) {
+          operations.geocodes.delete(id);
+          this.points = this.points.map((point) =>
+            point.id === id && point.type === 'stop' ? { ...point, isGeocoding: false } : point);
         }
       }
     },
 
-    async updateWaypointCoord(waypointId: string, newCoords: Coord) {
-      const waypoint = this.waypoints.find((wp) => wp.id === waypointId);
-      if (!waypoint) return;
-      waypoint.coords = newCoords;
-      // waypoint.address = 'Loading address...'; // Set to loading for immediate feedback
-      waypoint.userInput = 'Loading address...'; // Also update userInput to show loading
-
-      // As per prompt: "clears all shapingPoints"
-      if (this.shapingPoints.length > 0) {
-        console.log('[RouteStore] updateWaypointCoord: Clearing shaping points due to hard waypoint drag.');
-        this.shapingPoints = [];
-        this.clearDraggedShapingPointBearing(); // Clear any bearing constraints tied to shaping
-        useDebugStore().clearVisuals(); // Clear debug visuals as shaping points are gone
-      }
-
-      await this.geocodeWaypoint(waypointId);
-      // Recalculation is handled by the watcher
+    moveWaypoint(id: string, direction: -1 | 1) {
+      const via = this.waypoints.filter((point) => point.kind === 'via');
+      const index = via.findIndex((point) => point.id === id);
+      const other = via[index + direction];
+      if (index === -1 || !other) throw new Error('Der Stopp kann nicht weiter verschoben werden.');
+      const firstIndex = this.points.findIndex((point) => point.id === id);
+      const secondIndex = this.points.findIndex((point) => point.id === other.id);
+      const updated = [...this.points];
+      [updated[firstIndex], updated[secondIndex]] = [updated[secondIndex], updated[firstIndex]];
+      this._remember();
+      this.points = updated;
+      this._reconcile();
     },
 
-    async insertWaypointOnRoute(segmentIndexClicked: number, coord: Coord) {
-      // segmentIndexClicked is 0-based index of the segment (e.g., click on segment between WP0 and WP1 means segmentIndexClicked = 0)
-      // New waypoint should be inserted AFTER the waypoint that starts the clicked segment.
-      // So, insertion index in waypoints array is segmentIndexClicked + 1.
-      const insertionIndexInWaypoints = segmentIndexClicked + 1;
-
-      const newWp = this._addWaypointInternal(coord, 'via', 'Loading address...', '');
-      this.waypoints.splice(insertionIndexInWaypoints, 0, newWp);
-
-      // When a hard waypoint is inserted on the route, it invalidates existing shaping.
-      if (this.shapingPoints.length > 0) {
-        console.log('[RouteStore] Clearing shaping points due to hard waypoint insertion on route.');
-        this.shapingPoints = [];
-        this.clearDraggedShapingPointBearing();
-        useDebugStore().clearVisuals(); // Shaping related visuals are now invalid
-      }
-      await this.geocodeWaypoint(newWp.id);
-      // Recalculation is handled by the watcher
+    removeWaypoint(id: string) {
+      const stop = this.waypoints.find((point) => point.id === id);
+      if (!stop || stop.kind !== 'via') throw new Error('Nur Zwischenstopps können gelöscht werden.');
+      this._remember();
+      const operations = operationsFor(this);
+      operations.snaps.get(id)?.abort();
+      operations.snaps.delete(id);
+      operations.geocodes.get(id)?.abort();
+      operations.geocodes.delete(id);
+      this.points = this.points.filter((point) => point.id !== id);
+      this._reconcile();
     },
 
-    async removeWaypoint(waypointId: string) {
-      const index = this.waypoints.findIndex((wp) => wp.id === waypointId);
-      if (index === -1) return;
-
-      const waypointBeingRemoved = this.waypoints[index];
-      const isStartOrEnd = waypointBeingRemoved.kind === 'start' || waypointBeingRemoved.kind === 'end';
-      const allowReset = this.waypoints.length <= 2 && isStartOrEnd;
-
-      if (allowReset) {
-        // Reset Start/End to [0,0] instead of removing if only 1 or 2 waypoints exist
-        waypointBeingRemoved.coords = [0, 0] as Coord; // Added "as Coord"
-        const placeholderAddress = waypointBeingRemoved.kind === 'start' ? 'Start Point' : 'End Point';
-        waypointBeingRemoved.address = placeholderAddress;
-        waypointBeingRemoved.userInput = placeholderAddress;
-        waypointBeingRemoved.isGeocoding = false;
-      } else {
-        this.waypoints.splice(index, 1);
-        // Ensure there's always a start and end if waypoints remain
-        if (this.waypoints.length > 0 && !this.waypoints.find((wp) => wp.kind === 'start')) {
-          this.waypoints[0].kind = 'start';
-        }
-        if (this.waypoints.length > 0 && !this.waypoints.find((wp) => wp.kind === 'end')) {
-          this.waypoints[this.waypoints.length - 1].kind = 'end';
-        }
+    clearShaping() {
+      if (!this.shapingPoints.length) return;
+      this._remember();
+      const operations = operationsFor(this);
+      for (const shape of this.shapingPoints) {
+        operations.snaps.get(shape.id)?.abort();
+        operations.snaps.delete(shape.id);
       }
-
-      // Removing a hard waypoint invalidates shaping
-      if (this.shapingPoints.length > 0) {
-        console.log('[RouteStore] Clearing shaping points due to hard waypoint removal/reset.');
-        this.shapingPoints = [];
-        useDebugStore().clearVisuals(); // Shaping related visuals are now invalid
-      }
-      this.clearDraggedShapingPointBearing(); // Also clear any dragged bearing info
-      // Recalculation is handled by the watcher
+      this.points = this.points.filter((point) => point.type === 'stop');
+      this._reconcile();
     },
 
-    async clearShaping() {
-      if (this.shapingPoints.length > 0) {
-        this.shapingPoints = [];
-      }
-      this.clearDraggedShapingPointBearing();
-      // Don't clear all debug visuals, just shaping related ones.
-      // This can be refined, but for now, recalc will handle updating visuals based on current state.
-      // useDebugStore().clearVisuals(); // This might be too broad.
-      // Let recalc handle it. If no shaping points, applyShaping won't run or won't add visuals.
-      await this.recalc(); // Trigger a recalc to get route without shaping
+    optimizeEntireRoute() {
+      if (!Object.keys(this.legs).length) throw new Error('Bitte zuerst Start und Ziel setzen.');
+      this._remember();
+      this._reconcile(true);
     },
 
-    async optimizeEntireRoute() {
-      await this.recalc({ forceGlobalOptimize: true });
+    retryRouting() {
+      this.errorMessage = null;
+      for (const point of this.points) {
+        if (point.coord && point.snapError) this._snapPoint(point.id, point.coord);
+      }
+      this.legs = Object.fromEntries(Object.entries(this.legs).map(([id, leg]) => [id, leg.error ? { ...leg, error: undefined } : leg]));
+      this._reconcile();
+    },
+
+    _resumePendingSnaps() {
+      for (const point of this.points) {
+        if (point.coord && point.snapPending) this._snapPoint(point.id, point.coord);
+      }
+    },
+
+    undo() {
+      const previous = this.undoStack[this.undoStack.length - 1];
+      if (!previous) return;
+      this.undoStack = this.undoStack.slice(0, -1);
+      this.redoStack = [...this.redoStack, snapshot(this)];
+      cancelRequests(this);
+      this.points = previous.points.map(clonePoint);
+      this.legs = { ...previous.legs };
+      this.errorMessage = null;
+      this._resumePendingSnaps();
+      this._reconcile();
+    },
+
+    redo() {
+      const next = this.redoStack[this.redoStack.length - 1];
+      if (!next) return;
+      this.redoStack = this.redoStack.slice(0, -1);
+      this.undoStack = [...this.undoStack, snapshot(this)];
+      cancelRequests(this);
+      this.points = next.points.map(clonePoint);
+      this.legs = { ...next.legs };
+      this.errorMessage = null;
+      this._resumePendingSnaps();
+      this._reconcile();
     },
   },
 });

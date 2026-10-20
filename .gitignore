@@ -26,3 +26,9 @@ dist-ssr
 prompt.md
 RichiRoute.md
 yarn.lock
+
+# Local routing experiment downloads, caches and private results
+.cache/
+experiments/routing/.local/
+experiments/routing/dist/
+experiments/routing/browser-artifacts/

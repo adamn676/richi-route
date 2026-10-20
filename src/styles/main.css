@@ -1,21 +1,31 @@
-@import "tailwindcss";
-@import "primeicons/primeicons.css";
+:root { font-family: system-ui, sans-serif; color: #19343c; background: #f3f7f5; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 2px solid #086c78; outline-offset: 3px; }
+html, body, #app { width: 100%; height: 100%; }
+body { margin: 0; }
+.maplibregl-map { width: 100%; height: 100%; }
 
-@theme {
-  --color-primary-50: var(--pv-primary-50);
-  --color-primary-100: var(--pv-primary-100);
-  --color-primary-200: var(--pv-primary-200);
-  --color-primary-300: var(--pv-primary-300);
-  --color-primary-400: var(--pv-primary-400);
-  --color-primary-500: var(--pv-primary-500);
-  --color-primary-600: var(--pv-primary-600);
-  --color-primary-700: var(--pv-primary-700);
-  --color-primary-800: var(--pv-primary-800);
-  --color-primary-900: var(--pv-primary-900);
+.route-marker {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid white;
+  border-radius: 50%;
+  background: #096e69;
+  box-shadow: 0 2px 12px #092e3899;
+  color: white;
+  font: 700 .8rem system-ui, sans-serif;
+  cursor: grab;
 }
-
-/* Custom styles */
-.maplibregl-map {
-  width: 100%;
-  height: calc(100dvh - 32px);
+.route-marker--shape, .route-marker--preview {
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 5px solid white;
+  background: #bd6f28;
 }
+.route-marker--preview { background: #b33c4b; pointer-events: none; }
+.route-marker:active { cursor: grabbing; }

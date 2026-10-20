@@ -1,0 +1,41 @@
+name: richiroute-benchmark
+services:
+  graphhopper:
+    image: eclipse-temurin:21-jre@sha256:227118764cccd3c3294617061aaa93a08309c63a395eefa83e6b35032992ea99
+    working_dir: /work
+    command: [java, -Xmx3g, -jar, /work/.local/downloads/graphhopper-web-11.1.jar, server, /work/graphhopper.yml]
+    ports:
+      - "127.0.0.1:8989:8989"
+    volumes:
+      - ./graphhopper.yml:/work/graphhopper.yml:ro
+      - ./.local:/work/.local
+    networks: [routing]
+  ors:
+    profiles: [ors]
+    image: richiroute/ors:10.1.0-missing-endpoint-v1
+    build: ./ors-patch
+    environment:
+      ORS_CONFIG_LOCATION: /etc/richiroute/ors.yml
+      XMS: 512m
+      XMX: 3g
+      REBUILD_GRAPHS: "false"
+    mem_limit: 5g
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - ./ors.yml:/etc/richiroute/ors.yml:ro
+      - ./.local/data/steiermark.osm.pbf:/data/steiermark.osm.pbf:ro
+      - ./.local/ors:/home/ors
+    networks: [routing]
+  brouter:
+    image: eclipse-temurin:21-jre@sha256:227118764cccd3c3294617061aaa93a08309c63a395eefa83e6b35032992ea99
+    working_dir: /work
+    command: [java, -Xmx1g, -DmaxRunningTime=60, -cp, /work/.local/brouter/brouter-ries-bicycle-turn-v1.jar, btools.server.RouteServer, /work/.local/data, /work/.local/brouter/profiles2, /work/.local/customprofiles, "17777", "2", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:17777:17777"
+    volumes:
+      - ./.local:/work/.local
+    networks: [routing]
+networks:
+  routing:
+    driver: bridge

@@ -1,46 +1,43 @@
-import type { Feature, FeatureCollection, LineString } from "geojson";
+import type { Feature, LineString } from 'geojson';
+import type { Surface } from '@/domain/route-model';
+import type { EditorRoute } from '@/stores/route.store';
 
-/**
- * Splits the route line into individual segments,
- * each with an `idx` property for highlighting.
- */
-export function getSegments(
-  fc: FeatureCollection
-): Feature<LineString, { idx: number }>[] {
-  // 1) Extract coordinates from the first feature's geometry
-  const coords = (fc.features[0].geometry as LineString).coordinates;
-
-  // 2) For each pair of consecutive points, create a single-segment line
-  return coords.slice(0, -1).map((start, i) => ({
-    type: "Feature",
-    geometry: {
-      type: "LineString",
-      coordinates: [start, coords[i + 1]], // use coords here
-    },
-    properties: { idx: i },
-  }));
+export interface RouteSegmentProperties {
+  legId: string;
+  fromId: string;
+  toId: string;
+  status: 'routed' | 'air';
+  surface: Surface;
 }
 
-/**
- * Returns a new FeatureCollection with a single LineString (the full route)
- * so we can place arrows along its entire path.
- */
-export function getRouteLineForArrows(
-  fc: FeatureCollection
-): FeatureCollection {
-  const coords = (fc.features[0].geometry as LineString).coordinates;
+export function getSegments(route: EditorRoute): Feature<LineString, RouteSegmentProperties>[] {
+  const segments: Feature<LineString, RouteSegmentProperties>[] = [];
+  for (const feature of route.features) {
+    const coordinates = feature.geometry.coordinates;
+    const { surfaces, ...properties } = feature.properties;
+    if (coordinates.length < 2) throw new Error('Ein Streckenabschnitt hat keine gültige Geometrie.');
 
-  return {
-    type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: coords, // use coords
-        },
-        properties: {},
-      },
-    ],
-  };
+    function addSegment(from: number, to: number, surface: Surface): void {
+      if (to <= from) return;
+      segments.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coordinates.slice(from, to + 1) },
+        properties: { ...properties, surface },
+      });
+    }
+
+    if (feature.properties.status === 'air') {
+      addSegment(0, coordinates.length - 1, 'unknown');
+      continue;
+    }
+
+    let nextIndex = 0;
+    for (const span of surfaces) {
+      if (span.fromIndex > nextIndex) addSegment(nextIndex, span.fromIndex, 'unknown');
+      addSegment(span.fromIndex, span.toIndex, span.surface);
+      nextIndex = span.toIndex;
+    }
+    addSegment(nextIndex, coordinates.length - 1, 'unknown');
+  }
+  return segments;
 }

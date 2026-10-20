@@ -1,44 +1,31 @@
-<!-- src/components/map/SegmentedRouteLayer.vue -->
-
-<template>
-  <!-- This component doesn't display any HTML.
-       It exists to watch `route` and call the composable's drawing logic. -->
-  <div />
-</template>
+<template><div class="route-layer" aria-hidden="true" /></template>
 
 <script setup lang="ts">
-import { watch } from "vue";
-import maplibregl from "maplibre-gl";
-import type { FeatureCollection } from "geojson";
-
-// Our composable that draws the route segments
-import { useSegmentedRoute } from "@/composables/useSegmentedRoute";
+import { onBeforeUnmount, onMounted, watch } from 'vue';
+import type { Map } from 'maplibre-gl';
+import type { EditorRoute } from '@/stores/route.store';
+import { useSegmentedRoute } from '@/composables/useSegmentedRoute';
 
 const props = defineProps<{
-  map: maplibregl.Map;
-  route: FeatureCollection | null;
+  map: Map;
+  route: EditorRoute | null;
 }>();
 
 const { renderSegments } = useSegmentedRoute();
+let ready = false;
+function update(): void {
+  if (ready) renderSegments(props.map, props.route);
+}
+function onStyleLoad(): void {
+  ready = true;
+  update();
+}
 
-/**
- * Watch for changes to `route` prop:
- *  - If `map` and `route` are present and style is loaded, call `renderSegments`.
- */
-watch(
-  () => props.route,
-  (newRoute) => {
-    if (!props.map || !newRoute) return;
-
-    // If map style isn't loaded yet, wait for "load" event
-    if (!props.map.isStyleLoaded()) {
-      props.map.once("load", () => {
-        renderSegments(props.map, newRoute);
-      });
-    } else {
-      renderSegments(props.map, newRoute);
-    }
-  },
-  { immediate: true }
-);
+watch(() => props.route, update);
+onMounted(() => {
+  props.map.on('style.load', onStyleLoad);
+  ready = props.map.isStyleLoaded() === true;
+  update();
+});
+onBeforeUnmount(() => props.map.off('style.load', onStyleLoad));
 </script>
