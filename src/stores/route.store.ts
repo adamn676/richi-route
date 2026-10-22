@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { markRaw } from 'vue';
 import type { FeatureCollection, LineString } from 'geojson';
 import {
   airLeg,
@@ -92,7 +93,9 @@ function snapshot(store: RouteStore): HistoryEntry {
 }
 
 function operationsFor(store: RouteStore): PendingOperations {
-  let operations = pending.get(store);
+  // Devtools wrap actions in different store proxies; their state stays shared.
+  const key = store.$state;
+  let operations = pending.get(key);
   if (!operations) {
     operations = {
       snaps: new Map(),
@@ -121,16 +124,17 @@ function operationsFor(store: RouteStore): PendingOperations {
               leg[end.key] = [...end.coord];
             }
           }
-          store.legs = { ...store.legs, [request.id]: leg };
+          // Completed legs are replaced as a unit; their geometry stays immutable.
+          store.legs = { ...store.legs, [request.id]: markRaw(leg) };
         },
         (_request, error) => {
           console.error('Streckenabschnitt konnte nicht berechnet werden:', error);
-          store.errorMessage = routeFailureMessage;
+          store.errorMessage = error instanceof Error ? error.message : routeFailureMessage;
         },
         (count) => { store.pendingLegCount = count; },
       ),
     };
-    pending.set(store, operations);
+    pending.set(key, operations);
   }
   return operations;
 }
@@ -199,6 +203,7 @@ export const useRouteStore = defineStore('route', {
     restoreDraft(draft: RouteDraft) {
       cancelRequests(this);
       this.points = draft.points;
+      Object.values(draft.legs).forEach(markRaw);
       this.legs = draft.legs;
       this.undoStack = [];
       this.redoStack = [];
@@ -207,12 +212,17 @@ export const useRouteStore = defineStore('route', {
       this._resumePendingSnaps();
       this._reconcile();
     },
-    resetRoute(coords: Coord[] = []) {
+    resetRoute(coords: Coord[] = [], shapeIndices: readonly number[] = []) {
       coords.forEach(validCoord);
+      if (shapeIndices.some(index => !Number.isInteger(index) || index <= 0 || index >= coords.length - 1)) {
+        throw new Error('Formpunkte müssen zwischen Start und Ziel liegen.');
+      }
       this._remember();
       cancelRequests(this);
       this.points = coords.length >= 2
-        ? coords.map((coord, index) => waypoint(index === 0 ? 'start' : index === coords.length - 1 ? 'end' : 'via', [...coord]))
+        ? coords.map((coord, index): RoutePoint => shapeIndices.includes(index)
+          ? { id: newId('shape'), type: 'shape', coord: [...coord] }
+          : waypoint(index === 0 ? 'start' : index === coords.length - 1 ? 'end' : 'via', [...coord]))
         : [waypoint('start'), waypoint('end')];
       this.legs = {};
       for (const point of this.points) if (point.coord) this._snapPoint(point.id, point.coord);

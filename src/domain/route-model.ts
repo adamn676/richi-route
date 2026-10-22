@@ -1,6 +1,7 @@
 export type Coord = [number, number];
 export type StopKind = 'start' | 'via' | 'end';
 export type Surface = 'asphalt' | 'paved' | 'rough' | 'unpaved' | 'unknown';
+export const routingConcurrency = 6;
 
 export interface Waypoint {
   id: string;
@@ -199,7 +200,7 @@ export class LegScheduler {
 
   private pump(): void {
     for (const operation of this.active.values()) {
-      if (this.running.size >= 2) break;
+      if (this.running.size >= routingConcurrency) break;
       if (operation.started) continue;
       operation.started = true;
       const { controller, request } = operation;

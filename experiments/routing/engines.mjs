@@ -2,7 +2,7 @@ import { settingsFor } from './profiles.mjs';
 
 export const engines = {
   graphhopper: { version: '11.1', profile: 'racingbike', endpoint: 'http://127.0.0.1:8989/route', elevation: 'none' },
-  brouter: { version: '1.7.10', patch: 'ries-bicycle-turn-v1', profile: 'richi-road', endpoint: 'http://127.0.0.1:17777/brouter', elevation: 'prepared RD5 data' },
+  brouter: { version: '1.7.10', patch: 'local-bicycle-v2', profile: 'richi-road', endpoint: 'http://127.0.0.1:17777/brouter', elevation: 'prepared RD5 data' },
   ors: { version: '10.1.0', patch: 'missing-endpoint-v1', profile: 'cycling-road', endpoint: 'http://127.0.0.1:8082/ors/v2/directions/cycling-road/geojson', elevation: 'none' },
 };
 

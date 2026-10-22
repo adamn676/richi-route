@@ -9,7 +9,7 @@ import { assessReviewedRoute, geometryHash } from './reviewed-routes.mjs';
 const args = process.argv.slice(2);
 if (args.length && (args.length !== 2 || args[0] !== '--settings')) throw new Error('Usage: node experiments/routing/check-reviewed-routes.mjs [--settings NAME]');
 const suite = JSON.parse(await readFile(new URL('./fixtures/reviewed-routes.json', import.meta.url), 'utf8'));
-const settings = args[1] ?? suite.baselineSettings;
+const settings = args[1] ?? 'weidweg-local-v1';
 settingsFor(settings);
 const evidence = await provenance(settings, false);
 const report = { createdAt: new Date().toISOString(), settings, fixtureSha256: geometryHash(suite), provenance: evidence, results: [], regressions: 0, errors: 0, matchedTargets: 0, openTargets: 0 };

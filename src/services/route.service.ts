@@ -1,14 +1,16 @@
-import { distanceMeters, type Coord, type RoutingEngine } from '../domain/route-model.ts';
+import { distanceMeters, routingConcurrency, type Coord, type RoutingEngine } from '../domain/route-model.ts';
 import { parseBRouterLeg, parseBRouterLine } from '../domain/route-response.ts';
 import thalPreference from '../config/thal-preference.json' with { type: 'json' };
 
 const maxSnapDistance = 250;
-const profile = 'richi-surface-v4';
+const profile = 'richi-weidweg-v1';
+const unavailableMessage = 'Der lokale Routing-Dienst ist nicht erreichbar. Bitte den Routing-Dienst starten und erneut versuchen.';
+const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.';
 const waiting: (() => void)[] = [];
 let active = 0;
 
 function pump(): void {
-  while (active < 2 && waiting.length) waiting.shift()!();
+  while (active < routingConcurrency && waiting.length) waiting.shift()!();
 }
 
 function withSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
@@ -35,10 +37,25 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
 async function request(from: Coord, to: Coord, signal: AbortSignal): Promise<unknown> {
   const params = new URLSearchParams({ profile, nogos: thalPreference.nogos, lonlats: [from.join(','), to.join(',')].join('|'), format: 'geojson', alternativeidx: '0' });
   return withSlot(signal, async () => {
-    const response = await fetch('/routing/brouter?' + params, {
-      signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]),
-    });
-    if (!response.ok) throw new Error('Lokales Routing nicht erreichbar oder kein Radweg gefunden. Bitte die Routing-Dienste starten.');
+    let response: Response;
+    try {
+      response = await fetch('/routing/brouter?' + params, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]),
+      });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new Error(error instanceof Error && error.name === 'TimeoutError' ? timeoutMessage : unavailableMessage, { cause: error });
+    }
+    if (!response.ok) {
+      const detail = (await response.text()).trim();
+      const missingTile = /^datafile ([EW]\d+_[NS]\d+\.rd5) not found$/.exec(detail);
+      if (missingTile) throw new Error(`Für diese Gegend fehlen lokale Kartendaten (${missingTile[1]}). Bitte die Kartendaten ergänzen und den Routing-Dienst neu starten.`);
+      if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new Error(timeoutMessage);
+      if (detail === 'memory limit reached') throw new Error('Die Routenberechnung hat das Speicherlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.');
+      if (/^no track found\b|position not mapped in existing datafile/.test(detail)) throw new Error('Keine passende Fahrradverbindung gefunden. Bitte Start, Ziel oder Zwischenpunkte verschieben.');
+      if (response.status === 502 || response.status === 503) throw new Error(unavailableMessage);
+      throw new Error(`Die Route konnte nicht berechnet werden (HTTP ${response.status}). Bitte erneut versuchen.`);
+    }
     return response.json();
   });
 }

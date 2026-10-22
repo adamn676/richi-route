@@ -1,5 +1,414 @@
 RichiRoute: handoff to the desktop computer
 
+CHECKPOINT BEFORE WINDOWS/UBUNTU COMPARISON; 2026-10-22
+User approved proceeding step by step: first commit this working version, then
+compare Windows and native Ubuntu using identical routes, data and settings.
+No additional application or routing changes were needed for the checkpoint.
+Recent validation is recorded below; downloaded data and private measurements
+remain ignored. Additional service charges EUR 0.
+
+NEXT: prepare the portable comparison and record a Windows baseline before
+asking the user to reboot. Preserve the exact JAR, profile, lookups and both RD5
+files, with hashes; fresh downloads would invalidate the comparison. On Ubuntu,
+copy them onto its Linux filesystem. Use fresh route calculations, warmup and
+repeated timings, and verify identical route geometry. Native Ubuntu remains
+unmeasured. Keep the current stack and stop this performance round if a bounded
+comparison shows little benefit. Afterward, review the long route's road choices
+and surface information. Do not push commits without a request.
+
+GRAZ-VIRGEN ROUTING FIXED; 2026-10-22
+User reported Graz (Georgigasse 95) to Virgen (Virgental Strasse 83) failing with
+the generic "start routing service" message, and asked about more optimization
+and when to stop. Service was healthy: reproducing their logged destination snap
+returned HTTP 400 "datafile E10_N45.rd5 not found". Only E15 was installed.
+
+Added E10_N45.rd5 to setup.mjs and ran npm run bench:setup with approved network
+access. Existing files verified/preserved. New tile: 199051014 bytes, downloaded
+2026-10-22; SHA-256 e55290f2f2c07a0d2c17cb36fcc8bcb4170e750f3f3ef1b205fcca575d06d1f5.
+Recorded in ignored .local/assets.json. Restarted BRouter to refresh Linux-local
+copies, now about 329 MB. Coverage: 10-20 E, 45-50 N, not all Austria/worldwide.
+GraphHopper/ORS and their local road background retain Styria coverage.
+
+route.service.ts now distinguishes missing maps, no connection, network failure,
+HTTP errors, time limits and memory limits. Cancelled requests stay cancelled.
+Store leg errors retain this explanation instead of replacing it with a generic
+failure. Added route-service tests and a store error/retry regression. Initial
+browser drawing test checks the missing-map message and dashed failed leg.
+
+Actual logged selected coordinates (no new address lookup):
+start [15.393249918226957,47.076550949654376]
+end   [12.456876612333161,47.00334492589846]
+Result: 338.830 km, 2231 m ascent, 9231 vertices. First backend request after
+restart: 5286 ms. Four later fresh browser builds: 5528/4653/4664/4670 ms until
+visible, each with two snaps and one route call. Later-three median 4664 ms;
+final response to drawing ~15-20 ms, no browser tasks over 50 ms. These timings
+are not a road-quality/paving review or general performance guarantee.
+Evidence in experiments/routing/.local: graz-virgen-first.json,
+graz-virgen-response.json, long-browser-virgen.json, browser-long-routes.json.
+Ignored profiler: .cache/profile-virgen-browser.mjs (derived from long profiler).
+
+Validation: 42 unit tests and production build passed (existing MapLibre chunk
+warning). All 14 protected editor routes and western corridor passed unchanged;
+12 local edits, 3 requests each, median 77.7 ms / p95 93.0 ms. Browser long-route
+test now also includes this cross-tile trip: complete GPX coordinates/elevation,
+saved reload without requests, edit with 3 requests, undo with none. All three
+long cases and the initial-drawing/error browser check passed.
+Docs updated for coverage, installation, restart/retry and measured results.
+No new dependencies, routing-profile changes, subagents, commit or push.
+Additional service charges EUR 0. Prior uncommitted work preserved.
+
+NEXT: user can refresh http://127.0.0.1:5173/ and select "Erneut versuchen" for
+their failed draft. Further speed work should target backend search, not UI:
+native Ubuntu comparison is still unmeasured and a reasonable bounded next
+experiment. Keep current Java/Vue/MapLibre unless evidence justifies a change.
+Do not promise subsecond long single-leg routing or claim Ubuntu speedup yet.
+
+LONG-ROUTE SPEED IMPROVEMENTS ACTIVE; 2026-10-22
+Completed the requested investigation for fresh 200-250 km routes. The user also
+has native Ubuntu installed and can switch, but no native-Ubuntu measurement has
+been made. No subagents, new dependencies, commit or push. Additional charges EUR 0.
+All previous uncommitted changes preserved. Docker and both Vite servers restarted
+after the user's restart. Main apps: 5173 planner, 5174 comparison; all three
+normal routing services running. All temporary experiment containers are stopped.
+
+Changes in this step:
+- BRouter compose command runs start-brouter.sh before Java. It refreshes only
+  /tmp/richiroute-segments/*.rd5 from .local/data, then executes the existing Java
+  command against this Linux-local copy. About 130 MB extra container disk space.
+  Original files unchanged; restart BRouter after data updates. .gitattributes
+  keeps the shell script LF on Windows. Missing data fails startup at cp.
+- Store marks completed and restored legs raw: edits replace entire legs, so
+  tracking each coordinate through Vue proxies is unnecessary. Do not mutate
+  stored leg geometry in place. Full geometry/elevation/surfaces remain intact.
+- Weidweg notice rejects points outside a loose bounding rectangle before exact
+  distance tests. Passage/routing rules and accepted fixture geometry unchanged.
+- Added tests/browser-long-routes.mjs for a 251.789 km single leg and 241.881 km
+  loop: actual drawing, every GPX coordinate/elevation, saved reload without new
+  requests, a shape edit with 3 requests, unchanged distant legs, undo with none,
+  exact restored geometry and elevation profile. These are performance cases,
+  not rider-approved route-quality examples.
+
+Evidence, all under experiments/routing/.local:
+- storage-comparison.json: 56 backend calls, 2 warmup + 5 measured rounds,
+  rotated storage order. Full feature hashes match, including road details.
+  Median Windows bind / Linux local ms: Vienna 3358/2619, St Poelten 2990/2302,
+  southeast loop 1660/1299, Kepler 41/34. About 22-23% gain on long routes.
+- long-browser-pre-change.json vs long-browser-after.json: four fresh builds per
+  case through the normal app proxy; exclude first run, median of remaining 3.
+  Actual ready-source map render ms before/after:
+    Graz-Vienna 197.640 km: 3460/2785
+    Graz-St Poelten 195.075 km: 3229/2421
+    southeast loop 241.881 km: 541/425
+    Graz-Mistelbach 251.789 km: 5358/4105
+  No route-response caching; all snaps and legs calculated every run. Warm engine
+  and filesystem, headless Chrome, not boot-time guarantees. First Vienna build
+  after main BRouter restart was 3610 ms. Long single legs still take seconds.
+  Median final-response-to-visible time 60 -> 18 ms; no >50 ms browser tasks in
+  the after runs. Map source setData about 5-7 ms -> 0.5-0.8 ms.
+- long-browser-ui-only.json isolates the two frontend changes before storage.
+- long-route-active.jfr and long-route-events.json: 12 actual engine requests;
+  search/road decoding dominate, GC totals ~407 ms, largest pause ~12 ms.
+- memory-comparison.json: 40 calls with isolated ServerHandler experiment,
+  128 vs 256 MB per request, heap 2 GB for both. No consistent benefit; rejected.
+  Main service still original JAR, 128 MB request budget, 1 GB heap, six workers.
+  Ignored .local/ServerHandler.java and memory-test classes are experiment-only.
+- browser-long-routes.json confirms full 7395/7154 exported vertices and checks.
+Profilers: .cache/compare-storage.mjs, capture-engine-profile.mjs,
+compare-memory.mjs, profile-long-browser.mjs. The storage profiler's port 17778
+candidate is now stopped; recreate deliberately before rerunning comparisons.
+
+Validation passed: 33 editor + 37 benchmark unit tests, production build,
+14 protected routes through the editor, western corridor, 12 local edits,
+western-example browser test, initial-drawing/error test, new long-route test,
+Kepler cyclepath both directions and Weidweg browser notice/restoration checks.
+Startup script tested for stale-copy removal and exact source byte preservation;
+compose validation passes. Existing MapLibre chunk-size warning remains.
+Docs: docs/local-development.md and experiments/routing/README.md.
+NEXT: refresh the planner to use the changes. Keep Java/Vue/MapLibre for now;
+measure native Ubuntu separately if desired, using a Linux filesystem. Further
+large speed gains for a single 250 km leg require engine/search work, not more
+workers or a framework rewrite. Do not claim that every long route is subsecond.
+
+LONG-ROUTE PROFILING STARTED; PAUSED FOR USER RESTART; 2026-10-22
+User requests a deep performance investigation for fresh 200-250 km routes,
+without overengineering, including language/framework and Windows/Linux choices.
+No production changes from this investigation yet. Preserve all prior uncommitted
+work, accepted routing choices and EUR 0 additional charges. No commit or push.
+User is restarting the terminal and will ask to continue. No subagents used.
+Read deslop and unslop skills. No applicable AGENTS.md found in repo/ancestors.
+User updated Docker during profiling. All three engines had stopped; restarted
+with compose up -d --pull never brouter graphhopper ors. BRouter response, GH
+/health, ORS /ors/v2/health and both Vite pages (5173/5174) returned HTTP 200.
+Recheck services after restart. Main BRouter remains six workers and 1 GB heap.
+
+Ignored reproducible profilers added in .cache:
+- profile-long-backend.mjs: 3 real requests, captures raw responses and hashes.
+- profile-long-browser.mjs before: 4 fresh builds per case in isolated Chrome,
+  using the normal app proxy, all snap/leg requests, no reused route geometry.
+  Measures store completion and actual map render with a loaded route source;
+  also captures JSON serialization, source setData, long tasks and CPU profiles.
+  An initial instrumentation bug used deep store.$subscribe and marked readiness
+  too early. Fixed to watch pending counts with a complete-leg guard, then reran
+  all 12 builds after the Docker restart. Only current report is valid.
+Reports are in experiments/routing/.local:
+  long-cases.json, long-<case>.json, long-browser-before.json,
+  long-<case>-before.cpuprofile.
+Fresh editor results, first run then the 3 subsequent warmed runs, visible ms:
+  Graz-Vienna, 197.640 km, 5817 vertices, 3 requests: 4981; 3639/3637/3590.
+  Graz-St Poelten, 195.075 km, 7043 vertices, 3 requests: 3368; 3243/3346/3249.
+  Southeast loop, 241.881 km, 13 requests: 825; 570/578/545.
+Single long legs remain the major delay. The loop benefits from parallel legs.
+Longest measured browser task was 72 ms; source updates about 4-8 ms, combined
+large JSON serializations about 11-15 ms. Need inspect CPU profiles before edits.
+These routes test performance, not rider-approved route quality or all 250 km
+cases. Do not claim a speed improvement yet or generalize warm timings to boot.
+
+NEXT: profile engine CPU vs file I/O, especially Windows bind-mounted RD5 data.
+BRouter already runs on Linux inside Docker; only E15_N45.rd5 (130 MB) is present.
+Compare identical engine/profile/data using container-local Linux storage with
+the current Windows bind mount, rotate run order, warm both equally, assert
+geometry hashes. This experiment has NOT been performed. Avoid a language or
+framework rewrite without evidence. Do not change routing costs for speed.
+A temporary richiroute-long-profile container was started on 17778 with JFR,
+but received no routing requests. Stopped before user restart. Its JFR,
+if present, is idle data and not useful performance evidence. Other previous
+temporary containers remain stopped. Profile command was the existing brouter
+image/JAR, six workers, -Xmx1g, plus
+  -XX:StartFlightRecording=name=long-route,settings=profile,filename=/work/.local/long-route.jfr,dumponexit=true
+No new packages or images downloaded. The installed ORS image has a JDK suitable
+for reading JFR output. Do not run baseline/browser benchmarks concurrently with
+CPU-heavy experiments. Preserve the full route geometry, elevation and surfaces.
+
+SIX WORKERS SELECTED AFTER FRESH-ROUTE COMPARISON; 2026-10-22
+Rider confirmed four workers were much faster and requested further speed tests
+for newly built routes. Compared 4/6/8 workers in isolated browser contexts with
+three routes: western loop, selected Eggenberg route, eastern-hills two-point route.
+Every load reset the editor and issued all snap/leg requests; no saved geometry
+was reused. Two warmup rounds and six measured rounds per route/worker setting,
+with rotated worker order: 72 total runs, 54 measured. Geometry hashes matched
+for all three routes across every worker setting and round.
+Median route-start-to-visible ms, workers 4/6/8 respectively:
+western 246/187/189; Eggenberg 121/111/110; eastern hills 69/68/69.
+Selected six: about 24% faster on the loop, 8% on the waypoint route. Eight has
+no consistent benefit. Two-point route latency is effectively unchanged.
+Active client routingConcurrency and BRouter compose command are now 6. Heap
+remains 1 GB. Main service recreated; richiroute-perf-six and -eight stopped.
+Browser benchmark: .local/browser-worker-comparison.json. Ignored profiler
+.cache/compare-workers-browser.mjs uses direct engine ports for all candidates
+and overrides only client concurrency in intercepted modules. Its guards assume
+the original four-worker source and server layout; don't rerun against changed
+ports/settings and treat it as the same controlled comparison.
+Normal-app confirmation: .local/visible-route-six-workers.json. First request
+after JVM restart 799 ms, subsequent 191-349 ms across the three basemaps.
+These are local browser timings with warm filesystem caches; no claim that
+machine startup or every future route has that latency.
+Validation: 33 editor unit tests, build, 14 protected routes via actual editor,
+western corridor, both browser checks, staged Weidweg opt-out/car/foot checks.
+Concurrency tests include 40 queued legs and ignored aborts at the six-job cap.
+17 initial requests remain, with 3 per local edit and zero on reload/undo.
+No dependency/cache/profile/geometry changes, commit or push. Charges EUR 0.
+NEXT: user can refresh and create a fresh route. Six is the measured choice;
+do not raise the worker count further without new evidence.
+
+FOUR-WORKER ROUTING ACTIVE; 2026-10-22
+Rider reports 2-3 seconds and rejects that initial-load latency. Full browser
+profiling now measures actual click to a render with the loaded route source,
+not just store readiness. Could not reproduce 2-3 seconds in the isolated browser:
+before this change 357-480 ms across local, street and aerial basemaps.
+Tested a separate four-worker BRouter on 17778. After startup, the same 9 snaps
+and 8 legs took about 230-244 ms versus 341-357 ms with two workers. First
+request on the new test JVM was slower; do not compare that to a warmed server.
+App and active BRouter now both allow four jobs. routingConcurrency in
+src/domain/route-model.ts controls the leg scheduler and shared HTTP slot limit;
+compose.yml sets the matching server worker count to 4. Java heap remains 1 GB.
+Main brouter container was recreated; isolated richiroute-perf-test is stopped.
+No route profile, geometry, snapping policy, or initial request count changed.
+Post-restart full click-to-visible measurements: first request 692 ms; subsequent
+runs 240-383 ms. These headless browser measurements do not establish the rider's
+own latency. NEXT: refresh/reload the example in the rider's browser; if still
+slow, investigate that environment rather than claim the reported delay solved.
+Reports: .local/visible-route-before.json, .local/visible-route-four-workers.json,
+and .local/worker-comparison.json. Profilers are ignored .cache scripts
+profile-visible-route.mjs and profile-workers.mjs.
+Validation: 33 editor and 37 benchmark unit tests, build, both browser checks,
+14 protected editor routes and western corridor pass. Staging passage checks
+also preserve 14 routes and verify opt-out/car/foot restrictions. Concurrency
+tests cover 40 queued legs, ignored aborts and cancellation before HTTP dispatch.
+Existing browser checks still require 17 initial requests, zero on saved reload,
+3 for a shape edit, zero on undo. Additional service charges EUR 0; no commit/push.
+
+INITIAL ROUTE PRESENTED TOGETHER; 2026-10-22
+Rider confirms faster loading, but dislikes the section-by-section buildup.
+Explained that 8 legs and 9 snap requests run through the existing two-slot
+queue. This step changes presentation, not routing-engine calculation speed.
+MapView holds the initial line until requests settle, with "Route wird berechnet"
+in the map controls. A completed route remains visible during local edits.
+The view tracks the displayed route's start-point ID; it does not change the
+store geometry, saved draft, scheduler, point snapping or route requests.
+Once pending work finishes, failed sections are also shown with their existing
+dashed/error treatment. The sidebar no longer warns about missing connections
+while calculations are still pending. Markers remain visible during loading.
+Browser test holds the last leg to verify no partial initial line, then checks
+success, visible local edits and a failed last leg. Existing browser checks still
+verify 17 initial requests, 0 on reload, 3 per local edit and 0 on undo.
+Build and both browser checks pass. Screenshot: .local/initial-route-loading.png.
+User draft untouched; no commit/push. Additional service charges EUR 0.
+
+INITIAL DRAWING DUPLICATE REQUESTS FIXED; 2026-10-22
+Rider dragged two points and undid both successfully, but reported slow initial
+drawing. Browser profiling found 44 requests for the western example instead
+of 17. Pinia devtools wrap each action in a different Proxy(store); the pending
+WeakMap used those proxies as keys and created multiple independent schedulers.
+operationsFor now keys the WeakMap by the stable store.$state object. This keeps
+snaps, routing and cancellation shared across action wrappers without changing
+routing rules or concurrency. Do not key this map by the action's this proxy.
+Browser request counts: 9 snaps plus 8 legs; completed draft reload 0 requests;
+one shape edit 3 requests; undo 0 new requests. Browser test asserts these counts.
+Unit regression simulates action proxies and checks initial requests plus undo
+cancellation of pending snaps. All 33 editor tests, build, browser checks, 14
+protected editor routes and the shaped western corridor pass. Rider draft untouched.
+Local browser measurements, 3 example loads each: before 1425/1073/1072 ms;
+after 573/382/397 ms. These are local measurements, not cold-server/map-tile
+guarantees. Saved-draft readiness was 139 ms before, 119 ms after, no routing.
+Evidence: .local/initial-route-before.json and .local/initial-route-after.json.
+Profiler: ignored .cache/profile-initial-route.mjs. No extra dependencies/cost.
+Only the queue identity changed in production code. Refresh the page before
+retesting to replace any queues left over from the old development module.
+No commit/push. Additional service charges EUR 0.
+
+WESTERN EXAMPLE AVAILABLE IN EDITOR; 2026-10-21
+Empty editor now offers "Beispiel: Westliche Runde über Augasse". It loads the
+accepted main points plus four corridor choices as visible, draggable shapes.
+There are three stops and six shapes in total. Existing drafts are not replaced
+automatically. New route, example, then Route zeigen loads it for the rider.
+src/config/route-examples.ts retains accepted indices
+0,45,119,146,175,245,385,644,874; shapes are entries 1,2,3,4,5,7.
+resetRoute accepts optional shape indices and loads the plan as one undoable
+action; invalid indices fail before state or history changes. No new engine rule.
+From index 45 onward, the actual editor's per-leg routing/snapping matches the
+accepted 19.9 km corridor within the existing tolerances. The opening is still
+automatic, so the complete five-point automatic target remains open. Lendkai
+access tags and accepted fixture geometry are unchanged. Do not claim this is
+automatic selection from the five main points. The new example is about 21.9 km.
+Validation: 32 editor unit tests, build, all 14 protected editor routes, western
+corridor comparison, and browser load/6 markers/reload/clear/undo checks pass.
+Local edits still make 3 requests, median 94 ms, p95 110 ms in this run.
+Browser test used an isolated context; rider's existing draft was not touched.
+Screenshot: .local/western-example-editor.png. Report: .local/editor-local-check.json.
+No dependencies, commit or push. Additional service charges EUR 0.
+NEXT: the example is ready to use without repeating the accepted route review.
+Keep Lendkai access evidence separate from Keplerstrasse cycle-path preference.
+
+KEPLER CYCLE PATH CHECK ADDED; 2026-10-21
+The active profile already follows the cycle path on the tested eastern 718 m
+section of Keplerstrasse, in both directions, with only two endpoints.
+New npm run test:kepler-local protects this behavior. It checks endpoint snapping,
+ordered cycle-path checkpoints, route length and highway=cycleway on all reported
+sections. Checkpoints are assertions, not intermediate routing waypoints.
+Both directions pass. Report:
+.local/kepler-check-2026-10-21T14-19-24-096Z.json.
+Scope: endpoints [15.423837,47.074389] and [15.432345,47.076993], not the full
+street or Lendkai. No new routing penalty, profile change or draft change.
+No commit/push. Additional service charges EUR 0. Western composite remains open;
+the Lendkai question is separate and the accepted reference remains unchanged.
+
+KEPLERSTRASSE CYCLING PREFERENCE CONFIRMED; 2026-10-21
+Rider: "on keplerstraße, always use the cyclingpath!!!"
+Use the cycle path along Keplerstrasse. Do not tune the profile to prefer its
+carriageway or weaken its sidepath treatment to force the western-loop target.
+Keep this street-specific instruction separate from Lendkai, the north/south
+road passing under Keplerbruecke. The saved OSM identifies those as different
+roads; the target's disputed vertices 4-5 lie on Lendkai, not Keplerstrasse.
+This message does not establish Lendkai access or change the accepted composite.
+Preference recorded in the handoff and routing guide. No routing code, fixture
+geometry or editor draft changed. No additional service charges.
+
+WESTERN ROAD CHOICES DIAGNOSED; 2026-10-21
+No production routing or draft changes in this step. Additional charges EUR 0.
+bench:probe-western now compares existing surface-v4 and scoped Weidweg profiles;
+it no longer generates the superseded broad ramp experiment. It records live
+bicycle=use_sidepath tags and costs and adds shaped Augasse/Schlossplatz probes.
+27 live probes passed without routing errors; all 14 protected variants preserved.
+Report: .local/western-gap/2026-10-21T04-14-11-715Z/report.json.
+Quiet corridor already matches between its endpoints. Augasse matches with one
+shape at accepted reference index 119; Schlossplatz with one at index 244.
+These are diagnostic requests only, not automatic selection or editor changes.
+The whole western target remains open, about 311 m shorter than the reference.
+Lendkai ways 115020465, 1123903798 and 1123903799 have bicycle=use_sidepath in
+saved OSM and live BRouter tags. CostPerKm is 27900. Between reference vertices
+4 and 5, BRouter detours about 71 m to the parallel cycle path. An explicit
+midpoint can force the road, but accepted geometry does not establish access.
+Asked the rider whether current signs permit choosing the road; answer pending.
+Also asked whether to retain route-specific preferences as visible shaping points
+or keep tuning automatic selection; answer pending. Do not treat silence as a
+correction of access data or add hidden shaping points to the editor.
+Finite Neubaugasse/Zanklstrasse penalties did not reproduce the accepted loop;
+combined penalties and reduced global traffic penalties made it worse. None
+activated. Reports: .local/western-preferences-2026-10-21T04-04-33-198Z/ and
+.local/western-traffic-2026-10-21T04-06-49-739Z/. Section response evidence also
+saved in .local/western-road-sections.json and .local/lendkai-2.json.
+NEXT: resolve Lendkai access evidence separately from road preferences. Retain
+the accepted fixture unchanged and avoid more broad penalty tuning to force it.
+All earlier uncommitted Weidweg work remains; no commit or push in this step.
+
+WEIDWEG PASSAGE SCOPED AND ACTIVE; 2026-10-21
+Current uncommitted work includes the prior western diagnostic plus the scoped
+passage implementation. Main BRouter now runs brouter-local-bicycle-v2.jar;
+the editor uses richi-weidweg-v1 with the existing Thal preference. Original
+v1 JAR/manifest/profile files remain available. No push/commit in this turn.
+Only the two accepted ramped stair flights receive a cost override, in both
+directions, with exact encoded endpoints and no intermediate geometry. The
+profile retains allow_steps=false. The engine requires the opt-in global,
+bicycle-only mode and the original steps/dismount/foot/ramp/concrete tags;
+changed endpoints, geometry, access/vehicle restrictions or one-way tags reject
+the exception. Raw steps/dismount tags are preserved. The profile on an old
+engine still excludes steps; its own cost rules never lower stair costs.
+Important engine detail: BRouter strips lookup tags unused by a profile, so the
+new profile reads ramp:bicycle explicitly. The decoder admits qualifying links
+for examination; only exact flights receive the cost override during routing.
+The editor displays: Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.
+The notice also works after restoring a draft and for reverse/partial flights.
+Validation: 30 editor tests, 37 benchmark tests, both builds, Java scope checks,
+14 protected routes through the engine AND editor, Ries turn regression and
+browser notice/restore/clear checks pass. Local edits still use 3 requests each.
+Live passage tests also cover explicit opt-out, car mode and foot mode.
+Reports: .local/weidweg-check-2026-10-20T23-06-23-117Z.json and
+.local/reviewed-route-checks/2026-10-20T23-02-37-363Z/report.json.
+Screenshot: .local/weidweg-editor.png. The isolated test container is stopped.
+Windows: stop any instance using the v2 JAR before rebuilding to release its
+file lock. Build prepares both the JAR and its profile; see patch README.
+The western composite is still target-open, about 311 m longer than the current
+automatic geometry; stair detour removal itself is about 509 m. Do not change
+accepted fixture geometry or repeat the rider review. NEXT: scoped preferences
+for the Lendkai approach and quiet corridor/Augasse/Schlossplatz road choices,
+without globally penalizing cycleways. Additional service charges EUR 0.
+
+WESTERN-LOOP GAP ISOLATED; 2026-10-21
+Checkpoints completed locally: 401245d routing/review work, 9547c19 documentation.
+Neither was pushed. Current work adds npm run bench:probe-western, a repeatable
+local diagnostic against the committed accepted loop and 14 protected variants.
+No editor, UI or active profile change. No additional service charges.
+The experimental profile permits only concrete steps explicitly tagged with a
+bicycle ramp, bicycle=dismount and foot=yes. It uses the two accepted Weidweg
+flights and removes about 509 m of whole-loop detour; all 14 protected variants
+are preserved. This tag rule has NO location/length limit and must NOT become
+the default. A production push-through exception needs the accepted passage's
+scope, not blanket permission for tagged ramps elsewhere.
+The corrected quiet corridor is already reproduced between its entrance/exit.
+Remaining automatic differences: Lendkai start, corridor selection, connection
+via Augasse/Exerzierplatzstrasse and a Schlossplatz/Thalstrasse branch. The full
+accepted composite remains unmet. Do not re-review it or change its fixture.
+The runner records raw responses, exact requests, profile content and provenance
+under .local/western-gap/. It includes main-point and explicitly shaped variants
+plus local section probes; their detour lengths are not additive.
+Validation: 24 live probes, zero protected-route regressions/errors; 37 benchmark
+unit tests passed. Latest report:
+.local/western-gap/2026-10-20T22-47-18-137Z/report.json.
+NEXT: implement a passage-scoped push-through option and explicit local corridor
+preferences, preserving the accepted Mur paths and the 14 regression fixtures.
+Do not globally penalize cycleways to force this loop. No further user review
+is needed for the already accepted route.
+
 REVIEWED ROUTE REGRESSIONS IMPLEMENTED; CHECKPOINT 2026-10-21
 User requested a short commit message covering the accumulated changes:
 "Improve route review and routing checks". No attribution trailers. Commit

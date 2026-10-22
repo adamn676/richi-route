@@ -1,7 +1,7 @@
 <template>
   <div class="map-view">
     <div id="map" class="map-view__canvas" aria-label="Interaktive Karte von Graz" />
-    <SegmentedRouteLayer v-if="map" :map="map" :route="route" />
+    <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
     <div class="map-view__controls">
       <label>Karte <select v-model="basemap" aria-label="Kartenansicht">
         <option value="street">Straßenkarte</option>
@@ -9,13 +9,14 @@
         <option value="local">Lokale Straßen</option>
       </select></label>
       <button type="button" :disabled="!route" @click="fitRoute">Route zeigen</button>
+      <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
     </div>
     <p v-if="mapError" class="map-view__error" role="alert">{{ mapError }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouteStore } from '@/stores/route.store';
 import { LngLatBounds } from 'maplibre-gl';
@@ -26,7 +27,14 @@ import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 
 const { map, basemap, mapError } = useMap('map');
-const { route } = storeToRefs(useRouteStore());
+const { route, pendingSnapCount, pendingLegCount } = storeToRefs(useRouteStore());
+const presentedStartId = ref<string>();
+const routingPending = computed(() => pendingSnapCount.value > 0 || pendingLegCount.value > 0);
+const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
+  presentedStartId.value !== route.value.features[0].properties.fromId));
+watch([route, routingPending], ([value, pending]) => {
+  if (!pending) presentedStartId.value = value?.features[0]?.properties.fromId;
+}, { immediate: true });
 useRouteDragging({ map });
 useMapInteractions(map);
 useMarkerWatches(map);
@@ -47,6 +55,7 @@ function fitRoute() {
 .map-view__canvas { width: 100%; height: 100%; }
 .map-view__controls { position: absolute; top: .75rem; left: .75rem; display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem; background: white; border-radius: .5rem; box-shadow: 0 2px 10px #0002; font-size: .8rem; }
 .map-view__controls select, .map-view__controls button { padding: .45rem; border: 1px solid #cddbd9; border-radius: .3rem; background: white; }
+.map-view__progress { align-self: center; color: #304951; }
 .map-view__error {
   position: absolute;
   top: 4rem;

@@ -13,6 +13,7 @@ const sources = [
   { file: 'downloads/brouter-1.7.10.zip', url: 'https://github.com/abrensch/brouter/releases/download/v1.7.10/brouter-1.7.10.zip', sha256: '023fec3ba997758e8cd7ab9e1bae52e962af3f00b57683e3de86b84ffad01532', version: '1.7.10' },
   { file: 'data/steiermark.osm.pbf', url: 'https://download.openstreetmap.fr/extracts/europe/austria/steiermark.osm.pbf', coverage: 'Styria', dataTimestamp: null },
   { file: 'data/E15_N45.rd5', url: 'https://brouter.de/brouter/segments4/E15_N45.rd5', coverage: '15–20 E, 45–50 N', dataTimestamp: null },
+  { file: 'data/E10_N45.rd5', url: 'https://brouter.de/brouter/segments4/E10_N45.rd5', coverage: '10–15 E, 45–50 N', dataTimestamp: null },
 ];
 
 async function hash(file) {

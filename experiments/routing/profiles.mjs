@@ -11,6 +11,11 @@ export const profileSettings = {
     brouterProfile: 'richi-surface-v4',
     brouterNogos: thalPreference.nogos,
   },
+  'weidweg-local-v1': {
+    label: 'BRouter with accepted Thal preference and Weidweg push-through; GraphHopper baseline',
+    brouterProfile: 'richi-weidweg-v1',
+    brouterNogos: thalPreference.nogos,
+  },
 };
 
 export function settingsFor(name) {
@@ -40,6 +45,10 @@ export function cyclepathProfile(baseline) {
 export function candidateProfile(baseline, settings) {
   settingsFor(settings);
   if (settings === 'thal-local-v1') return candidateProfile(baseline, 'surface-v4');
+  if (settings === 'weidweg-local-v1') return candidateProfile(baseline, 'surface-v4')
+    .replace('# RichiRoute surface-v4:', '# RichiRoute weidweg-local-v1:')
+    .replace('---context:way', 'assign richiroute_weidweg_push = true\n\n---context:way')
+    .replace('assign surfacepenalty', '# Retain ramp tags for the local engine guard; this does not grant access.\nassign weidweg_ramp = ramp:bicycle=yes\n\nassign surfacepenalty');
   const profile = cyclepathProfile(baseline);
   if (settings === 'cyclepath-v1') return profile;
   const network = profile

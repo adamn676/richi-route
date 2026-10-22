@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { getSegments } from '../src/utils/geometry.ts';
 import { assessReviewedRoute } from '../experiments/routing/reviewed-routes.mjs';
+import { westernLoop } from '../src/config/route-examples.ts';
 
 const originalFetch = globalThis.fetch;
 let requestCount = 0;
@@ -36,6 +37,16 @@ for (const reference of suite.routes.filter(route => route.expectation === 'pres
 
 setActivePinia(createPinia());
 const store = useRouteStore();
+store.resetRoute(westernLoop.coords, westernLoop.shapeIndices);
+await idle(store);
+assert.equal(store.shapingPoints.length, 6);
+const westernReference = suite.routes.find(route => route.id === '11-western-loop-selected');
+const westernCorridor = assessReviewedRoute({
+  coordinates: westernReference.coordinates.slice(45),
+  points: westernLoop.coords.slice(1).map(coord => ({ coord })),
+}, Object.values(store.legs).slice(1).flatMap(leg => leg.coordinates));
+assert.equal(westernCorridor.matches, true, 'Western example follows the accepted corridor after its automatic opening');
+
 store.resetRoute([[15.4325, 47.0757], [15.416, 47.083], [15.406859, 47.077267], [15.404583, 47.066835], [15.404496, 47.064171]]);
 await idle(store);
 const durations = [];
@@ -59,7 +70,7 @@ for (let i = 0; i < 200; i++) {
   renderTimes.push(performance.now() - start);
 }
 renderTimes.sort((a, b) => a - b);
-const report = { comparisons, localEdit: { samples: 12, requestsPerEdit: 3, medianMs: durations[6], p95Ms: durations[11] },
+const report = { comparisons, westernCorridor, localEdit: { samples: 12, requestsPerEdit: 3, medianMs: durations[6], p95Ms: durations[11] },
   syntheticConversion: { vertices: 10000, features: 1, medianMs: renderTimes[100], p95Ms: renderTimes[190], note: 'GeoJSON preparation only; not browser frame time or a before/after speedup.' } };
 await fs.writeFile('experiments/routing/.local/editor-local-check.json', JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ routesPreserved: comparisons.length, localEdit: report.localEdit, report: 'experiments/routing/.local/editor-local-check.json' }));

@@ -20,7 +20,7 @@ const stop = (id, coord, kind = 'via') => ({
 });
 const shape = (id, coord) => ({ id, type: 'shape', coord });
 
-test('forty queued legs keep at most two engine jobs active, including ignored aborts', async () => {
+test('forty queued legs keep at most six engine jobs active, including ignored aborts', async () => {
   const initial = reconcileLegs(Array.from({ length: 41 }, (_, i) => stop(String(i), [15 + i * .001, 47])), {});
   const jobs = [];
   let active = 0, peak = 0;
@@ -30,17 +30,17 @@ test('forty queued legs keep at most two engine jobs active, including ignored a
   }), () => {}, () => assert.fail(), () => {});
   scheduler.update(initial.legs, initial.requests);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(jobs.length, 2);
+  assert.equal(jobs.length, 6);
   scheduler.cancelAll();
   scheduler.update(initial.legs, initial.requests);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(jobs.length, 2);
+  assert.equal(jobs.length, 6);
   assert.ok(jobs.every(job => job.signal.aborted));
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < 46; i++) {
     jobs[i].resolve();
     await new Promise(resolve => setImmediate(resolve));
   }
-  assert.equal(peak, 2);
+  assert.equal(peak, 6);
   assert.equal(active, 0);
 });
 

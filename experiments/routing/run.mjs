@@ -27,9 +27,9 @@ async function sha256(file) {
 
 export async function provenance(settings, includeOrs) {
   const assets = await readJson(path.join(root, '.local/assets.json'));
-  const brouterPatch = await readJson(path.join(root, '.local/brouter/patch.json'));
+  const brouterPatch = await readJson(path.join(root, `.local/brouter/${engines.brouter.patch}.patch.json`));
   if (brouterPatch.patch !== engines.brouter.patch ||
-      await sha256(path.join(root, '.local/brouter/brouter-ries-bicycle-turn-v1.jar')) !== brouterPatch.patchedJarSha256) {
+      await sha256(path.join(root, `.local/brouter/brouter-${engines.brouter.patch}.jar`)) !== brouterPatch.patchedJarSha256) {
     throw new Error('BRouter patch differs from its recorded build. Run npm run bench:brouter:patch before comparing.');
   }
   for (const asset of assets.assets) {
@@ -38,6 +38,7 @@ export async function provenance(settings, includeOrs) {
   const snapshots = {};
   const files = ['graphhopper.yml', 'compose.yml', 'scenarios.json', 'engines.mjs', 'profiles.mjs', 'run.mjs', 'evaluation.mjs', 'brouter-patch/OsmNode.java', '.local/brouter/profiles2/richi-road.brf', '.local/brouter/profiles2/lookups.dat'];
   files.push('../../src/config/thal-preference.json');
+  files.push('brouter-patch/OsmPath.java', 'brouter-patch/StdPath.java', 'brouter-patch/BExpressionContextWay.java', 'brouter-patch/WeidwegPassage.java');
   if (includeOrs) files.push('ors.yml', 'ors-patch/Dockerfile', 'ors-patch/ORSOSMReader.java');
   if (settings !== 'baseline') files.push(`.local/brouter/profiles2/${settingsFor(settings).brouterProfile}.brf`);
   for (const file of files) {
@@ -68,7 +69,7 @@ export async function provenance(settings, includeOrs) {
     git: { commit: git('rev-parse', 'HEAD'), status: git('status', '--short') },
     limitations: [
       'Generated draft coordinates and expected roads require Richard\'s review. Successful routing is not evidence of road-bike suitability.',
-      'GraphHopper uses a Styria PBF; BRouter uses a larger prepared tile. Source dates, processing and coverage differ.',
+      'GraphHopper uses a Styria PBF; BRouter uses larger prepared tiles. Source dates, processing and coverage differ.',
       'HTTP Last-Modified is not the OSM source timestamp. GraphHopper reports the PBF data_date in graphhopperInfo. The RD5 source OSM timestamp is unknown.',
       'GraphHopper has no elevation in this baseline. BRouter uses prepared elevation and fastbike defaults. Grade preferences are not comparable.',
       'Selected and edited routes are whole-route requests with ordered shaping points. They do not guarantee preservation of distant roads.',

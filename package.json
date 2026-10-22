@@ -16,7 +16,10 @@
     "bench:run": "node experiments/routing/run.mjs",
     "bench:test": "node --test experiments/routing/tests/*.test.mjs",
     "bench:check-reviewed": "node experiments/routing/check-reviewed-routes.mjs",
+    "bench:probe-western": "node experiments/routing/probe-western-loop.mjs",
     "test:editor-local": "node tests/editor-local-check.mjs",
+    "test:weidweg-local": "node tests/weidweg-local.mjs",
+    "test:kepler-local": "node tests/kepler-cyclepath-local.mjs",
     "bench:dev": "vite --config experiments/routing/vite.config.ts",
     "bench:build": "vue-tsc --noEmit -p experiments/routing/tsconfig.json && vite build --config experiments/routing/vite.config.ts",
     "test": "node --test tests/*.test.mjs"

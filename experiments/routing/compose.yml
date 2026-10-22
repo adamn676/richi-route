@@ -30,10 +30,11 @@ services:
   brouter:
     image: eclipse-temurin:21-jre@sha256:227118764cccd3c3294617061aaa93a08309c63a395eefa83e6b35032992ea99
     working_dir: /work
-    command: [java, -Xmx1g, -DmaxRunningTime=60, -cp, /work/.local/brouter/brouter-ries-bicycle-turn-v1.jar, btools.server.RouteServer, /work/.local/data, /work/.local/brouter/profiles2, /work/.local/customprofiles, "17777", "2", "0.0.0.0"]
+    command: [sh, /work/start-brouter.sh, java, -Xmx1g, -DmaxRunningTime=60, -cp, /work/.local/brouter/brouter-local-bicycle-v2.jar, btools.server.RouteServer, /tmp/richiroute-segments, /work/.local/brouter/profiles2, /work/.local/customprofiles, "17777", "6", "0.0.0.0"]
     ports:
       - "127.0.0.1:17777:17777"
     volumes:
+      - ./start-brouter.sh:/work/start-brouter.sh:ro
       - ./.local:/work/.local
     networks: [routing]
 networks:

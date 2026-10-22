@@ -22,15 +22,34 @@ npm run bench:brouter:patch
 ```
 
 Setup downloads the pinned BRouter and GraphHopper releases, a Styria OpenStreetMap
-extract and the BRouter regional tile into `experiments/routing/.local/`.
+extract and two BRouter regional tiles into `experiments/routing/.local/`.
 Docker images are separate downloads. Existing files are checked against recorded
 hashes; a mismatch stops setup rather than replacing the data.
 
-The BRouter patch build uses the compiler in the local ORS image. Building that
-image does not start the ORS service. The patch applies a specific bicycle-turn
-correction; see its [scope and checks](../experiments/routing/brouter-patch/README.md).
+BRouter covers 10–20° E and 45–50° N using `E10_N45.rd5` and `E15_N45.rd5`,
+including Graz–Virgen. This is not worldwide coverage; the far west of Austria
+also lies outside it. GraphHopper, its local road background and ORS still use
+the smaller Styria extract. The online street and aerial backgrounds have
+separate coverage from the routing data.
 
-Create the editor's road-cycling profile once on a fresh installation:
+For an existing installation that reports missing `E10_N45.rd5`, run:
+
+```sh
+npm run bench:setup
+docker compose -f experiments/routing/compose.yml restart brouter
+```
+
+Then select **Erneut versuchen** in the planner. The new tile is about 199 MB;
+existing files are preserved. BRouter refreshes its Linux-local copy at startup,
+so downloading a tile alone does not make it available to a running container.
+
+The BRouter patch build uses the compiler in the local ORS image. Building that
+image does not start the ORS service. The build also creates the editor's
+`richi-weidweg-v1` profile. The patch retains the Ries bicycle-turn correction and
+allows the two accepted Weidweg ramped stair flights as a push-through passage;
+see its [scope and checks](../experiments/routing/brouter-patch/README.md).
+
+Create the comparison's earlier surface-v4 profile once on a fresh installation:
 
 ```sh
 node --input-type=module -e "
@@ -45,6 +64,9 @@ await writeFile(directory + 'richi-surface-v4.brf', candidateProfile(baseline, '
 This command refuses to overwrite an existing profile. An already prepared
 installation can skip these setup steps. The editor also applies the local road
 preference recorded in `src/config/thal-preference.json`.
+
+When updating an existing installation, stop BRouter before rebuilding the patch
+on Windows so its JAR is not locked. Start it again with `npm run bench:up`.
 
 ## Start and stop
 
@@ -63,6 +85,16 @@ docker compose -f experiments/routing/compose.yml logs --tail 30 graphhopper
 
 The configured Java heaps are up to 3 GB for GraphHopper and 1 GB for BRouter;
 Docker and the operating system need additional memory.
+
+BRouter copies the prepared `.rd5` road files into its container's Linux
+filesystem at startup. This avoids repeated reads through the Windows bind
+mount. The source files stay in `.local/data/`; restart BRouter after updating
+them. The disposable copy currently uses about 130 MB of disk space. Route
+calculations still run afresh and use the same profile and road data.
+
+On Ubuntu, keep the repository and routing data on a Linux filesystem. Native
+Ubuntu performance has not been measured on this machine; Windows with
+container-local data already provides the measured storage improvement.
 
 In another terminal, start the comparison app if needed:
 
@@ -127,10 +159,13 @@ With prepared assets and BRouter running:
 
 ```sh
 npm run bench:check-reviewed
+npm run test:weidweg-local
 ```
 
 This protects 14 reviewed route variants and reports the western-loop composite
-as a separate target. Requests, responses and reports stay in the ignored `.local/`
+as a separate target using the editor's `weidweg-local-v1` settings. The passage
+check also verifies both directions and opt-out behaviour. Requests, responses
+and reports stay in the ignored `.local/`
 directory. Do not replace expected geometry just to make a failing check pass.
 Fresh map downloads can differ from the data used for the saved reviews.
 
@@ -144,6 +179,11 @@ This exercises the same protected routes through the editor and checks that loca
 edits preserve distant legs. Browser scripts in `tests/` additionally require
 Chrome and the local Playwright installation at `.cache/browser-tools/`; that
 installation is not supplied by `npm ci`. Their screenshots and reports are ignored.
+
+`node tests/browser-long-routes.mjs` builds Graz–Virgen across two map tiles
+(339 km), a 252 km single leg and a 242 km loop in isolated browser contexts.
+It checks drawing, all exported coordinates and elevations, saved reload,
+local editing and undo without changing your draft.
 
 ## Builds and deployment
 
