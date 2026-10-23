@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, Map, RasterTileSource, VectorTileSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Position } from 'geojson';
 import type { Result, RoutePoint } from './types';
-import { basemapOptions, basemapSources, initialBasemap } from './basemaps';
+import { basemapOptions, basemapSources, initialBasemap } from '../../../src/config/basemaps';
 import { surfaceColor, surfaceLabel, type RouteInspection } from './route-inspection';
 import { compareRouteGeometry } from '../route-comparison.mjs';
 

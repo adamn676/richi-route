@@ -1,7 +1,7 @@
 import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 
 export type Coord = [number, number];
-export type StopKind = 'start' | 'via' | 'end';
+type StopKind = 'start' | 'via' | 'end';
 export type Surface = 'asphalt' | 'paved' | 'rough' | 'unpaved' | 'unknown';
 export const routingConcurrency = 6;
 

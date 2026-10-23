@@ -2,7 +2,7 @@ import { watch } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
 import type { RouteStore } from '../stores/route.store.ts';
 
-export const draftKey = 'richiroute.route-draft.v1';
+const draftKey = 'richiroute.route-draft.v1';
 const writers = new WeakMap<RouteStore, () => void>();
 
 export function saveDraftNow(store: RouteStore) {

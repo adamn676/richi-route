@@ -1,0 +1,39 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Use the declared npm version
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Test the planner
+        run: npm test
+      - name: Test routing comparisons
+        run: npm run bench:test
+      - name: Build the planner
+        run: npm run build
+      - name: Build routing comparisons
+        run: npm run bench:build

@@ -1,4 +1,4 @@
-export interface SurfaceSection {
+interface SurfaceSection {
   surface: string;
   fromIndex: number;
   toIndex: number;

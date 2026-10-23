@@ -3,7 +3,7 @@ import routingSearch from '../../src/config/routing-search.json' with { type: 'j
 import localRules from '../../src/config/routing-rules.generated.json' with { type: 'json' };
 import { localRulesProfile } from '../../scripts/routing-profile.mjs';
 
-export const profileSettings = {
+const profileSettings = {
   'local-rules-v1': {
     label: 'BRouter with shared local rules and optimized search; GraphHopper baseline',
     brouterProfile: localRules.profile,
@@ -49,7 +49,7 @@ export function settingsFor(name) {
   return profileSettings[name];
 }
 
-export function cyclepathProfile(baseline) {
+function cyclepathProfile(baseline) {
   let profile = baseline.replaceAll('\r\n', '\n');
   const changes = [
     [/assign consider_traffic\s+= 0\.1\b/, 'assign consider_traffic = 0.5'],

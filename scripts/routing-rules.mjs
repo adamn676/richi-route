@@ -11,7 +11,7 @@ const fields = {
 const fail = message => { throw new Error(`Routing rules: ${message}`); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
-export const encodedCoord = ([lon, lat]) => [Math.round(lon * 1e6) + 180000000, Math.round(lat * 1e6) + 90000000];
+const encodedCoord = ([lon, lat]) => [Math.round(lon * 1e6) + 180000000, Math.round(lat * 1e6) + 90000000];
 const coord = value => Array.isArray(value) && value.length === 2 && value.every(finite)
   && Math.abs(value[0]) <= 180 && Math.abs(value[1]) <= 90
   && value.every(n => Math.abs(n * 1e6 - Math.round(n * 1e6)) < 0.00001);

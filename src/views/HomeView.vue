@@ -1,4 +1,3 @@
-<!-- src/views/HomeView.vue -->
 <template>
   <main class="editor-layout">
     <AppSidebar class="editor-layout__sidebar" />
@@ -14,8 +13,6 @@
 <script setup lang="ts">
 import AppSidebar from "@/components/layout/AppSidebar.vue";
 import MapView from "@/components/map/MapView.vue";
-
-
 </script>
 
 <style scoped>

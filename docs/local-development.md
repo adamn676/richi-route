@@ -302,6 +302,13 @@ records the surface-penalty experiments and why the default remains unchanged.
 
 ## Checks
 
+The [Checks workflow](../.github/workflows/checks.yml) runs on pushes to `main`
+and pull requests, and can also be started manually in GitHub Actions. It uses
+the Node version in `.nvmrc` and the npm version in `package.json`, performs
+`npm ci`, then runs both unit-test suites and both production builds, including
+TypeScript checks. Native engine, live routing and browser checks remain local
+because they need the separate routing bundle and prepared services.
+
 Unit tests and builds do not need running engines:
 
 ```sh
