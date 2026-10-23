@@ -12,6 +12,8 @@
       <button v-if="routeStore.draftError" type="button" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</button>
     </div>
 
+    <SavedRoutes ref="savedRoutes" />
+
     <section class="planner__summary" aria-label="Streckendaten" aria-live="polite">
       <div><strong>{{ distanceLabel }}</strong><span>Distanz</span></div>
       <div><strong>{{ ascentLabel }}</strong><span>Aufstieg</span></div>
@@ -114,8 +116,8 @@
       <button type="button" class="planner__add" @click="loadWesternLoop">Beispiel: Westliche Runde über Augasse</button>
       <p class="planner__help">Über ruhige Straßen und Weidweg, mit sechs verschiebbaren Formpunkten. Der Einstieg wird automatisch berechnet.</p>
     </template>
-    <button v-if="!hasEndpoints" type="button" class="planner__add" @click="routeStore.resetRoute([[15.474345, 47.090869], [15.503735, 47.105271]])">Beispiel: Hahnhofweg → Roseggerweg</button>
-    <button v-else type="button" class="planner__add" @click="routeStore.resetRoute()">Neue Route</button>
+    <button v-if="!hasEndpoints" type="button" class="planner__add" @click="savedRoutes?.newRoute([[15.474345, 47.090869], [15.503735, 47.105271]])">Beispiel: Hahnhofweg → Roseggerweg</button>
+    <button v-else type="button" class="planner__add" @click="savedRoutes?.newRoute()">Neue Route</button>
     <p class="planner__help">
       Karte anklicken: Start, Ziel, dann Stopps. Auf die Linie klicken: Stopp setzen.
       Linie ziehen: Formpunkt setzen. Nur betroffene Abschnitte werden neu berechnet.
@@ -126,20 +128,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { westernLoop } from '@/config/route-examples';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
+import SavedRoutes from '@/components/ui/SavedRoutes.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { saveDraftNow } from '@/services/draft.service';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 
 const routeStore = useRouteStore();
+const savedRoutes = ref<InstanceType<typeof SavedRoutes>>();
 function loadWesternLoop(): void {
-  run(() => routeStore.resetRoute(westernLoop.coords, westernLoop.shapeIndices));
+  void savedRoutes.value?.newRoute(westernLoop.coords, westernLoop.shapeIndices);
 }
 const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
   .filter(leg => leg.status === 'routed' && isRoutingPolicyCurrent(leg.routingPolicy))));

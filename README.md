@@ -16,7 +16,8 @@ Austria. The planner currently has a German interface.
 - Inspect distance, ascent, elevation and surface types along the route.
 - Highlight individual surface sections on the map.
 - Switch between street maps, aerial imagery with street names, and a local road map.
-- Restore the current route from browser storage and download it as GPX.
+- Save, reopen, rename and duplicate routes in a local route collection.
+- Back up editable routes as RichiRoute files and download calculated tracks as GPX.
 
 Routing uses a local BRouter engine with a road-cycling profile. It prefers paved
 roads, but unpaved sections can still occur. Missing surface information remains
@@ -87,8 +88,9 @@ drafts, logs and local benchmark recordings stay outside version control.
 ## Project scope
 
 The current setup runs locally and uses regional map data. It does not provide
-accounts, cloud sync or a hosted service. Browser storage holds one current
-route; export GPX files to keep tracks separately.
+accounts, cloud sync or a hosted service. Browser storage holds the current draft
+and a named route collection. Download RichiRoute backups to keep editable copies
+outside the browser; clearing browser data removes locally stored routes.
 
 Built with Vue 3, TypeScript, Pinia and MapLibre GL JS. Routing data comes from
 OpenStreetMap; street maps and aerial imagery come from basemap.at. Provider

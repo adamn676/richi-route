@@ -274,8 +274,33 @@ including calculated geometry, points, surfaces and elevation. Reopening restore
 completed legs without recalculating them; interrupted work resumes when routing
 is available. Undo history is limited to the current session.
 
-Clearing browser data removes the draft. A second tab pauses saving when another
-tab changes it. **Neue Route** replaces the current draft with an empty route.
+A second tab pauses draft saving when another tab changes it.
+
+**Meine Routen** stores named routes in IndexedDB. The list loads only route
+metadata; geometry is read when opening, duplicating or exporting a route.
+**Route speichern** adds an entry. After opening it, **Änderungen speichern**
+updates that entry, while **Als Kopie speichern** creates a separate one. Entries
+can also be renamed, duplicated or deleted. Reloading restores the draft; open
+its saved entry again before updating that entry.
+
+Opening another route, starting **Neue Route**, or loading an example first saves
+a changed draft as an **Entwurf** entry. If saving fails or the editor changes
+during that save, the switch stops and the current route stays open. Saving or
+deleting an entry checks its revision inside the same database transaction, so
+an outdated tab cannot silently overwrite another tab's changes. Deleting a
+saved entry leaves its currently open draft intact.
+
+**Sicherung herunterladen** exports the current editable route, including its
+points, geometry, elevation, surfaces and routing revision, as `.richiroute.json`.
+**Sicherung importieren** validates that format and adds a new entry without
+replacing the current draft or existing entries. Imports are limited to 64 MB.
+This imports RichiRoute backups, not GPX files. Changed routing rules still cause
+recalculation when opening a saved route, keeping its old geometry visible.
+
+Clearing browser data removes both the draft and saved routes. The collection
+uses asynchronous IndexedDB storage; draft autosaving still uses localStorage
+and can reach its smaller quota. Named saves and backup downloads remain usable
+when draft autosaving fails. Storage is specific to the browser and site origin.
 
 **GPX herunterladen** exports the calculated track and known elevation once all
 points and legs are ready. Dashed placeholder legs cannot be exported, and small
@@ -388,12 +413,19 @@ export PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/browsers"
 node .cache/browser-tools/node_modules/playwright-core/cli.js install chromium
 node tests/browser-long-routes.mjs
 node tests/browser-surfaces.mjs
+node tests/browser-saved-routes.mjs
 node tests/browser-initial-performance.mjs --baseline 0.5
 ```
 
 The browser scripts use the downloaded Chromium when `PLAYWRIGHT_BROWSERS_PATH` is
 set; otherwise they use installed Chrome. Screenshots from the surface check are
 in `experiments/routing/.local/surface-browser/`.
+
+The saved-route browser check uses synthetic routes and real IndexedDB without
+a running routing engine. It covers large-route fidelity, backup round-trips,
+recovery on switching, conflicting tabs and transaction failures. Set
+`ROUTE_TEST_ORIGIN` to test a separate frontend port. Its screenshots and downloaded
+backup go to `.cache/saved-routes/`.
 
 To watch the editor check in a browser window and record a replay:
 
