@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import maplibregl, { type GeoJSONSource, type Map, type RasterTileSource, type VectorTileSource } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource, Map, RasterTileSource, VectorTileSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Position } from 'geojson';
 import type { Result, RoutePoint } from './types';
 import { basemapOptions, basemapSources, initialBasemap } from './basemaps';

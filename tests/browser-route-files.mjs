@@ -4,7 +4,7 @@ import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/i
 
 const draftKey = 'richiroute.route-draft.v1';
 const origin = 'http://127.0.0.1:5173';
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const errors = [];
 async function makeContext(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
@@ -73,10 +73,11 @@ try {
   assert.deepEqual(restored.legs, original.legs);
   assert.equal(restored.draftStatus, 'restored');
   assert.equal(routingRequests, 0, 'Finished routes restore without touching the engine');
-  await page.waitForFunction(() => {
+  await page.waitForFunction(async () => {
     const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
     const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
-    return map && !map.isMoving() && map.getSource('segments-source')?._data.features.length > 0 &&
+    const source = map?.getSource('segments-source');
+    return map && !map.isMoving() && source && (await source.getData()).features.length > 0 &&
       s.points.every(p => map.getBounds().contains(p.coord));
   });
   assert.equal(await page.getByRole('button', { name: 'GPX herunterladen' }).isEnabled(), true);

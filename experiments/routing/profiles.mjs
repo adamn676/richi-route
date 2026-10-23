@@ -1,6 +1,14 @@
 import thalPreference from '../../src/config/thal-preference.json' with { type: 'json' };
+import routingSearch from '../../src/config/routing-search.json' with { type: 'json' };
+import localRules from '../../src/config/routing-rules.generated.json' with { type: 'json' };
+import { localRulesProfile } from '../../scripts/routing-profile.mjs';
 
 export const profileSettings = {
+  'local-rules-v1': {
+    label: 'BRouter with shared local rules and optimized search; GraphHopper baseline',
+    brouterProfile: localRules.profile,
+    brouterParameters: { ...routingSearch, ...localRules.parameters },
+  },
   baseline: { label: 'Baseline profiles', brouterProfile: 'richi-road' },
   'cyclepath-v1': { label: 'BRouter cycle-path candidate; GraphHopper baseline', brouterProfile: 'richi-cyclepath-v1' },
   'network-v2': { label: 'BRouter network v2 candidate; GraphHopper baseline', brouterProfile: 'richi-network-v2' },
@@ -15,6 +23,24 @@ export const profileSettings = {
     label: 'BRouter with accepted Thal preference and Weidweg push-through; GraphHopper baseline',
     brouterProfile: 'richi-weidweg-v1',
     brouterNogos: thalPreference.nogos,
+  },
+  'weidweg-search-v1': {
+    label: 'BRouter Weidweg profile with conservative destination search; GraphHopper baseline',
+    brouterProfile: 'richi-weidweg-v1',
+    brouterNogos: thalPreference.nogos,
+    brouterParameters: { pass2coefficient: 0.5 },
+  },
+  'weidweg-search-v2': {
+    label: 'BRouter Weidweg profile with refined destination search; GraphHopper baseline',
+    brouterProfile: 'richi-weidweg-v1',
+    brouterNogos: thalPreference.nogos,
+    brouterParameters: { pass2coefficient: 0.7 },
+  },
+  'weidweg-search-v3': {
+    label: 'BRouter Weidweg profile with faster initial and refinement searches; GraphHopper baseline',
+    brouterProfile: 'richi-weidweg-v1',
+    brouterNogos: thalPreference.nogos,
+    brouterParameters: routingSearch,
   },
 };
 
@@ -44,6 +70,8 @@ export function cyclepathProfile(baseline) {
 
 export function candidateProfile(baseline, settings) {
   settingsFor(settings);
+  if (settings === 'local-rules-v1') return localRulesProfile(candidateProfile(baseline, 'weidweg-local-v1'), localRules.retainedTags);
+  if (['weidweg-search-v1', 'weidweg-search-v2', 'weidweg-search-v3'].includes(settings)) return candidateProfile(baseline, 'weidweg-local-v1');
   if (settings === 'thal-local-v1') return candidateProfile(baseline, 'surface-v4');
   if (settings === 'weidweg-local-v1') return candidateProfile(baseline, 'surface-v4')
     .replace('# RichiRoute surface-v4:', '# RichiRoute weidweg-local-v1:')

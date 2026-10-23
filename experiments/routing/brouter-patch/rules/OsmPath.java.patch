@@ -1,0 +1,44 @@
+--- a/OsmPath.java
++++ b/OsmPath.java
+@@ -9,7 +9,6 @@
+ import btools.mapaccess.OsmLinkHolder;
+ import btools.mapaccess.OsmNode;
+ import btools.mapaccess.OsmTransferNode;
+-import btools.mapaccess.TurnRestriction;
+ import btools.util.CheapRuler;
+ 
+ abstract class OsmPath implements OsmLinkHolder {
+@@ -222,8 +221,8 @@
+       // check turn restrictions (n detail mode (=final pass) no TR to not mess up voice hints)
+       if (nsection == 0 && rc.considerTurnRestrictions && !detailMode && !isStartpoint) {
+         if (rc.inverseDirection
+-          ? TurnRestriction.isTurnForbidden(sourceNode.firstRestriction, lon2, lat2, lon0, lat0, rc.bikeMode || rc.footMode, rc.carMode)
+-          : TurnRestriction.isTurnForbidden(sourceNode.firstRestriction, lon0, lat0, lon2, lat2, rc.bikeMode || rc.footMode, rc.carMode)) {
++          ? LocalRoutingRules.INSTANCE.isTurnForbidden(sourceNode, lon2, lat2, lon0, lat0, rc)
++          : LocalRoutingRules.INSTANCE.isTurnForbidden(sourceNode, lon0, lat0, lon2, lat2, rc)) {
+           cost = -1;
+           return;
+         }
+@@ -394,15 +393,13 @@
+ 
+   protected float wayCostfactor(RoutingContext rc) {
+     float original = rc.expctxWay.getCostfactor();
+-    return original == 9999.f ? weidwegCostfactor(rc, original) : original;
+-  }
+-
+-  private float weidwegCostfactor(RoutingContext rc, float original) {
+-    if (!rc.bikeMode || rc.carMode || rc.footMode || link.geometry != null
+-      || !WeidwegPassage.matches(sourceNode.ilon, sourceNode.ilat, targetNode.ilon, targetNode.ilat)
+-      || rc.expctxWay.getVariableValue("richiroute_weidweg_push", 0.f) != 1.f) return original;
+-    String tags = rc.expctxWay.getKeyValueDescription(link.isReverse(sourceNode), link.descriptionBitmap);
+-    return WeidwegPassage.costfactor(original, tags);
++    if (original != 9999.f || !rc.localRulesEnabled || link.geometry != null) return original;
++    OsmNode from = rc.inverseDirection ? targetNode : sourceNode;
++    OsmNode to = rc.inverseDirection ? sourceNode : targetNode;
++    LocalRoutingRules.Segment rule = LocalRoutingRules.INSTANCE.segment(from.ilon, from.ilat, to.ilon, to.ilat);
++    if (rule == null) return original;
++    String tags = rc.expctxWay.getKeyValueDescription(rc.inverseDirection ^ link.isReverse(sourceNode), link.descriptionBitmap);
++    return rule.costfactor(original, tags);
+   }
+ 
+   protected abstract double processWaySection(RoutingContext rc, double dist, double delta_h, double elevation, double angle, double cosangle, boolean isStartpoint, int nsection, int lastpriorityclassifier);

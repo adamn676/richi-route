@@ -1,0 +1,46 @@
+--- a/RoutingContext.java
++++ b/RoutingContext.java
+@@ -52,6 +52,9 @@
+   public GeometryDecoder geometryDecoder = new GeometryDecoder();
+ 
+   public int memoryclass = 64;
++
++  public boolean localRulesEnabled;
++  public LocalRoutingRules.ActiveAreas localAreas;
+ 
+   public boolean carMode;
+   public boolean bikeMode;
+@@ -118,6 +121,7 @@
+     carMode = 0.f != expctxGlobal.getVariableValue("validForCars", 0.f);
+     bikeMode = 0.f != expctxGlobal.getVariableValue("validForBikes", 0.f);
+     footMode = 0.f != expctxGlobal.getVariableValue("validForFoot", 0.f);
++    LocalRoutingRules.INSTANCE.configure(this);
+ 
+     consider_crossing = 0.f != expctxGlobal.getVariableValue("consider_crossing", 0.f);
+ 
+@@ -305,6 +309,7 @@
+    * restore the full nogolist previously saved by cleanNogoList
+    */
+   public void restoreNogoList() {
++    if (localAreas != null) localAreas.restore();
+     nogopoints = nogopoints_all;
+   }
+ 
+@@ -315,6 +320,7 @@
+    * @return true if all wayoints are all in the same (full-weigth) nogo area (triggering bee-line-mode)
+    */
+   public void cleanNogoList(List<OsmNode> waypoints) {
++    if (localAreas != null) localAreas.clean(waypoints);
+     nogopoints_all = nogopoints;
+     if (nogopoints == null) return;
+     List<OsmNodeNamed> nogos = new ArrayList<>();
+@@ -556,6 +562,9 @@
+         }
+       }
+     }
++    if (localAreas != null && d > 0. && nogoCost >= 0.) {
++      localAreas.apply(this, lon1, lat1, lon2, lat2, d, dlon2m, dlat2m);
++    }
+     return (int) Math.max(1.0, Math.round(d));
+   }
+ 

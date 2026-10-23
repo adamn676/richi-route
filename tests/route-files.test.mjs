@@ -5,6 +5,7 @@ import { parseDraft, serializeDraft } from '../src/domain/route-draft.ts';
 import { exportGpx, gpxUnavailableReason } from '../src/domain/route-gpx.ts';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { routingEngine } from '../src/services/route.service.ts';
+import { routingPolicyVersion } from '../src/config/routing-policy.ts';
 
 function fixture() {
   const points = [
@@ -64,6 +65,28 @@ test('restoring a finished draft makes no routing calls and keeps its exact road
   assert.equal(store.canUndo, false);
   assert.equal(routingEngine.routeLeg.mock.callCount(), 0);
   assert.equal(routingEngine.snap.mock.callCount(), 0);
+});
+
+test('a changed routing policy recalculates cached legs while keeping the saved route visible', async t => {
+  setActivePinia(createPinia());
+  const route = fixture();
+  for (const leg of Object.values(route.legs)) leg.routingPolicy = 'previous-policy';
+  const complete = [];
+  t.mock.method(routingEngine, 'routeLeg', (from, to) => new Promise(resolve => complete.push(() => resolve({
+    coordinates: [from, to], distanceMeters: 200, ascentMeters: 0, elevations: null, surfaces: [], routingPolicy: routingPolicyVersion,
+  }))));
+  const store = useRouteStore();
+  store.restoreDraft(parseDraft(serializeDraft(route.points, route.legs)));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(complete.length, 2);
+  assert.deepEqual(store.legs, route.legs, 'Existing geometry stays visible during replacement');
+  for (const finish of complete) finish();
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.ok(Object.values(store.legs).every(leg => leg.routingPolicy === routingPolicyVersion));
+  const saved = parseDraft(serializeDraft(store.points, store.legs));
+  store.restoreDraft(saved);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(complete.length, 2, 'The current revision reuses completed geometry');
 });
 
 test('an interrupted snap resumes after restoration and finishes its missing leg', async t => {

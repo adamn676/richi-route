@@ -1,0 +1,13 @@
+--- a/OsmPath.java
++++ b/OsmPath.java
+@@ -394,6 +394,10 @@
+ 
+   protected float wayCostfactor(RoutingContext rc) {
+     float original = rc.expctxWay.getCostfactor();
++    return original == 9999.f ? weidwegCostfactor(rc, original) : original;
++  }
++
++  private float weidwegCostfactor(RoutingContext rc, float original) {
+     if (!rc.bikeMode || rc.carMode || rc.footMode || link.geometry != null
+       || !WeidwegPassage.matches(sourceNode.ilon, sourceNode.ilat, targetNode.ilon, targetNode.ilat)
+       || rc.expctxWay.getVariableValue("richiroute_weidweg_push", 0.f) != 1.f) return original;

@@ -6,7 +6,7 @@ import { distanceM, route } from '../experiments/routing/engines.mjs';
 // This checks the eastern 720 m section, not Lendkai or the entire street.
 const endpoints = [[15.423837, 47.074389], [15.432345, 47.076993]];
 const checkpoints = [[15.425417, 47.074850], [15.428538, 47.075746], [15.430821, 47.076619]];
-const settings = 'weidweg-local-v1';
+const settings = 'local-rules-v1';
 const report = { createdAt: new Date().toISOString(), settings, results: [] };
 
 for (const direction of ['east', 'west']) {

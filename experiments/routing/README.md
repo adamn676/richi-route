@@ -1,5 +1,392 @@
 # Local road-cycling comparison
 
+## Configurable local routing rules, 23 October 2026
+
+The native editor now uses `richi-local-v1` and the `local-rules-v1` comparison
+preset. Weidweg passages, the Ries bicycle turn and the Thal road preference
+are entries in [`config/routing-rules.json`](../../config/routing-rules.json).
+Adding another location of these types changes data and generated artifacts;
+it requires a service restart, without rebuilding Java. The integration keeps
+the existing search settings, runtime, road costs and map tiles.
+
+The same configuration generates engine rules, retained profile tags, browser
+notices and a policy digest. Exact graph endpoints and tag guards limit passage
+exceptions; turn corrections preserve other restrictions and modes. Indexed
+matching avoids scanning every location during routing. Reviewed tile checksums
+stop preparation when map data changes. The browser refreshes routes saved under
+a changed policy while keeping their geometry visible. A client/server digest
+mismatch returns HTTP 400 with a restart message, and retry recovers normally.
+See the [rule format and maintenance workflow](brouter-patch/README.md#configurable-local-rules).
+
+### Scale comparison
+
+The final comparison used the previous optimized engine, the three migrated
+rules, and 1,000 or 10,000 additional synthetic rules. The additions mix passages,
+turns and tiny avoidance circles across the existing E15/N45 tile. All variants
+used GraalVM 25, a 1 GB heap, the parallel collector, six workers, search settings
+`2`/`0.7`, identical maps and JFR recording. Requests ran sequentially in rotating
+variant order, with two warmups followed by four measured runs per route/variant.
+
+| Server request | Previous optimized engine | 3 rules | 1,003 rules | 10,003 rules |
+| --- | ---: | ---: | ---: | ---: |
+| Graz–Virgen, 339 km | 2773 ms | 2763 ms | 2845 ms | 2851 ms |
+| Virgen–Mistelbach, 523 km | 4351 ms | 4307 ms | 4452 ms | 4474 ms |
+
+These are medians, using the average of the middle pair for four samples.
+The current three rules are effectively unchanged in speed. At 10,003 rules,
+the medians are **2.8% higher** than the previous optimized engine on both routes,
+or 3.2%/3.9% above the three-rule configuration. All **48** complete feature
+hashes matched after normalizing only the generated profile name. These are
+warm server request times, excluding browser rendering and service startup.
+The earlier end-to-end browser timings below remain a separate experiment.
+
+The first index traversed the area tree for every candidate segment. A bounded
+cache of nearby spatial cells reduced the 10,003-rule medians from 3124/4829 ms
+to 2851/4474 ms. Long segments still use the full tree; overlapping-circle order
+and waypoint exclusions remain identical to the original calculation. This
+fixture measures dispersed locations sharing a few tag patterns. Many unique
+guard patterns, large overlapping areas or different route distributions need
+their own measurements.
+
+JFR covered the same twelve route requests and readiness check per engine,
+including warmups and startup. Weighted cumulative allocation estimates were
+13.82 GB for the previous engine, 13.76 GB for three rules and 13.85 GB for
+10,003 rules; these are allocation estimates, not live heap sizes. Maximum
+observed heap after GC was 676/677/717 MB respectively. Total recorded GC pauses
+were 394/391/457 ms, with maximum pauses of 4.5/4.6/43.1 ms. The larger configuration
+therefore has a modest memory and pause cost as well as the measured time cost.
+The short recording does not establish long-term memory or tail-latency behavior.
+
+The CPU flamegraphs show local-rule frames in 188 of 4,300 execution samples
+at 10,003 rules, down from 464 of 4,699 before the spatial cache. Route search,
+cost calculations and map decoding remain the main work. Native wait samples
+were excluded from CPU conclusions. No thresholded monitor-enter events were
+recorded. Raw recordings, `profile-comparison.json`, `cpu-flamegraphs.html`,
+`scale-benchmark.json` and the earlier `uncached-index/` run are retained under
+`.local/local-routing-rules/`. Reproduce the scale test with `npm run routing:benchmark`.
+
+### Verification
+
+The final native launcher reproduces **51/51** saved full-feature hashes. Java
+checks pass **300,039** assertions, including 100,000 randomized indexed-area
+comparisons against the original BRouter calculation. Configuration-only engine
+tests cover disabling all rules, renamed/directional passages, reverse searches,
+mode guards, concurrent profile isolation and the actual HTTP revision error.
+The 14 protected editor routes and 12 local edits pass, as do all nine browser
+checks, 59 editor and 37 comparison unit tests, and both production builds.
+The browser checks include stale-policy refresh, notice deduplication, version
+mismatch/retry, draft restoration, GPX export and the production map worker.
+An additional fresh-browser check reproduced the saved geometry, elevation and
+surface hashes for 339 km, 523 km and the complete 1,131 km loop. All 31,229 loop
+vertices reached the map, with no partial initial line. Its single observed
+4.74-second drawing time is a smoke-check result, not a new paired speedup claim.
+
+The original benchmark bundle remains checksum verified. Historical presets
+and the Docker bicycle-v2 setup still describe the preserved baseline; they
+require that engine. The western composite remains an open product target.
+
+## Runtime and search optimization, 22 October 2026
+
+The native Ubuntu editor now uses first-pass guidance `2` and refinement
+guidance `0.7`, GraalVM Community 25.4.4.1.1 with its default compiler and parallel
+collector, and a verified three-class performance overlay. The heap remains
+1 GB and the server has six workers. `weidweg-search-v3` shares the editor's
+settings; the v1 and v2 comparison presets retain their earlier values. Road
+costs, accepted local bicycle rules, map data and all saved references are unchanged.
+
+Fresh route creation through first complete map drawing, compared with the
+previous Java 21 engine and refinement-only `0.7` optimization:
+
+| Route | Previous median (range) | Current median (range) | Reduction |
+| --- | ---: | ---: | ---: |
+| Graz–Virgen, 338.830 km | 3625 ms (3586–3637) | 2880 ms (2840–2924) | 20.6% |
+| Virgen–Mistelbach, 523.295 km | 6641 ms (6624–6812) | 4442 ms (4407–4448) | 33.1% |
+| Graz–Virgen–Mistelbach–Graz, 1130.794 km | 7009 ms (7007–7059) | 4647 ms (4643–4697) | 33.7% |
+
+These are paired measurements in Chromium 156 with the same updated frontend
+for both variants. Each route/variant gets one warmup and three measured runs,
+in alternating order, in an empty isolated context. Every route sends all snaps
+and legs: three requests for each single leg, seven for the loop. Both variants
+use identical Playwright request interception to reach their local engines.
+Background map downloads, application startup and router startup are excluded.
+Other build and routing jobs were idle. The host is the Ryzen 7800X3D Ubuntu
+workspace with a performance CPU governor.
+
+All 24 builds matched the complete geometry, elevations and surface spans,
+sent every coordinate to the map, saved their drafts and displayed no partial
+initial line. The loop retains all 31,229 vertices. The report is
+`.local/initial-route-speed/browser-max-optimization.json`. Earlier measurements
+below remain historical records; their numbers are not mixed into this comparison.
+
+A separate cold-JVM check starts a fresh engine for every sample, with only the
+readiness snap before the route. Three trials per variant, alternating order,
+gave 3913 → 3341 ms for Graz–Virgen (**14.6%**) and 7005 → 5180 ms for
+Virgen–Mistelbach (**26.1%**). Filesystem caches were already warm; service startup
+is outside those request times. All 12 complete feature hashes matched.
+
+### What changed and what was rejected
+
+Java Flight Recorder and the exact BRouter 1.7.10 sources identified route
+search, way costs, distance checks, decoding and queue work as the main CPU
+costs. Native `Net.accept` samples represent a waiting server thread and were
+excluded from CPU conclusions. Guidance for both search passes reduced the
+work needed before final refinement. A sweep around first-pass `2` found
+`1.25`, `1.75`, `2.25`, `2.5`, `3` and `4` slower on the longest test leg.
+Single-pass search was also slower. Raising refinement above the accepted
+range could change geometry, so the final refinement value remains `0.7`.
+See the [upstream search discussion](https://github.com/abrensch/brouter/issues/967).
+
+The runtime was measured independently before combining changes. Default
+Graal compilation improved the two long single-leg medians by 6.6–8.2% against
+the original Java 21 process; disabling it lost most of that benefit. The
+parallel collector also improved the tested workload. A 2 GB heap produced
+less than a 1% change, within the noise, so the heap stays at 1 GB.
+
+The final overlay skips distant avoidance-circle calculations, uses equivalent
+power-of-two cache indexing, and separates ordinary way costs from the rare
+Weidweg exception. See its [source checks and build procedure](brouter-patch/README.md#performance-overlay).
+Against otherwise identical fresh Graal/parallel-collector engines, the built
+overlay improved medians from 2814 → 2753 ms and 4402 → 4282 ms: **2.2% and
+2.7%**, with five measured samples after two warmups. Every paired measured
+request was faster. This confirms the gain after combining the changes.
+
+A cached-minimum priority-queue prototype was 2.9–3.6% slower. Two decoder
+prototypes helped the older Java runtime in isolation but added no reliable
+gain to the final Graal combination. All five patches together slightly
+regressed the matched Graal comparison. Those prototypes remain outside the
+active build. The individual percentages above are not additive.
+
+Before/after JFR recordings used five requests each for the same 339 km and
+523 km routes. Weighted allocation samples estimated 14.13 → 11.52 GB allocated
+over that load; this is an estimate of cumulative allocation, not live heap
+usage. Recorded GC pauses totalled 409 → 333 ms, with maximum pauses of
+8.5 → 4.8 ms. Search and road decoding remain the dominant work. The final
+browser profile spent about 90 ms between the last response and the complete
+1,131 km map line. Application JavaScript functions were small contributors;
+the profile recorded one 70 ms long task. No geometry simplification or loss
+of elevation/surface detail was needed.
+
+### Verification and reproduction
+
+The final runtime and built overlay reproduced **51/51** saved full-feature
+hashes, including the regional directions, long routes and protected review
+corridors. The Java reference checks passed **2.8 million** cache/geometry
+cases. The updated app passed all **87 unit checks**, both production builds,
+all eight browser checks, the 14 protected editor routes and 12 local edits.
+Weidweg opt-out/mode restrictions, retained dismount tags, the Ries correction
+and both Kepler cycle-path directions also passed. The native bundle lacks the
+optional `surface-v4` comparison profile, so those profile-specific checks used
+a temporary profile copy and isolated engine; the original bundle was preserved.
+The western composite is still an open product target.
+
+The browser checks cover street/aerial imagery, marker and line dragging,
+undo/redo, complete long-route drawing, exact GPX export, draft restoration,
+cross-tab protection, storage failures, mobile layouts, surfaces and the
+production MapLibre worker. Parity is established for these requests and this
+map revision; it does not establish identical choices for every unseen route
+or future map update.
+
+Runtime installation, current package versions, the TypeScript 6 compatibility
+hold and commands are in [local development](../../docs/local-development.md).
+`npm audit` is clean after the package upgrade. The Node 24 LTS HTTP-client
+crash found during validation is also documented there; Node 26 passed the
+full integration load. The app now runs with that validated runtime.
+
+The dual-origin browser comparison used the then-current Weidweg profile. Its
+reports and harness are preserved; the current editor sends the shared-rule
+profile instead. The current/legacy server comparison is `npm run routing:benchmark`.
+Supporting evidence is retained under `.local/max-optimization/`:
+`final-engine-parity.json`, `built-overlay-timing.json`, `cold-routes.json`,
+`baseline.jfr`, `after.jfr`, `profile-comparison.json`, `browser-cpu.json`,
+the search/engine sweeps, final check logs and npm audit/outdated reports.
+The ignored `.cache/max-*.mjs` scripts reproduce the isolated experiments.
+The original benchmark bundle and Windows results remain checksum verified.
+
+The performance analysis used
+[JFR guidance](https://docs.oracle.com/en/java/javase/21/troubleshoot/troubleshoot-performance-issues-using-jfr.html),
+[Graal compiler documentation](https://www.graalvm.org/jdk21/reference-manual/java/compiler/)
+and the upstream BRouter implementation. The remaining measured cost is route
+search and decoding. Further algorithm or data changes would need new accuracy
+and performance evidence; the experiments here do not prove a theoretical
+maximum speed.
+
+## Further search tuning, 22 October 2026
+
+The second optimization used `pass2coefficient=0.7` from
+`src/config/routing-search.json`, retained as `weidweg-search-v2` in the
+comparison tools. `weidweg-search-v1` retains the previous value of `0.5` so that
+the first optimization can still be reproduced. The first-pass setting, road
+costs, preferences, engine, map data and request concurrency are unchanged.
+
+Fresh route creation through first map drawing, comparing the previous and
+current settings in the same browser run:
+
+| Route | Previous `0.5` median (range) | Current `0.7` median (range) | Further reduction |
+| --- | ---: | ---: | ---: |
+| Graz-Virgen, 338.830 km | 4003 ms (3986-4004) | 3687 ms (3640-3722) | 7.9% |
+| Virgen-Mistelbach, 523.295 km | 7773 ms (7772-7790) | 6774 ms (6688-6857) | 12.9% |
+| Graz-Virgen-Mistelbach-Graz, 1130.794 km | 8163 ms (8128-8190) | 7173 ms (7002-7173) | 12.1% |
+
+The benchmark uses one warmup and three measured runs per setting and route,
+alternates order, and starts every route in an isolated empty browser context.
+The native router is already running and warm; background map downloads are
+excluded. All 24 builds preserve the full geometry, elevations and surfaces,
+send every snap and leg request, draw the complete route and save successfully.
+Run `node tests/browser-initial-performance.mjs --baseline 0.5` to reproduce
+this comparison. Its report is
+`.local/initial-route-speed/browser-comparison-0.5-to-0.7.json`. Earlier reports
+remain unchanged. Omitting `--baseline` compares with the original zero default.
+
+Before adoption, paired requests with `0.5` and `0.7` returned identical complete
+feature hashes on all 35 existing comparison cases and 16 additional regional
+routes. The latter cover eight trips in both directions, including Klagenfurt,
+Vienna, Salzburg, Graz, Innsbruck, Lienz, Linz and Villach. All 14 protected review
+corridors still match their saved references; the western target remains open.
+These checks establish parity on those requests and data, not every possible
+route or later map revision.
+
+At this stage `npm run bench:check-reviewed` defaulted to `weidweg-search-v2`.
+The current default is v3; the editor unit check verifies all three preset
+versions and their original profile and preferences.
+
+An exploratory sweep tested `0.6`, `0.7`, `0.8` and `0.9`. Values of `0.8` and
+`0.9` changed part of Graz-Virgen's geometry and increased its profile cost,
+despite retaining the same rounded total distance. They were rejected. Exact
+geometry and metadata comparisons remain necessary when tuning search order.
+
+An isolated decoder experiment also replaced the byte-refill loop in upstream
+`BitCoderContext` with a bulk-read fast path. It matched 865,280 decoder states
+and round-tripped 1,000,000 integers. Two warmups and three alternating measured
+requests per engine and route found median gains of 2.9% on Graz-Virgen and 2.1%
+on Virgen-Mistelbach, saving about 0.10 and 0.14 seconds. All those responses
+matched. This prototype remains experimental: the small gain does not justify
+adding another engine patch at that stage. The temporary router was stopped.
+The later combined runtime experiments above also rejected this decoder.
+
+Evidence is in `.local/initial-route-speed-refinement/`: `sweep.json`,
+`parity-0.7/report.json`, `regional-0.7/report.json`, their paired responses,
+and `decoder/comparison.json`. The decoder source, test and compiler stay in
+that ignored experiment directory. No system compiler was installed and the
+original benchmark package was not edited.
+
+## Initial-route search, 22 October 2026
+
+The first search improvement sent `profile:pass2coefficient=0.5`, available as
+comparison preset `weidweg-search-v1`. The later active default is recorded above.
+BRouter uses this coefficient to prioritize search toward the destination during
+its refinement pass; the original default is zero. See the upstream
+[search implementation](https://github.com/abrensch/brouter/blob/v1.7.10/brouter-core/src/main/java/btools/router/RoutingEngine.java)
+and [coefficient defaults](https://github.com/abrensch/brouter/blob/v1.7.10/brouter-core/src/main/java/btools/router/RoutingContext.java).
+The profile, road costs, Thal preference, Weidweg passage, map tiles, six workers
+and 1 GB heap remain unchanged. The setting applies per request and requires no
+engine rebuild or restart.
+
+Controlled browser measurements on the native Ubuntu router:
+
+| Fresh route | Original median (range) | Optimized median (range) | Reduction |
+| --- | ---: | ---: | ---: |
+| Graz-Virgen, 338.830 km, one leg | 4554 ms (4488-4556) | 3974 ms (3952-3988) | 12.7% |
+| Virgen-Mistelbach, 523.295 km, one leg | 9952 ms (9904-9990) | 7703 ms (7691-7772) | 22.6% |
+| Graz-Virgen-Mistelbach-Graz, 1130.794 km, three legs | 10423 ms (10414-10462) | 8161 ms (8123-8231) | 21.7% |
+
+`node tests/browser-initial-performance.mjs` starts each run in an isolated empty
+browser context and measures from route creation through the first visible map
+line with its source loaded. Each setting receives one warmup and three measured
+runs per route, with alternating order. Only the search parameter differs between
+requests. The router and filesystem are already warm; background map downloads
+are excluded. These measurements do not include application or router startup.
+
+Every run sends all snaps and legs: three requests for each single leg and seven
+for the loop. All runs preserve every coordinate, elevation and surface segment,
+send complete geometry to the map, save successfully and show no partial initial
+route. The loop contains 31,229 vertices. The report is
+`.local/initial-route-speed/browser-comparison.json`.
+
+Direct baseline/candidate requests also returned identical complete feature
+hashes in 35 cases: the six original benchmarks, the 523 km leg, all 15 review
+fixtures, and 13 additional reverse-direction or interior-endpoint routes. All
+14 protected corridors remain matched; the western composite remains open. A
+more aggressive coefficient of 1 changed route geometry and was rejected. The
+35 comparisons establish parity for those requests and data, not a guarantee
+for every unseen route or future map update.
+
+This round used `weidweg-search-v1`; use
+`npm run bench:check-reviewed -- --settings weidweg-search-v1` to check it or
+`-- --settings weidweg-local-v1` for the original search setting. The comparison
+provenance includes the new JSON configuration. `npm run test:editor-local`
+checks the actual editor's snapping and per-leg requests against the protected
+corridors. Saved completed legs keep their existing geometry.
+
+Additional evidence is in `.local/initial-route-speed/`: `parity.json`,
+`extra-parity.json`, paired raw responses, candidate profiles and `search.jfr`.
+Java samples again concentrate in route search and road-data decoding. No JVM
+change was needed. The original benchmark package and Windows baseline still
+pass their recorded checksums.
+
+## Long-route surface review, 22 October 2026
+
+The planner now retains BRouter's individual `surface` tags alongside the five
+map colour groups. **Beläge prüfen** lists material lengths and route sections;
+selecting a section frames and highlights its exact geometry. Missing tags stay
+unknown. Inspecting a section does not edit the route, save a new draft or send
+routing requests. Older drafts retain their original groups until recalculated.
+
+Four fresh requests to the native Ubuntu router reproduced the benchmark's
+complete feature hashes. Their surface lengths, measured along the drawn
+coordinates, are:
+
+| Route | Engine route length | Known unpaved | Missing surface tags |
+| --- | ---: | ---: | ---: |
+| Graz-Virgen | 338.830 km | 382 m | 44.301 km |
+| Graz-Vienna | 197.640 km | 476 m | 13.809 km |
+| Graz-Mistelbach | 251.789 km | 476 m | 17.557 km |
+| Southeast loop | 241.881 km | 0 m | 67.510 km |
+
+The inspector measures geometry with the editor's distance function. Its summed
+length can differ slightly from BRouter's reported route length. Recorded metal
+is a separate material, not missing information. Zero known unpaved distance does
+not establish that the unknown sections are paved.
+
+On Graz-Virgen, the main fine-gravel section is at geometry km 226.739-227.103,
+from longitude/latitude `13.551946,46.771611` to `13.547803,46.773242`. It measures
+364 m in the inspector and 365 m in BRouter's rounded message distances. Three
+other gravel sections total about 18 m. Vienna and Mistelbach share fine-gravel
+sections at geometry km 157.420-157.670 and 161.265-161.486, plus about 5 m marked
+`unpaved` at km 162.364.
+
+An isolated router tested surface penalties 3, 6 and 10 against all six benchmark
+routes and all 14 protected review fixtures. Only the numeric penalty changed;
+the engine, map tiles, traffic weighting, Thal preference and Weidweg exception
+stayed the same. The following material and road-class distances sum BRouter's
+message rows, so they differ slightly from the inspector's geometry measurements.
+
+| Graz-Virgen candidate | Route length | Fine gravel | Other gravel | Missing surface | Primary/secondary roads | Protected routes preserved |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Current penalty 3 | 338.830 km | 365 m | 18 m | 44.382 km | 190.517 km | 14/14 |
+| Penalty 6 | 338.622 km | 0 m | 18 m | 43.993 km | 191.899 km | 14/14 |
+| Penalty 10 | 338.613 km | 0 m | 10 m | 43.341 km | 191.899 km | 13/14 |
+
+Penalty 6 removes the fine gravel but adds 1.382 km on roads tagged primary or
+secondary. The other five benchmark routes retain their distance and material
+totals. Penalty 10 also changes the accepted `01-mur-north-automatic` corridor.
+For Vienna and Mistelbach it adds 611 m to each route and 1.638 km without a
+surface tag, while reducing known unpaved distance from 476 m to 250 m.
+
+The active default remains penalty 3. Road class is not a traffic measurement,
+and this experiment does not establish a rider preference for the alternatives.
+The western composite remains an open target. Review the changed corridor before
+adopting penalty 6; penalty 10 fails the existing protected-route check.
+
+Local evidence is in `.local/long-route-review/`: `baseline-audit.json`,
+`surface-penalty-comparison.json`, the four named baseline responses and the
+`*-cost-{3,6,10}.json` responses. Candidate profiles are in its `profiles/`
+subdirectory. They copy `richi-weidweg-v1.brf` and change only the final `3` in
+`assign surfacepenalty = switch surface=... 3 0`. Requests use
+`alternativeidx=0` and the unchanged no-go value from
+`src/config/thal-preference.json`. Baseline audit group totals include metal in
+the old `unknown` colour group; the table above excludes its known 7 m material.
+The verified benchmark package and Windows baseline were not edited.
+
 ## Graz–Virgen coverage, 22 October 2026
 
 The planner's failed Virgen snap returned HTTP 400 with
@@ -80,9 +467,12 @@ associated Java/browser profiles. The ignored profilers are in `.cache/`.
 including complete GPX geometry, draft reload, local editing and undo.
 
 These results support keeping the current Vue/MapLibre frontend and Java router.
-They do not establish a universally fastest language or framework. Native Ubuntu
-has not been measured; keep its repository and routing data on a Linux filesystem
-when comparing it. No dependencies, paid services or routing-cost changes were
+They do not establish a universally fastest language or framework. A native
+Ubuntu follow-up reproduced all 42 Windows feature hashes. With five measured
+samples per route, its medians were 8.8-11.4% lower. Ubuntu used a performance CPU
+governor and Windows used Balanced, so the result does not isolate the operating
+system's effect. Keep the Ubuntu repository and data on a Linux filesystem.
+No application dependencies, paid services or routing-cost changes were
 introduced. Additional service charges remain EUR 0.
 
 ## Active Weidweg exception, 21 October 2026

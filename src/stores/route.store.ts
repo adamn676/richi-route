@@ -21,6 +21,7 @@ import {
 import { routingEngine } from '../services/route.service.ts';
 import { forwardGeocode, type Place } from '../services/geocoding.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
+import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 
 export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
 
@@ -33,6 +34,12 @@ interface RouteFeatureProperties {
 }
 
 export type EditorRoute = FeatureCollection<LineString, RouteFeatureProperties>;
+
+interface SurfaceFocus {
+  leg: RouteLeg;
+  fromIndex: number;
+  toIndex: number;
+}
 
 interface HistoryEntry {
   points: RoutePoint[];
@@ -158,6 +165,7 @@ export const useRouteStore = defineStore('route', {
     errorMessage: null as string | null,
     draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
     draftError: null as string | null,
+    surfaceFocus: null as SurfaceFocus | null,
   }),
 
   getters: {
@@ -167,6 +175,12 @@ export const useRouteStore = defineStore('route', {
     canRedo: (state): boolean => state.redoStack.length > 0,
     pendingSnapCount: (state): number => state.points.filter(point => point.snapPending).length,
     hasAirLines: (state): boolean => Object.values(state.legs).some((leg) => leg.status === 'air'),
+    focusedSurface: (state) => {
+      const focus = state.surfaceFocus;
+      if (!focus || state.legs[focus.leg.id] !== focus.leg) return null;
+      return { legId: focus.leg.id, fromIndex: focus.fromIndex, toIndex: focus.toIndex,
+        coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1) };
+    },
     distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
     ascentMeters: (state): number | null => {
       const legs = Object.values(state.legs);
@@ -200,7 +214,14 @@ export const useRouteStore = defineStore('route', {
   },
 
   actions: {
+    inspectSurface(legId: string, fromIndex: number, toIndex: number) {
+      const leg = this.legs[legId];
+      if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
+          fromIndex < 0 || toIndex <= fromIndex || toIndex >= leg.coordinates.length) return;
+      this.surfaceFocus = { leg: markRaw(leg), fromIndex, toIndex };
+    },
     restoreDraft(draft: RouteDraft) {
+      this.surfaceFocus = null;
       cancelRequests(this);
       this.points = draft.points;
       Object.values(draft.legs).forEach(markRaw);
@@ -229,6 +250,7 @@ export const useRouteStore = defineStore('route', {
       this._reconcile();
     },
     _remember() {
+      this.surfaceFocus = null;
       this.undoStack = [...this.undoStack.slice(-49), snapshot(this)];
       this.redoStack = [];
       this.errorMessage = null;
@@ -242,7 +264,7 @@ export const useRouteStore = defineStore('route', {
         ? result.requests
         : Object.values(result.legs)
             .filter((leg) =>
-              leg.status === 'air' &&
+              (leg.status === 'air' || !isRoutingPolicyCurrent(leg.routingPolicy)) &&
               !leg.error &&
               !operations.snaps.has(leg.fromId) &&
               !operations.snaps.has(leg.toId))
@@ -479,6 +501,7 @@ export const useRouteStore = defineStore('route', {
     undo() {
       const previous = this.undoStack[this.undoStack.length - 1];
       if (!previous) return;
+      this.surfaceFocus = null;
       this.undoStack = this.undoStack.slice(0, -1);
       this.redoStack = [...this.redoStack, snapshot(this)];
       cancelRequests(this);
@@ -492,6 +515,7 @@ export const useRouteStore = defineStore('route', {
     redo() {
       const next = this.redoStack[this.redoStack.length - 1];
       if (!next) return;
+      this.surfaceFocus = null;
       this.redoStack = this.redoStack.slice(0, -1);
       this.undoStack = [...this.undoStack, snapshot(this)];
       cancelRequests(this);

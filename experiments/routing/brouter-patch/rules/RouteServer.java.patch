@@ -1,0 +1,19 @@
+--- a/RouteServer.java
++++ b/RouteServer.java
+@@ -205,7 +205,15 @@
+       }
+       routingParamCollector.setParams(rc, wplist, params);
+ 
+-      cr = new RoutingEngine(null, null, serviceContext.segmentDir, wplist, rc, engineMode);
++      try {
++        cr = new RoutingEngine(null, null, serviceContext.segmentDir, wplist, rc, engineMode);
++      } catch (btools.router.LocalRoutingRules.VersionMismatchException e) {
++        writeHttpHeader(bw, HTTP_STATUS_BAD_REQUEST);
++        bw.write(e.getMessage());
++        bw.write("\n");
++        bw.flush();
++        return;
++      }
+       cr.quite = true;
+       cr.doRun(maxRunningTime);
+ 

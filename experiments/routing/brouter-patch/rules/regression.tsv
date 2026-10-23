@@ -1,0 +1,8 @@
+richiroute-rules	1	54ce18e1b7abec17c5cdbbf7c0d01d855aaeced39435464fd1c6d0fb8e2f2b38
+guard	weidweg-push-through	bicycle=dismount;foot=yes;highway=steps;ramp:bicycle=yes;surface=concrete	access=no;access=private;vehicle=no;vehicle=private	oneway;oneway:bicycle	15
+segment	weidweg-push-through	195397866	137102550	195397832	137102537
+segment	weidweg-push-through	195397832	137102537	195397866	137102550
+segment	weidweg-push-through	195397639	137102476	195397607	137102466
+segment	weidweg-push-through	195397607	137102466	195397639	137102476
+turn	ries-bicycle-turn	195539841	137103009	195539580	137102991	195538680	137103321
+avoidance	thal-road-preference	195377673	137098973	5	50

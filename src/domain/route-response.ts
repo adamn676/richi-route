@@ -53,8 +53,8 @@ export function parseBRouterLeg(raw: unknown): LegGeometry {
           const tag = typeof row[tags] === 'string' ? /(?:^|\s)surface=([^\s]+)/.exec(row[tags])?.[1] : undefined;
           const surface = surfaceType(tag);
           const previous = surfaces.at(-1);
-          if (previous?.surface === surface && previous.toIndex === start) previous.toIndex = end;
-          else surfaces.push({ fromIndex: start, toIndex: end, surface });
+          if (previous?.surface === surface && previous.surfaceTag === tag && previous.toIndex === start) previous.toIndex = end;
+          else surfaces.push({ fromIndex: start, toIndex: end, surface, ...(tag ? { surfaceTag: tag } : {}) });
         }
         start = end;
       }

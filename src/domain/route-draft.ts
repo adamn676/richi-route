@@ -54,13 +54,19 @@ function leg(value: unknown): RouteLeg {
   const coordinates = l.coordinates.map(coord);
   const elevations = l.elevations === null ? null : Array.isArray(l.elevations) ? l.elevations.map(number) : undefined;
   if (elevations === undefined || (elevations && elevations.length !== coordinates.length)) throw new Error('Invalid draft elevations');
+  let previousEnd = 0;
   const surfaces: SurfaceSpan[] = l.surfaces.map(value => {
     const s = object(value);
     const fromIndex = number(s.fromIndex), toIndex = number(s.toIndex);
-    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < 0 ||
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < previousEnd ||
         toIndex <= fromIndex || toIndex >= coordinates.length ||
         !['asphalt', 'paved', 'rough', 'unpaved', 'unknown'].includes(text(s.surface))) throw new Error('Invalid draft surface');
-    return { fromIndex, toIndex, surface: s.surface as SurfaceSpan['surface'] };
+    previousEnd = toIndex;
+    if (s.surfaceTag !== undefined && (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200)) {
+      throw new Error('Invalid draft surface tag');
+    }
+    return { fromIndex, toIndex, surface: s.surface as SurfaceSpan['surface'],
+      ...(s.surfaceTag !== undefined ? { surfaceTag: s.surfaceTag as string } : {}) };
   });
   const result: RouteLeg = {
     id: text(l.id), fromId: text(l.fromId), toId: text(l.toId),
@@ -69,8 +75,10 @@ function leg(value: unknown): RouteLeg {
     distanceMeters: number(l.distanceMeters),
     ascentMeters: l.ascentMeters === null ? null : number(l.ascentMeters),
     status: l.status as RouteLeg['status'],
+    ...(l.routingPolicy !== undefined ? { routingPolicy: text(l.routingPolicy) } : {}),
     ...(l.error !== undefined ? { error: text(l.error) } : {}),
   };
+  if (result.routingPolicy !== undefined && (!result.routingPolicy.length || result.routingPolicy.length > 200)) throw new Error('Invalid routing policy version');
   if (result.distanceMeters < 0 || (result.ascentMeters !== null && result.ascentMeters < 0) ||
       distanceMeters(result.fromCoord, coordinates[0]) > 2 ||
       distanceMeters(result.toCoord, coordinates.at(-1)!) > 2) throw new Error('Invalid draft leg endpoints');

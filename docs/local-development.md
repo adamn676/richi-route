@@ -1,11 +1,114 @@
 # Local development
 
-Run commands from the repository root. The current setup has been checked on
-Windows with Node.js 22.21 and Docker Desktop using Linux containers. Linux
-also needs `unzip` for the BRouter archive. In PowerShell, use `npm.cmd` if
-execution policy blocks `npm`.
+Run commands from the repository root (`app/` in the prepared Ubuntu workspace).
+Use Node.js 26.12.1 and npm 12.2.1. The native Ubuntu setup is described below;
+the Docker workflow retains the existing engine images and data. Linux also
+needs `unzip` for the BRouter archive. In PowerShell, use `npm.cmd` if execution
+policy blocks `npm`.
 
-## First installation
+## Prepared Ubuntu workspace
+
+The checked benchmark bundle lives next to `app/`. Install the pinned current
+runtimes and build the performance overlay without changing that bundle:
+
+```sh
+../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs
+export PATH="$PWD/.cache/runtime/node/bin:$PATH"
+npm ci
+npm run bench:brouter:performance
+npm run routing:build
+sh ../start-local.sh
+```
+
+`native:setup` downloads checksum-verified Node and GraalVM archives into
+`.cache/runtime/`. It is specific to Linux x64. `.nvmrc` records the Node version
+for other development environments. The original bundled Node can bootstrap
+the installer; subsequent app commands use the new runtime.
+
+The launcher verifies the original bundle and the separately built rules integration,
+prepares the shared local rules and their profile,
+then starts GraalVM Community 25.4.4.1.1 with its default compiler, a 1 GB heap,
+the parallel collector and six routing workers. It binds BRouter to
+`127.0.0.1:17777` and Vite to `127.0.0.1:5173`. Ctrl+C stops both child processes.
+The log is `experiments/routing/.local/native-brouter.log`. Docker, GraphHopper
+and ORS are not required for this setup. The [performance build](../experiments/routing/brouter-patch/README.md#performance-overlay)
+documents the engine changes and parity checks. The current native profile is
+`richi-local-v1`; its comparison preset is `local-rules-v1`.
+
+## Managing local routing rules
+
+Edit `config/routing-rules.json` to add, disable or change a location. Weidweg's
+push-through passage, the Ries bicycle turn and the Thal preference are entries
+in that file. The three supported types are `passage`, `turn` and `avoidance`.
+General preferences such as road surface penalties remain in the routing profile.
+
+```sh
+npm run routing:prepare
+# Stop the existing native launcher with Ctrl+C, then restart it:
+sh ../start-local.sh
+```
+
+In another terminal, run `npm run routing:check`. Preparing data and restarting
+the service activates new locations without rebuilding Java. The preparation
+step generates both engine data and browser notices. It rejects conflicting
+rules, invalid guards and changed reviewed map tiles before writing the result.
+Review geometry and tags before updating a tile checksum. A missing match never
+falls back to a nearby road.
+
+Rule changes invalidate saved leg calculations. Existing geometry remains visible
+while replacement legs are calculated. Drafts from the equivalent pre-migration
+policy restore without rerouting. Requests carry the complete rule revision so
+an old engine cannot silently serve a browser using new rules.
+
+Read the [rule format, matching behavior and tests](../experiments/routing/brouter-patch/README.md#configurable-local-rules)
+before adding a rule. `npm run routing:benchmark` compares the previous engine
+with the current rules and synthetic sets containing 1,000 and 10,000 extra rules.
+It uses separate local servers and leaves the active configuration unchanged.
+
+## Dependency status, 22 October 2026
+
+All direct npm packages are at their latest compatible stable releases. A clean
+`npm ci` succeeds, and `npm audit` reports **zero vulnerabilities**, down from 12
+in the previous lockfile. `npm outdated` lists only the deliberate TypeScript
+major-version hold:
+
+| Component | Installed |
+| --- | --- |
+| Vue / Pinia | 3.5.44 / 4.1.0 |
+| MapLibre GL JS | 6.15.0 |
+| Vite / Vue plugin | 8.3.5 / 6.0.10 |
+| vue-tsc / TypeScript | 3.3.13 / 6.0.3 |
+| Vue tsconfig / devtools API | 0.9.1 / 8.2.1 |
+| Node types / GeoJSON types | 26.6.5 / 7946.0.16 |
+| Node / npm | 26.12.1 / 12.2.1 |
+| Local browser tools | Playwright 1.64.1 / Chromium 156 |
+
+TypeScript 7.0.2 is newer, but Vue's type checker still requires the JavaScript
+compiler API. The [upstream incompatibility](https://github.com/vuejs/language-tools/issues/6124)
+is tracked in [language-tools #5381](https://github.com/vuejs/language-tools/issues/5381).
+TypeScript is capped at `~6.0.3` until that integration is supported.
+
+Node 26 is the current release, rather than LTS, on this date. Node 24.22.1 was
+tested first and crashed on a large BRouter response with Undici's
+[`assert(!this.paused)` bug](https://github.com/nodejs/undici/issues/5360).
+Node 26's bundled Undici 8.12.2 completed all 51 route comparisons. See the
+[Node release status](https://nodejs.org/en/about/previous-releases).
+
+The MapLibre 6 migration configures an explicit Vite worker asset and named ESM
+imports. It requires WebGL2; WebGL1-only devices are no longer supported.
+Pinia 4's devtools peer and TypeScript 6's path configuration are also updated.
+Both production builds pass; their existing large-map-library size warnings
+remain. The locally pinned BRouter 1.7.10, GraphHopper 11.1 and ORS 10.1.0 are
+current upstream releases. Optional Docker image digests were checked and did
+not need changing. Optional GraphHopper, ORS and Photon are not installed in the
+native workspace.
+
+## Historical Docker benchmark installation
+
+The following Docker workflow preserves the bicycle-v2 comparison engine and
+its historical profiles. The current editor uses the native configurable engine
+described above. Stop the native launcher before starting a historical engine
+on the same port; historical `weidweg-*` presets need that historical engine.
 
 Install the JavaScript dependencies:
 
@@ -43,8 +146,8 @@ Then select **Erneut versuchen** in the planner. The new tile is about 199 MB;
 existing files are preserved. BRouter refreshes its Linux-local copy at startup,
 so downloading a tile alone does not make it available to a running container.
 
-The BRouter patch build uses the compiler in the local ORS image. Building that
-image does not start the ORS service. The build also creates the editor's
+The historical BRouter patch build uses the compiler in the local ORS image. Building that
+image does not start the ORS service. The build also creates its
 `richi-weidweg-v1` profile. The patch retains the Ries bicycle-turn correction and
 allows the two accepted Weidweg ramped stair flights as a push-through passage;
 see its [scope and checks](../experiments/routing/brouter-patch/README.md).
@@ -62,8 +165,18 @@ await writeFile(directory + 'richi-surface-v4.brf', candidateProfile(baseline, '
 ```
 
 This command refuses to overwrite an existing profile. An already prepared
-installation can skip these setup steps. The editor also applies the local road
-preference recorded in `src/config/thal-preference.json`.
+installation can skip these setup steps. `src/config/thal-preference.json` remains
+the fixed Thal preference for historical comparison presets. The active editor
+uses the shared rule configuration.
+
+The editor sends `profile:pass1coefficient=2` and `profile:pass2coefficient=0.7`
+from `src/config/routing-search.json` to guide the initial search and refinement.
+The comparison preset `local-rules-v1` uses those settings and the shared rules.
+The historical preset `weidweg-search-v3` retains its earlier profile and Thal
+preference. Presets `weidweg-search-v1` and `weidweg-search-v2`
+retain the earlier refinement-only settings `0.5` and `0.7`. Search parameters
+apply per request; a changed routing policy recalculates cached legs. See the
+[latest initial-route measurements](../experiments/routing/README.md#runtime-and-search-optimization-22-october-2026).
 
 When updating an existing installation, stop BRouter before rebuilding the patch
 on Windows so its JAR is not locked. Start it again with `npm run bench:up`.
@@ -92,9 +205,10 @@ mount. The source files stay in `.local/data/`; restart BRouter after updating
 them. The disposable copy currently uses about 130 MB of disk space. Route
 calculations still run afresh and use the same profile and road data.
 
-On Ubuntu, keep the repository and routing data on a Linux filesystem. Native
-Ubuntu performance has not been measured on this machine; Windows with
-container-local data already provides the measured storage improvement.
+On Ubuntu, keep the repository and routing data on a Linux filesystem. The native
+Ubuntu follow-up reproduced all 42 Windows benchmark feature hashes; its median
+route times were 8.8-11.4% lower. CPU power settings differed, so this does not
+isolate the operating system's effect. See the routing guide for measurement scope.
 
 In another terminal, start the comparison app if needed:
 
@@ -144,6 +258,24 @@ points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
 turn instructions. Physical cycling-computer imports have not been tested.
 
+## Inspect route surfaces
+
+After a route finishes calculating, open **Beläge prüfen** below the colour
+legend. Select a material to see its sections and distance along the route.
+Select a section to frame and highlight it on the map. **Weitere Abschnitte**
+shows ten more entries; **Markierung aufheben** removes the highlight.
+
+The inspector distinguishes materials such as fine gravel, wood and paving
+stones. Missing surface tags stay unknown. Lengths follow the drawn coordinates
+and can differ slightly from the routing engine's reported total. Material tags
+describe the map data; they do not establish the current condition of a road.
+
+Inspection does not change the route, undo history or saved draft. Edits and
+undo/redo clear the highlight. Older drafts still load without rerouting and
+display the broader groups originally saved. New calculations retain individual
+material tags. The [long-route review](../experiments/routing/README.md#long-route-surface-review-22-october-2026)
+records the surface-penalty experiments and why the default remains unchanged.
+
 ## Checks
 
 Unit tests and builds do not need running engines:
@@ -163,11 +295,17 @@ npm run test:weidweg-local
 ```
 
 This protects 14 reviewed route variants and reports the western-loop composite
-as a separate target using the editor's `weidweg-local-v1` settings. The passage
+as a separate target using the editor's `local-rules-v1` settings. The passage
 check also verifies both directions and opt-out behaviour. Requests, responses
 and reports stay in the ignored `.local/`
 directory. Do not replace expected geometry just to make a failing check pass.
 Fresh map downloads can differ from the data used for the saved reviews.
+
+The native rules preparation stages the current profile and an opt-out
+`richi-surface-v4` comparison profile in `.local/local-routing-rules/profiles/`.
+The original minimal benchmark bundle is unchanged. Historical `weidweg-*`
+comparisons require the preserved bicycle-v2 engine; use `local-rules-v1` with
+the current native service.
 
 With the planner server also running:
 
@@ -177,7 +315,7 @@ npm run test:editor-local
 
 This exercises the same protected routes through the editor and checks that local
 edits preserve distant legs. Browser scripts in `tests/` additionally require
-Chrome and the local Playwright installation at `.cache/browser-tools/`; that
+Chrome or the downloaded Chromium and Playwright at `.cache/browser-tools/`; that
 installation is not supplied by `npm ci`. Their screenshots and reports are ignored.
 
 `node tests/browser-long-routes.mjs` builds Graz–Virgen across two map tiles
@@ -185,10 +323,73 @@ installation is not supplied by `npm ci`. Their screenshots and reports are igno
 It checks drawing, all exported coordinates and elevations, saved reload,
 local editing and undo without changing your draft.
 
+`node tests/browser-surfaces.mjs` checks a fresh Graz-Virgen route, exact map
+highlighting, desktop and mobile layouts, section pagination, undo/redo and
+saved/legacy draft restoration. It also uses isolated browser contexts.
+
+`node tests/browser-initial-performance.mjs --baseline 0.5` compares the current
+search settings with the previous optimization on fresh 339 km and 523 km legs
+and a 1,131 km loop. Omit `--baseline 0.5` to use BRouter's original zero default.
+It measures calculation through first map drawing, checks exact geometry,
+elevation and surfaces, and verifies that each run sends every snap and leg
+request. It uses one warmup and three measured runs per setting, alternates
+their order, and excludes background tile downloads. Keep other routing and
+build jobs idle during this measurement. Reports are named
+`experiments/routing/.local/initial-route-speed/browser-comparison-BASELINE-to-PASS1-PASS2.json`.
+The first round's `browser-comparison.json` remains unchanged.
+
+The optional `--baseline-origin` and `--optimized-origin` arguments compare two
+local engines through the same browser interception path. Both must serve the
+current profile and rule revision. The preserved Java 21/bicycle-v2 engine uses
+the earlier profile, so it cannot directly accept the current editor's requests.
+Its 22 October comparison remains in `browser-max-optimization.json`.
+
+Use `npm run routing:benchmark` for the current/legacy engine and rule-count
+comparison. It starts and stops isolated engines, translates each variant's
+profile and rule parameters, and checks complete route features. Its server
+timings exclude browser drawing; the browser command above measures the editor.
+
+On Ubuntu, install the optional browser tools and a matching Chromium locally:
+
+```sh
+npm install --prefix .cache/browser-tools --no-save --package-lock=false playwright-core@1.64.1
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/browsers"
+node .cache/browser-tools/node_modules/playwright-core/cli.js install chromium
+node tests/browser-long-routes.mjs
+node tests/browser-surfaces.mjs
+node tests/browser-initial-performance.mjs --baseline 0.5
+```
+
+The browser scripts use the downloaded Chromium when `PLAYWRIGHT_BROWSERS_PATH` is
+set; otherwise they use installed Chrome. Screenshots from the surface check are
+in `experiments/routing/.local/surface-browser/`.
+
+To watch the editor check in a browser window and record a replay:
+
+```sh
+PLAYWRIGHT_HEADED=1 PLAYWRIGHT_SLOW_MO=200 PLAYWRIGHT_TRACE=1 node tests/browser-editor.mjs
+node .cache/browser-tools/node_modules/playwright-core/cli.js show-trace \
+  experiments/routing/.local/editor-trace.zip --host 127.0.0.1 --port 9323
+```
+
+In VS Code, **Ctrl+Alt+/** opens the integrated browser. Open
+`http://127.0.0.1:5173/` for the app or `http://127.0.0.1:9323/` for the recorded
+test replay. These are standalone Playwright scripts; an app preview tab does
+not automatically mirror their separate live browser session. Performance
+measurements use headless execution without slow motion or tracing.
+
 ## Builds and deployment
 
 `npm run build` creates the planner in `dist/`. `npm run bench:build` creates the
 comparison app in `experiments/routing/dist/`.
+
+Check the planner's actual built map worker, WebGL2 context, routing and export:
+
+```sh
+npm run preview -- --host 127.0.0.1 --port 5175
+# In another terminal, with the local router running:
+node tests/browser-production.mjs
+```
 
 The development servers proxy requests to local engines. Serving the built files
 alone does not provide routing: a deployment needs equivalent same-origin proxies

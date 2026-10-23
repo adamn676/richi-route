@@ -1,3 +1,5 @@
+import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
+
 export type Coord = [number, number];
 export type StopKind = 'start' | 'via' | 'end';
 export type Surface = 'asphalt' | 'paved' | 'rough' | 'unpaved' | 'unknown';
@@ -30,9 +32,11 @@ export interface SurfaceSpan {
   fromIndex: number;
   toIndex: number;
   surface: Surface;
+  surfaceTag?: string;
 }
 
 export interface LegGeometry {
+  routingPolicy?: string;
   coordinates: Coord[];
   distanceMeters: number;
   ascentMeters: number | null;
@@ -129,7 +133,7 @@ export function reconcileLegs(
     const existing = previous[request.id];
     if (existing && sameEndpoints(existing, request)) {
       legs[request.id] = existing;
-      if (optimize) {
+      if (optimize || !isRoutingPolicyCurrent(existing.routingPolicy)) {
         requests.push(request);
       }
     } else {

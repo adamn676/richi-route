@@ -2,7 +2,6 @@
   <div class="address-search">
     <input
       :id="`address-${waypointId}`"
-      ref="inputElement"
       type="text"
       autocomplete="off"
       :value="inputValue"
@@ -71,7 +70,6 @@ const emit = defineEmits<{
 }>();
 
 const inputValue = ref(props.modelValue);
-const inputElement = ref<HTMLInputElement | null>(null);
 const suggestions = ref<Place[]>([]);
 const isOpen = ref(false);
 const isLoading = ref(false);

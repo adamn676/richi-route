@@ -99,7 +99,7 @@ test('experimental settings change only the BRouter profile and reject unknown p
 });
 
 test('candidate settings cannot run held-out evaluation cases before settings are frozen', async () => {
-  for (const settings of ['cyclepath-v1', 'network-v2', 'traffic-v3', 'surface-v4', 'thal-local-v1', 'weidweg-local-v1']) {
+  for (const settings of ['cyclepath-v1', 'network-v2', 'traffic-v3', 'surface-v4', 'thal-local-v1', 'weidweg-local-v1', 'weidweg-search-v1', 'weidweg-search-v2', 'weidweg-search-v3', 'local-rules-v1']) {
     await assert.rejects(runBenchmark({ split: 'evaluation', settings }), /limited to tuning/);
     await assert.rejects(runBenchmark({ split: 'all', settings }), /limited to tuning/);
     await assert.rejects(runBenchmark({ caseId: '07-south-quiet', settings }), /limited to tuning/);

@@ -1,0 +1,49 @@
+--- a/LruMap.java
++++ b/LruMap.java
+@@ -6,7 +6,8 @@
+  * @author ab
+  */
+ public final class LruMap {
+-  private int hashbins;
++  private final int hashbins;
++  private final int hashMask;
+   private int maxsize;
+   private int size;
+ 
+@@ -17,12 +18,17 @@
+ 
+   public LruMap(int bins, int size) {
+     hashbins = bins;
++    hashMask = bins > 0 && (bins & (bins - 1)) == 0 ? (bins - 1) & 0xfffffff : -1;
+     maxsize = size;
+     binArray = new LruMapNode[hashbins];
+   }
+ 
++  private int binFor(int hash) {
++    return hashMask >= 0 ? hash & hashMask : (hash & 0xfffffff) % hashbins;
++  }
++
+   public LruMapNode get(LruMapNode key) {
+-    int bin = (key.hash & 0xfffffff) % hashbins;
++    int bin = binFor(key.hash);
+ 
+     LruMapNode e = binArray[bin];
+     while (e != null) {
+@@ -61,7 +67,7 @@
+     }
+     size--;
+     // unlink the lru from it's bin-queue
+-    int bin = (lru.hashCode() & 0xfffffff) % hashbins;
++    int bin = binFor(lru.hashCode());
+     LruMapNode e = binArray[bin];
+     if (e == lru) {
+       binArray[bin] = lru.nextInBin;
+@@ -83,7 +89,7 @@
+   }
+ 
+   public void put(LruMapNode val) {
+-    int bin = (val.hashCode() & 0xfffffff) % hashbins;
++    int bin = binFor(val.hashCode());
+     val.nextInBin = binArray[bin];
+     binArray[bin] = val;
+ 

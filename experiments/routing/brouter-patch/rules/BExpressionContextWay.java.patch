@@ -1,0 +1,24 @@
+--- a/BExpressionContextWay.java
++++ b/BExpressionContextWay.java
+@@ -7,7 +7,7 @@
+ package btools.expressions;
+ 
+ import btools.codec.TagValueValidator;
+-import btools.router.WeidwegPassage;
++import btools.router.LocalRoutingRules;
+ 
+ public final class BExpressionContextWay extends BExpressionContext implements TagValueValidator {
+   private boolean decodeForbidden = true;
+@@ -123,8 +123,10 @@
+         minCostFactor = reverseCostFactor;
+       }
+     }
+-    if (minCostFactor == 9999.f && getVariableValue("richiroute_weidweg_push", 0.f) == 1.f
+-      && WeidwegPassage.costfactor(minCostFactor, getKeyValueDescription(false, description)) == 15.f) return 2;
++    if (minCostFactor == 9999.f && getVariableValue("richiroute_local_rules", 0.f) == 1.f
++      && getVariableValue("validForBikes", 0.f) != 0.f && getVariableValue("validForCars", 0.f) == 0.f
++      && getVariableValue("validForFoot", 0.f) == 0.f
++      && LocalRoutingRules.INSTANCE.mayAccess(getKeyValueDescription(false, description))) return 2;
+     return minCostFactor < 9999.f ? 2 : decodeForbidden ? (minCostFactor < 10000.f ? 1 : 0) : 0;
+   }
+ 

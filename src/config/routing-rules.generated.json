@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "profile": "richi-local-v1",
+  "revision": "54ce18e1b7abec17c5cdbbf7c0d01d855aaeced39435464fd1c6d0fb8e2f2b38",
+  "parameters": {
+    "richiroute_rules_0": "6110849102116547607",
+    "richiroute_rules_1": "14253255068463668613",
+    "richiroute_rules_2": "6534387517481109071",
+    "richiroute_rules_3": "15115998978156473144"
+  },
+  "notices": [
+    {
+      "id": "weidweg-push-through",
+      "text": "Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.",
+      "direction": "both",
+      "segments": [
+        [
+          [
+            15.397866,
+            47.10255
+          ],
+          [
+            15.397832,
+            47.102537
+          ]
+        ],
+        [
+          [
+            15.397639,
+            47.102476
+          ],
+          [
+            15.397607,
+            47.102466
+          ]
+        ]
+      ]
+    }
+  ],
+  "retainedTags": [
+    "access",
+    "bicycle",
+    "foot",
+    "highway",
+    "oneway",
+    "oneway:bicycle",
+    "ramp:bicycle",
+    "surface",
+    "vehicle"
+  ]
+}

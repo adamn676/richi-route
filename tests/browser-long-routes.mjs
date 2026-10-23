@@ -8,7 +8,7 @@ const cases = [
   { name: '252 km single leg', minimum: 250000, maximum: 260000, coords: [[15.4329,47.075887],[16.5768,48.5707]] },
   { name: '242 km loop', minimum: 240000, maximum: 245000, coords: [[15.4329,47.075887],[15.5404,46.7817],[15.9861,46.688],[15.889,46.953],[16.056,47.281],[15.709,47.104],[15.4329,47.075887]] },
 ];
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const results = [];
 
 async function ready(page) {

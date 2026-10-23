@@ -2,6 +2,7 @@
   <div class="map-view">
     <div id="map" class="map-view__canvas" aria-label="Interaktive Karte von Graz" />
     <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
+    <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
     <div class="map-view__controls">
       <label>Karte <select v-model="basemap" aria-label="Kartenansicht">
         <option value="street">Straßenkarte</option>
@@ -25,9 +26,10 @@ import { useMapInteractions } from '@/composables/useMapInteractions';
 import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
+import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
 
 const { map, basemap, mapError } = useMap('map');
-const { route, pendingSnapCount, pendingLegCount } = storeToRefs(useRouteStore());
+const { route, pendingSnapCount, pendingLegCount, focusedSurface } = storeToRefs(useRouteStore());
 const presentedStartId = ref<string>();
 const routingPending = computed(() => pendingSnapCount.value > 0 || pendingLegCount.value > 0);
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&

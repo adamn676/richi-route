@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
 const page = await context.newPage();

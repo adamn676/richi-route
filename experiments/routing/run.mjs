@@ -7,6 +7,7 @@ import path from 'node:path';
 import { engines, route, variants } from './engines.mjs';
 import { candidateProfile, settingsFor } from './profiles.mjs';
 import { validateEvaluation } from './evaluation.mjs';
+import { compileRules } from '../../scripts/routing-rules.mjs';
 
 export const root = fileURLToPath(new URL('.', import.meta.url));
 const runsRoot = path.join(root, '.local/runs');
@@ -27,20 +28,24 @@ async function sha256(file) {
 
 export async function provenance(settings, includeOrs) {
   const assets = await readJson(path.join(root, '.local/assets.json'));
-  const brouterPatch = await readJson(path.join(root, `.local/brouter/${engines.brouter.patch}.patch.json`));
-  if (brouterPatch.patch !== engines.brouter.patch ||
-      await sha256(path.join(root, `.local/brouter/brouter-${engines.brouter.patch}.jar`)) !== brouterPatch.patchedJarSha256) {
-    throw new Error('BRouter patch differs from its recorded build. Run npm run bench:brouter:patch before comparing.');
+  const configurable = settings === 'local-rules-v1';
+  const brouterPatch = await readJson(path.join(root, configurable ? '.local/brouter-local-rules/manifest.json' : `.local/brouter/${engines.brouter.patch}.patch.json`));
+  if (configurable ? await sha256(path.join(root, '.local/brouter-local-rules/brouter-local-rules.jar')) !== brouterPatch.jarSha256
+    : brouterPatch.patch !== engines.brouter.patch || await sha256(path.join(root, `.local/brouter/brouter-${engines.brouter.patch}.jar`)) !== brouterPatch.patchedJarSha256) {
+    throw new Error(`BRouter patch differs from its recorded build. Run npm run ${configurable ? 'routing:build' : 'bench:brouter:patch'} before comparing.`);
   }
   for (const asset of assets.assets) {
     if (await sha256(path.join(root, '.local', asset.file)) !== asset.sha256) throw new Error(`Asset changed: ${asset.file}. Run setup and investigate before comparing.`);
   }
   const snapshots = {};
   const files = ['graphhopper.yml', 'compose.yml', 'scenarios.json', 'engines.mjs', 'profiles.mjs', 'run.mjs', 'evaluation.mjs', 'brouter-patch/OsmNode.java', '.local/brouter/profiles2/richi-road.brf', '.local/brouter/profiles2/lookups.dat'];
-  files.push('../../src/config/thal-preference.json');
+  files.push('../../src/config/thal-preference.json', '../../src/config/routing-search.json');
   files.push('brouter-patch/OsmPath.java', 'brouter-patch/StdPath.java', 'brouter-patch/BExpressionContextWay.java', 'brouter-patch/WeidwegPassage.java');
   if (includeOrs) files.push('ors.yml', 'ors-patch/Dockerfile', 'ors-patch/ORSOSMReader.java');
-  if (settings !== 'baseline') files.push(`.local/brouter/profiles2/${settingsFor(settings).brouterProfile}.brf`);
+  if (configurable) files.push('../../config/routing-rules.json', '../../src/config/routing-rules.generated.json',
+    '.local/local-routing-rules/rules.tsv', '.local/local-routing-rules/manifest.json', '.local/local-routing-rules/profiles/richi-local-v1.brf',
+    'brouter-patch/rules/LocalRoutingRules.java', 'brouter-patch/build-local-rules.mjs');
+  else if (settings !== 'baseline') files.push(`.local/brouter/profiles2/${settingsFor(settings).brouterProfile}.brf`);
   for (const file of files) {
     const content = await readFile(path.join(root, file), 'utf8');
     snapshots[file] = { sha256: createHash('sha256').update(content).digest('hex'), content };
@@ -94,12 +99,19 @@ export async function runBenchmark({ split = 'tuning', caseId, settings = 'basel
   if (evaluationFreeze && cases.some(scenario => scenario.split !== 'evaluation')) throw new Error('A frozen evaluation must contain only evaluation cases.');
   if (settings !== 'baseline') {
     if (!evaluationFreeze && cases.some(scenario => scenario.split !== 'tuning')) throw new Error('Experimental settings are limited to tuning cases until frozen.');
-    const profile = candidateProfile(await readFile(path.join(root, '.local/brouter/profiles2/richi-road.brf'), 'utf8'), settings);
-    const target = path.join(root, `.local/brouter/profiles2/${preset.brouterProfile}.brf`);
-    try { await writeFile(target, profile, { flag: 'wx' }); }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (await readFile(target, 'utf8') !== profile) throw new Error('Candidate profile changed on disk; preserve it and create a new settings version.');
+    if (settings === 'local-rules-v1') {
+      const prepared = await readJson(path.join(root, '.local/local-routing-rules/manifest.json'));
+      const client = await readJson(path.join(root, '../../src/config/routing-rules.generated.json'));
+      const configured = compileRules(await readJson(path.join(root, '../../config/routing-rules.json')));
+      if (prepared.revision !== client.revision || prepared.revision !== configured.revision) throw new Error('Prepare the current routing rules before comparing.');
+    } else {
+      const profile = candidateProfile(await readFile(path.join(root, '.local/brouter/profiles2/richi-road.brf'), 'utf8'), settings);
+      const target = path.join(root, `.local/brouter/profiles2/${preset.brouterProfile}.brf`);
+      try { await writeFile(target, profile, { flag: 'wx' }); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        if (await readFile(target, 'utf8') !== profile) throw new Error('Candidate profile changed on disk; preserve it and create a new settings version.');
+      }
     }
   }
   const evidence = await provenance(settings, includeOrs);
@@ -113,7 +125,8 @@ export async function runBenchmark({ split = 'tuning', caseId, settings = 'basel
     id: new Date().toISOString().replaceAll(/[:.]/g, '-') + '-' + randomUUID().slice(0, 8),
     createdAt: new Date().toISOString(), status: 'running', scope: caseId ?? split,
     suiteStatus: suite.status, settings, settingsLabel: preset.label + (includeOrs ? '; local ORS cycling-road baseline' : ''),
-    engines: { graphhopper: engines.graphhopper, brouter: { ...engines.brouter, profile: preset.brouterProfile }, ...(includeOrs ? { ors: engines.ors } : {}) },
+    engines: { graphhopper: engines.graphhopper, brouter: { ...engines.brouter, profile: preset.brouterProfile,
+      ...(settings === 'local-rules-v1' ? { patch: 'local-rules-v1' } : {}) }, ...(includeOrs ? { ors: engines.ors } : {}) },
     includeOrs,
     ...(frozen ? { evaluationFreeze, evaluationFingerprint: frozen.fingerprint } : {}),
     provenance: evidence, scenarios: cases, results: [],

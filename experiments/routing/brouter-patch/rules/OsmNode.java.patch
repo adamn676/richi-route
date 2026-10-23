@@ -1,0 +1,17 @@
+--- a/OsmNode.java
++++ b/OsmNode.java
+@@ -37,14 +37,6 @@
+   public int visitID;
+ 
+   public void addTurnRestriction(TurnRestriction tr) {
+-    // OSM relation 1597055: rider-confirmed bicycle exception, 2026-10-19.
+-    // Exact via/from/to coordinates deliberately stop matching if the data changes.
+-    if (ilon == 195539841 && ilat == 137103009 && !tr.isPositive
+-      && tr.fromLon == 195539580 && tr.fromLat == 137102991
+-      && tr.toLon == 195538680 && tr.toLat == 137103321) {
+-      tr.exceptions |= 1;
+-    }
+-
+     tr.next = firstRestriction;
+     firstRestriction = tr;
+   }

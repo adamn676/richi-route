@@ -1,0 +1,27 @@
+[
+  {
+    "file": "RoutingContext.java",
+    "source": ".local/brouter-performance/staging/RoutingContext.java",
+    "sha256": "590a2252662e8967c1a061600d6da94342317ff23368a1f05810dd167549472d"
+  },
+  {
+    "file": "OsmPath.java",
+    "source": ".local/brouter-performance/staging/OsmPath.java",
+    "sha256": "34aca13d38fa8c5b4802d1bd2f374c00f5bccc87b8b2beb7987b97cc40f603c9"
+  },
+  {
+    "file": "OsmNode.java",
+    "source": "brouter-patch/OsmNode.java",
+    "sha256": "5139dc6198c8a6430389d5f793e7c55082c33cfe70f8e3c08c7a2190b7df42c9"
+  },
+  {
+    "file": "BExpressionContextWay.java",
+    "source": "brouter-patch/BExpressionContextWay.java",
+    "sha256": "4df4f0278d35a5344920e69ccad1eeeafeff641cc7bd892db2ef528742d0ef61"
+  },
+  {
+    "file": "RouteServer.java",
+    "url": "https://raw.githubusercontent.com/abrensch/brouter/v1.7.10/brouter-server/src/main/java/btools/server/RouteServer.java",
+    "sha256": "6eff7edb686fbb565e2ec904167374a1bc9508fdeb44e55477ea7d01a62099c4"
+  }
+]

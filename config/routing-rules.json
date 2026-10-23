@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "weidweg-push-through",
+      "kind": "passage",
+      "enabled": true,
+      "mode": "bicycle",
+      "direction": "both",
+      "segments": [
+        [[15.397866, 47.102550], [15.397832, 47.102537]],
+        [[15.397639, 47.102476], [15.397607, 47.102466]]
+      ],
+      "requiredTags": {"highway": "steps", "bicycle": "dismount", "foot": "yes", "ramp:bicycle": "yes", "surface": "concrete"},
+      "forbiddenTags": {"access": ["no", "private"], "vehicle": ["no", "private"]},
+      "absentTags": ["oneway", "oneway:bicycle"],
+      "originalCostfactor": 9999,
+      "costfactor": 15,
+      "notice": "Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.",
+      "reviewedOn": "2026-10-21",
+      "reason": "Rider accepted pushing through the two ramped stair flights. Riding remains disallowed and the returned dismount tags are preserved.",
+      "osmWays": [28589123, 28589125],
+      "reviewedTiles": {"E15_N45.rd5": "a4348372c764e1a8bffab4580dd81aeab5f9ba19948e6832d235d52fc485874d"}
+    },
+    {
+      "id": "ries-bicycle-turn",
+      "kind": "turn",
+      "enabled": true,
+      "mode": "bicycle",
+      "from": [15.539580, 47.102991],
+      "via": [15.539841, 47.103009],
+      "to": [15.538680, 47.103321],
+      "restriction": "prohibited",
+      "reviewedOn": "2026-10-19",
+      "reason": "Rider confirmed the bicycle left turn from Riesstrasse into Stiftingtalstrasse. Other modes and the reverse turn keep their original restrictions.",
+      "osmRelation": 1597055,
+      "reviewedTiles": {"E15_N45.rd5": "a4348372c764e1a8bffab4580dd81aeab5f9ba19948e6832d235d52fc485874d"}
+    },
+    {
+      "id": "thal-road-preference",
+      "kind": "avoidance",
+      "enabled": true,
+      "mode": "bicycle",
+      "center": [15.377673, 47.098973],
+      "radiusMeters": 5,
+      "weight": 50,
+      "reviewedOn": "2026-10-20",
+      "reason": "Rider prefers Thalstrasse to the adjacent narrow cycle path. A finite penalty keeps deliberate path selection possible. The radius selects map geometry, not path width.",
+      "reviewRunId": "2026-10-19T21-01-39-289Z-2152b0bd",
+      "reviewedTiles": {"E15_N45.rd5": "a4348372c764e1a8bffab4580dd81aeab5f9ba19948e6832d235d52fc485874d"}
+    }
+  ]
+}

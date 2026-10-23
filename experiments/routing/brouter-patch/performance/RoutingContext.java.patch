@@ -1,0 +1,14 @@
+--- a/RoutingContext.java
++++ b/RoutingContext.java
+@@ -469,6 +469,11 @@
+         double y1 = (lat1 - nogo.ilat) * dlat2m;
+         double x2 = (lon2 - nogo.ilon) * dlon2m;
+         double y2 = (lat2 - nogo.ilat) * dlat2m;
++        // A segment outside the circle's bounding box cannot intersect it.
++        // Use the same scales as the detailed check, including at high latitudes.
++        double limit = nogo.radius + 1.;
++        if (y1 > limit && y2 > limit || y1 < -limit && y2 < -limit
++          || x1 > limit && x2 > limit || x1 < -limit && x2 < -limit) continue;
+         double r12 = x1 * x1 + y1 * y1;
+         double r22 = x2 * x2 + y2 * y2;
+         double radius = Math.abs(r12 < r22 ? y1 * dx - x1 * dy : y2 * dx - x2 * dy) / d;

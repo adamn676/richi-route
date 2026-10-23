@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import maplibregl, { type Map as MaplibreMap, type Marker } from 'maplibre-gl';
+import { Marker, type Map as MaplibreMap } from 'maplibre-gl';
 import type { Coord, ShapePoint, Waypoint } from '@/domain/route-model';
 import { useRouteStore } from '@/stores/route.store';
 
@@ -12,7 +12,7 @@ function markerElement(kind: 'stop' | 'shape' | 'preview', number?: number): HTM
 }
 
 export function createPreviewMarker(map: MaplibreMap, coord: Coord): Marker {
-  return new maplibregl.Marker({ element: markerElement('preview') }).setLngLat(coord).addTo(map);
+  return new Marker({ element: markerElement('preview') }).setLngLat(coord).addTo(map);
 }
 
 export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
@@ -34,7 +34,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
     waypoints.forEach((point, index) => {
       let marker = waypointMarkers.get(point.id);
       if (!marker) {
-        marker = new maplibregl.Marker({ element: markerElement('stop', index + 1), draggable: true })
+        marker = new Marker({ element: markerElement('stop', index + 1), draggable: true })
           .setLngLat(point.coord)
           .addTo(map);
         marker.on('dragend', () => {
@@ -69,7 +69,7 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
     shapes.forEach((shape) => {
       let marker = shapeMarkers.get(shape.id);
       if (!marker) {
-        marker = new maplibregl.Marker({ element: markerElement('shape'), draggable: true })
+        marker = new Marker({ element: markerElement('shape'), draggable: true })
           .setLngLat(shape.coord)
           .addTo(map);
         marker.on('dragend', () => {

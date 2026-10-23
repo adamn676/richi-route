@@ -3,8 +3,12 @@ import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 
 const output = 'experiments/routing/.local';
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }),
+  headless: process.env.PLAYWRIGHT_HEADED !== '1', slowMo: Number(process.env.PLAYWRIGHT_SLOW_MO ?? 0) });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const tracing = process.env.PLAYWRIGHT_TRACE === '1';
+if (tracing) await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+const page = await context.newPage();
 const errors = [];
 const tiles = { street: 0, aerial: 0, labels: 0 };
 page.on('pageerror', error => errors.push(error.message));
@@ -15,11 +19,12 @@ page.on('response', response => {
   }
 });
 async function state() {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
+    const source = map.getSource('segments-source');
     return { points: s.points, legs: Object.values(s.legs), error: s.errorMessage, distance: s.distanceMeters,
-      features: map.getSource('segments-source')?._data.features.length ?? 0,
+      features: source ? (await source.getData()).features.length : 0,
       hasAir: s.hasAirLines };
   });
 }
@@ -38,7 +43,7 @@ async function pixel(coord) {
 }
 try {
   await page.goto('http://127.0.0.1:5173/');
-  await page.getByRole('button', { name: 'Beispiel:', exact: false }).click();
+  await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
   await idle();
   const initial = await state();
   assert.equal(initial.distance, 4371);
@@ -122,7 +127,10 @@ try {
   await page.route('https://maps.wien.gv.at/**', route => route.abort());
   await page.reload();
   await idle();
-  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('segments-source')?._data.features.length > 0);
+  await page.waitForFunction(async () => {
+    const source = document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('segments-source');
+    return source && (await source.getData()).features.length > 0;
+  });
   assert.equal((await state()).distance, junction.distance);
   assert.deepEqual((await state()).points.map(p => p.coord), junction.points.map(p => p.coord));
   assert.ok((await state()).features > 0);
@@ -134,4 +142,7 @@ try {
     checks: ['live routing', 'street imagery', 'labelled aerial imagery', 'line drag', 'undo/redo', 'marker drag', 'unchanged distant legs', 'Ries junction bicycle exception', 'mobile overflow', 'route visible with failed imagery', 'local map switch'] };
   await fs.writeFile(`${output}/editor-browser-results.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
-} finally { await browser.close(); }
+} finally {
+  if (tracing) await context.tracing.stop({ path: `${output}/editor-trace.zip` });
+  await browser.close();
+}

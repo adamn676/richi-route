@@ -42,6 +42,7 @@ export function requestFor(engineId, points, settings = 'baseline') {
     for (const detail of ['surface', 'smoothness', 'road_class']) url.searchParams.append('details', detail);
   } else {
     if (preset.brouterNogos) url.searchParams.set('nogos', preset.brouterNogos);
+    for (const [name, value] of Object.entries(preset.brouterParameters ?? {})) url.searchParams.set(`profile:${name}`, String(value));
     url.searchParams.set('lonlats', points.map(({ coord }) => coord.join(',')).join('|'));
     url.searchParams.set('alternativeidx', '0');
     url.searchParams.set('format', 'geojson');

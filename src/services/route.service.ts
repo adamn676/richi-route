@@ -1,9 +1,8 @@
 import { distanceMeters, routingConcurrency, type Coord, type RoutingEngine } from '../domain/route-model.ts';
 import { parseBRouterLeg, parseBRouterLine } from '../domain/route-response.ts';
-import thalPreference from '../config/thal-preference.json' with { type: 'json' };
+import { routingProfile, routingParameters, routingPolicyVersion } from '../config/routing-policy.ts';
 
 const maxSnapDistance = 250;
-const profile = 'richi-weidweg-v1';
 const unavailableMessage = 'Der lokale Routing-Dienst ist nicht erreichbar. Bitte den Routing-Dienst starten und erneut versuchen.';
 const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.';
 const waiting: (() => void)[] = [];
@@ -35,7 +34,9 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
 }
 
 async function request(from: Coord, to: Coord, signal: AbortSignal): Promise<unknown> {
-  const params = new URLSearchParams({ profile, nogos: thalPreference.nogos, lonlats: [from.join(','), to.join(',')].join('|'), format: 'geojson', alternativeidx: '0' });
+  const params = new URLSearchParams({ profile: routingProfile, lonlats: [from.join(','), to.join(',')].join('|'), format: 'geojson', alternativeidx: '0' });
+  // Guide the initial search and its refinement; road costs stay in the profile.
+  for (const [name, value] of Object.entries(routingParameters)) params.set(`profile:${name}`, String(value));
   return withSlot(signal, async () => {
     let response: Response;
     try {
@@ -48,6 +49,7 @@ async function request(from: Coord, to: Coord, signal: AbortSignal): Promise<unk
     }
     if (!response.ok) {
       const detail = (await response.text()).trim();
+      if (detail === 'local routing rules version mismatch') throw new Error('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.');
       const missingTile = /^datafile ([EW]\d+_[NS]\d+\.rd5) not found$/.exec(detail);
       if (missingTile) throw new Error(`Für diese Gegend fehlen lokale Kartendaten (${missingTile[1]}). Bitte die Kartendaten ergänzen und den Routing-Dienst neu starten.`);
       if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new Error(timeoutMessage);
@@ -77,6 +79,6 @@ export const routingEngine: RoutingEngine = {
     const leg = parseBRouterLeg(await request(from, to, signal));
     checkSnap(from, leg.coordinates[0]);
     checkSnap(to, leg.coordinates.at(-1)!);
-    return leg;
+    return { ...leg, routingPolicy: routingPolicyVersion };
   },
 };

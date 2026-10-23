@@ -25,24 +25,24 @@ for (const reverse of [false, true]) {
   const coordinates = target.coordinates.slice(195, 210);
   if (reverse) coordinates.reverse();
   const expected = { points: ordered, coordinates };
-  const scoped = await route(`passage-${reverse}`, ordered, 'weidweg-local-v1');
+  const scoped = await route(`passage-${reverse}`, ordered, 'local-rules-v1');
   assert.ok(assessReviewedRoute(expected, scoped).matches, 'Uses only the accepted passage in both directions');
-  const baseline = await route(`baseline-${reverse}`, ordered, 'thal-local-v1');
+  const baseline = await route(`baseline-${reverse}`, ordered, 'local-rules-v1', { richiroute_local_rules: 0 });
   assert.ok(!assessReviewedRoute(expected, baseline).matches, 'Profile without opt-in still avoids the stairs');
 }
 for (const [id, overrides] of [
-  ['explicit-opt-out', { richiroute_weidweg_push: 0 }],
+  ['explicit-opt-out', { richiroute_local_rules: 0 }],
   ['car-mode', { validForCars: 1 }],
   ['foot-mode', { validForFoot: 1 }],
 ]) {
-  const line = await route(id, points, 'weidweg-local-v1', overrides);
+  const line = await route(id, points, 'local-rules-v1', overrides);
   assert.ok(!assessReviewedRoute({ points, coordinates: target.coordinates.slice(195, 210) }, line).matches, id);
 }
 for (const reference of suite.routes.filter(r => r.expectation === 'preserve')) {
   assert.equal(geometryHash(reference.coordinates), reference.geometrySha256);
-  assert.ok(assessReviewedRoute(reference, await route(reference.id, reference.points, 'weidweg-local-v1')).matches, reference.id);
+  assert.ok(assessReviewedRoute(reference, await route(reference.id, reference.points, 'local-rules-v1')).matches, reference.id);
 }
-const whole = await route('western-loop', target.points, 'weidweg-local-v1');
+const whole = await route('western-loop', target.points, 'local-rules-v1');
 for (const index of [200, 201, 202, 203]) {
   assert.ok(whole.some(c => Math.abs(c[0] - target.coordinates[index][0]) < 0.000001 && Math.abs(c[1] - target.coordinates[index][1]) < 0.000001));
 }

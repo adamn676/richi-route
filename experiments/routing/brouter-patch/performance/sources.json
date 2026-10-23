@@ -1,0 +1,20 @@
+[
+  {
+    "file": "RoutingContext.java",
+    "url": "https://raw.githubusercontent.com/abrensch/brouter/v1.7.10/brouter-core/src/main/java/btools/router/RoutingContext.java",
+    "localSource": null,
+    "sha256": "094919f9d7d374e83e979d34c4181f79241aeec885b45d1d6c20819887d7ce13"
+  },
+  {
+    "file": "LruMap.java",
+    "url": "https://raw.githubusercontent.com/abrensch/brouter/v1.7.10/brouter-util/src/main/java/btools/util/LruMap.java",
+    "localSource": null,
+    "sha256": "d5ccae38e9fb2812d68aa6ba6d21b90131c00644c2050e8b03b0d6228104a1d4"
+  },
+  {
+    "file": "OsmPath.java",
+    "url": null,
+    "localSource": "../OsmPath.java",
+    "sha256": "cc951c80f80feee6dceeadee96d7119344faef581f3108d363b33bc9658a0c53"
+  }
+]

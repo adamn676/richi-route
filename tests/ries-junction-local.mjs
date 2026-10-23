@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const endpoint = new URL('/brouter', process.argv[2] ?? 'http://127.0.0.1:17777');
 endpoint.search = new URLSearchParams({
-  profile: 'richi-surface-v4', lonlats: '15.521873,47.095702|15.503735,47.105271',
+  profile: 'richi-local-v1', lonlats: '15.521873,47.095702|15.503735,47.105271',
   format: 'geojson', 'profile:considerTurnRestrictions': '1',
 }).toString();
 const response = await fetch(endpoint, { signal: AbortSignal.timeout(70000) });

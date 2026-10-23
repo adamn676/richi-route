@@ -14,8 +14,8 @@ function intercept(t, hold = () => false) {
   t.mock.method(globalThis, 'fetch', (url, options) => {
     const parsed = new URL(url, 'http://localhost');
     assert.equal(parsed.pathname, '/routing/brouter');
-    assert.equal(parsed.searchParams.get('profile'), 'richi-weidweg-v1');
-    assert.equal(parsed.searchParams.get('nogos'), '15.377673,47.098973,5,50');
+    assert.equal(parsed.searchParams.get('profile'), 'richi-local-v1');
+    assert.equal(parsed.searchParams.has('nogos'), false);
     const coords = parsed.searchParams.get('lonlats').split('|').map(pair => pair.split(',').map(Number));
     const snap = JSON.stringify(coords[0]) === JSON.stringify(coords[1]);
     return new Promise((resolve, reject) => {

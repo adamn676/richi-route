@@ -20,14 +20,16 @@
     <div class="planner__legend" aria-label="Oberflächenfarben">
       <span><i class="surface asphalt" />Asphalt</span>
       <span><i class="surface paved" />Befestigt</span>
-      <span><i class="surface rough" />Holprig</span>
+      <span><i class="surface rough" />Pflaster / Holz</span>
       <span><i class="surface unpaved" />Unbefestigt</span>
       <span><i class="surface unknown" />Unbekannt</span>
       <span><i class="surface air" />Luftlinie</span>
     </div>
 
-    <p v-if="hasWeidwegPassage" class="planner__hint" role="status">
-      Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.
+    <SurfaceDetails />
+
+    <p v-for="notice in routingNotices" :key="notice.id" class="planner__hint" role="status">
+      {{ notice.text }}
     </p>
     <p v-if="routeStore.errorMessage" class="planner__error" role="alert">{{ routeStore.errorMessage }}</p>
     <button v-if="routeStore.errorMessage" type="button" @click="routeStore.retryRouting()">Erneut versuchen</button>
@@ -109,7 +111,7 @@
     <button type="button" class="planner__export" :disabled="Boolean(exportReason)" :title="exportReason ?? 'Berechnete Strecke als GPX-Track herunterladen'" @click="downloadGpx">GPX herunterladen</button>
     <p v-if="exportReason && hasEndpoints" class="planner__help">{{ exportReason }}</p>
     <template v-if="!hasEndpoints">
-      <button type="button" class="planner__add" @click="run(() => routeStore.resetRoute(westernLoop.coords, westernLoop.shapeIndices))">Beispiel: Westliche Runde über Augasse</button>
+      <button type="button" class="planner__add" @click="loadWesternLoop">Beispiel: Westliche Runde über Augasse</button>
       <p class="planner__help">Über ruhige Straßen und Weidweg, mit sechs verschiebbaren Formpunkten. Der Einstieg wird automatisch berechnet.</p>
     </template>
     <button v-if="!hasEndpoints" type="button" class="planner__add" @click="routeStore.resetRoute([[15.474345, 47.090869], [15.503735, 47.105271]])">Beispiel: Hahnhofweg → Roseggerweg</button>
@@ -126,15 +128,21 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue';
 import { westernLoop } from '@/config/route-examples';
-import { usesWeidwegPassage } from '@/domain/local-passages';
+import { localRoutingNotices } from '@/domain/local-routing-notices';
+import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
+import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { saveDraftNow } from '@/services/draft.service';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 
 const routeStore = useRouteStore();
-const hasWeidwegPassage = computed(() => usesWeidwegPassage(Object.values(routeStore.legs).filter(leg => leg.status === 'routed')));
+function loadWesternLoop(): void {
+  run(() => routeStore.resetRoute(westernLoop.coords, westernLoop.shapeIndices));
+}
+const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
+  .filter(leg => leg.status === 'routed' && isRoutingPolicyCurrent(leg.routingPolicy))));
 const exportReason = computed(() => gpxUnavailableReason(routeStore));
 const draftLabel = computed(() => ({
   idle: 'Speichert automatisch in diesem Browser.',

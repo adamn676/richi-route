@@ -14,7 +14,7 @@ test('BRouter message endpoints delimit surfaces; missing tags and unmatched tai
     ['16000000', '47000000', 'surface=asphalt'],
   ]));
   assert.deepEqual(leg.surfaces, [
-    { fromIndex: 0, toIndex: 1, surface: 'asphalt' },
+    { fromIndex: 0, toIndex: 1, surface: 'asphalt', surfaceTag: 'asphalt' },
     { fromIndex: 1, toIndex: 2, surface: 'unknown' },
   ]);
   const segments = getSegments({ features: [{ geometry: { coordinates: leg.coordinates }, properties: { status: 'routed', surfaces: leg.surfaces } }] });
@@ -40,5 +40,18 @@ test('a surface span returning to the same coordinate covers the loop', () => {
     ['Longitude', 'Latitude', 'Distance', 'WayTags'],
     ['15000000', '47000000', '100', 'surface=asphalt'],
   ]));
-  assert.deepEqual(leg.surfaces, [{ fromIndex: 0, toIndex: 2, surface: 'asphalt' }]);
+  assert.deepEqual(leg.surfaces, [{ fromIndex: 0, toIndex: 2, surface: 'asphalt', surfaceTag: 'asphalt' }]);
+});
+
+test('surface details retain different recorded materials within the same colour group', () => {
+  const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47]], [
+    ['Longitude', 'Latitude', 'WayTags'],
+    ['15001000', '47000000', 'surface=paving_stones'],
+    ['15002000', '47000000', 'surface=wood'],
+    ['15003000', '47000000', 'surface=metal'],
+    ['15004000', '47000000', 'highway=residential'],
+  ]));
+  assert.deepEqual(leg.surfaces.map(s => [s.surface, s.surfaceTag]), [
+    ['rough', 'paving_stones'], ['rough', 'wood'], ['unknown', 'metal'], ['unknown', undefined],
+  ]);
 });
