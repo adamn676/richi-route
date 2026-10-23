@@ -1,5 +1,11 @@
 # Local road-cycling comparison
 
+Current installation and maintenance instructions are in the
+[development guide](../../docs/local-development.md). The dated entries below
+record experiments and earlier setups; their commands and package versions do
+not replace the current guide. Raw results under `.local/` are retained locally
+and are not part of the Git checkout.
+
 ## Configurable local routing rules, 23 October 2026
 
 The native editor now uses `richi-local-v1` and the `local-rules-v1` comparison
@@ -742,27 +748,17 @@ Routing uses localhost. The default street
 map and aerial imagery use the free basemap.at service; Local roads is an offline
 background served by GraphHopper.
 
-## Setup on Windows
+## Historical Windows comparison setup
 
-Git, Node 22.21.0, Yarn 1.22.22 and Docker were present on this desktop. Codex CLI
-was already signed in using ChatGPT. Java on the host is unnecessary because both
+Git, Node 22.21.0, Yarn 1.22.22 and Docker were used for this earlier comparison.
+Java on the host was unnecessary because both
 engines use Eclipse Temurin 21 JRE, pinned by digest in `compose.yml`.
 The Docker daemon must run Linux containers.
 
-Run from the repository root:
-
-```powershell
-# Use the transferred lockfile. Already restored on this desktop.
-yarn.cmd install --frozen-lockfile --non-interactive --cache-folder .cache/yarn
-
-# First setup downloads about 362 MB of engines/data, plus the Java Docker image.
-npm.cmd run bench:setup
-npm.cmd run bench:up
-docker compose -f experiments/routing/compose.yml logs --tail 30 graphhopper
-
-# Wait for the GraphHopper application connector to start on port 8989.
-npm.cmd run bench:dev
-```
+The project now uses npm and `package-lock.json`. Use the
+[historical Docker setup instructions](../../docs/local-development.md#historical-docker-benchmark-installation)
+when reproducing these comparisons. The current native planner uses a different
+profile and starts with `npm run dev:local`.
 
 Open http://127.0.0.1:5174/. Port 5174 serves the comparison, 8989 GraphHopper and
 17777 BRouter. All published ports bind to `127.0.0.1`. The containers use a normal
@@ -1310,13 +1306,11 @@ road they would use instead. Do not assume either whole route is appropriate
 for road cycling or treat the shorter brown route as an improvement. Neither
 route has been reviewed. No profile changes or additional service charges.
 
-## AI and operating costs
+## Operating costs
 
-Route calculation uses local BRouter and GraphHopper without AI inference.
-Rider feedback informs profile rules and saved regression comparisons. Any
-future model that interprets feedback should be optional; its availability or
-quota must not prevent route calculation. Self-hosting avoids a hosted AI quota
-but still consumes hardware capacity. EUR 0 describes this local experiment,
+Route calculation uses local BRouter and GraphHopper. Rider feedback informs
+profile rules and saved regression comparisons. Self-hosting consumes hardware
+capacity. EUR 0 describes this local experiment,
 not a verified operating budget for hundreds of users. Concurrent routing load,
 map delivery and any hosted infrastructure require separate capacity and cost
 checks before a public launch. No paid services were enabled.
@@ -1675,10 +1669,10 @@ The observation is saved in
 `.local/feedback/04-thal-revision-3-selected-2026-10-19.json`.
 No additional rideability approval or engine preference is inferred.
 
-## Review of the external AI handoff, 2026-10-19
+## Review of the earlier editor snapshot, 2026-10-19
 
-The user supplied `D:\rr\COPILOT-HANDOFF-2026-10-19.md` and
-`D:\rr\RichiRoute-AI-Handoff-2026-10-19.zip` for assessment before continuing.
+An earlier editor snapshot and its accompanying notes were reviewed before
+integration.
 Archive SHA-256:
 `49a74f771acb2508bedaf1ef5d367c9c57312665704303d20a57aa152f3a46a8`.
 The source was extracted into the ignored
@@ -1689,8 +1683,7 @@ were not replaced. No services were provisioned or dependencies downloaded.
 The archive is useful parallel work. Its editor implementation is further along
 than our original application, while our experiment contains rider feedback and
 tuned profiles absent from that snapshot. A newer archive date is not a reason
-to replace either body of work. Its `prompt-v2.md` is historical context, not
-an instruction to rebuild this repository from scratch.
+to replace either body of work.
 
 ### Work worth reusing
 
@@ -1944,8 +1937,8 @@ The reproducible scripts are `tests/editor-local-check.mjs` and
 `tests/browser-editor.mjs` at repository root. They require existing local data
 and services; ordinary `npm test` requires neither Docker nor network access.
 
-Keep the engine local and replaceable. No runtime AI model or Rust rewrite is
-needed for the measured work. Additional service charges remain EUR 0. This does
+Keep the engine local and replaceable. The measured work uses the existing
+routing engine. Additional service charges remain EUR 0. This does
 not settle Thal Automatic, guarantee paved-only routes, validate every possible
 turn across independently routed legs, or establish capacity for hundreds of
 users. Continue the independent evaluation before declaring a final engine

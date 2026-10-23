@@ -1,33 +1,55 @@
 # Local development
 
 Run commands from the repository root (`app/` in the prepared Ubuntu workspace).
-Use Node.js 26.12.1 and npm 12.2.1. The native Ubuntu setup is described below;
-the Docker workflow retains the existing engine images and data. Linux also
-needs `unzip` for the BRouter archive. In PowerShell, use `npm.cmd` if execution
-policy blocks `npm`.
+Use Node.js 26.12.1 and npm 12.2.1. The native Linux setup is described below;
+the historical Docker workflow retains earlier engine images and data.
+Native installation needs a POSIX shell, `tar` and `patch`; historical archive
+setup also uses `unzip`. In PowerShell, use `npm.cmd` if execution policy blocks
+`npm`. The current native launcher supports Linux x64.
 
-## Prepared Ubuntu workspace
+## Native Linux setup
 
-The checked benchmark bundle lives next to `app/`. Install the pinned current
-runtimes and build the performance overlay without changing that bundle:
+Place the existing verified benchmark bundle beside the checkout:
+
+```text
+workspace/
+  app/                         # repository checkout; another name is fine
+  richiroute-ubuntu-benchmark/  # separate verified routing bundle
+```
+
+The bundle must include `manifest.json`, `benchmark.mjs`, `brouter.jar`,
+`profiles/` and `data/`. The original transferred bundle also contains a Node
+runtime that can bootstrap installation. Its map files and patched engine are
+checked by content hash. Fresh downloads or a newly built JAR are not
+interchangeable with this reviewed baseline.
+
+The bundle is not stored in Git, and there is currently no repository command
+to download that exact snapshot. A new clone can install frontend dependencies,
+run unit tests and build both frontends without it; native route calculation
+and engine benchmarks require the separate bundle. Do not upload the large
+maps, runtime archives or private benchmark output to the source repository.
+
+From the checkout, install runtimes and build the engine integration:
 
 ```sh
-../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs
+node scripts/setup-native.mjs
 export PATH="$PWD/.cache/runtime/node/bin:$PATH"
 npm ci
 npm run bench:brouter:performance
 npm run routing:build
-sh ../start-local.sh
+npm run dev:local
 ```
 
 `native:setup` downloads checksum-verified Node and GraalVM archives into
 `.cache/runtime/`. It is specific to Linux x64. `.nvmrc` records the Node version
-for other development environments. The original bundled Node can bootstrap
-the installer; subsequent app commands use the new runtime.
+for other development environments. Use an existing Node 22 or newer
+to run the installer. In the prepared workspace, the equivalent bootstrap is
+`../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs`.
+Subsequent app commands use the new runtime.
 
-The launcher verifies the original bundle and the separately built rules integration,
-prepares the shared local rules and their profile,
-then starts GraalVM Community 25.4.4.1.1 with its default compiler, a 1 GB heap,
+The repository launcher, `scripts/start-local.sh`, verifies the original bundle
+and the separately built rules integration. It prepares the shared local rules
+and their profile, then starts GraalVM Community 25.4.4.1.1 with its default compiler, a 1 GB heap,
 the parallel collector and six routing workers. It binds BRouter to
 `127.0.0.1:17777` and Vite to `127.0.0.1:5173`. Ctrl+C stops both child processes.
 The log is `experiments/routing/.local/native-brouter.log`. Docker, GraphHopper
@@ -45,7 +67,7 @@ General preferences such as road surface penalties remain in the routing profile
 ```sh
 npm run routing:prepare
 # Stop the existing native launcher with Ctrl+C, then restart it:
-sh ../start-local.sh
+npm run dev:local
 ```
 
 In another terminal, run `npm run routing:check`. Preparing data and restarting
@@ -65,12 +87,16 @@ before adding a rule. `npm run routing:benchmark` compares the previous engine
 with the current rules and synthetic sets containing 1,000 and 10,000 extra rules.
 It uses separate local servers and leaves the active configuration unchanged.
 
-## Dependency status, 22 October 2026
+## Dependency status
 
-All direct npm packages are at their latest compatible stable releases. A clean
-`npm ci` succeeds, and `npm audit` reports **zero vulnerabilities**, down from 12
-in the previous lockfile. `npm outdated` lists only the deliberate TypeScript
-major-version hold:
+The compatible-version review was completed on 22 October 2026. A clean
+`npm ci` succeeded. A fresh `npm audit --package-lock-only --ignore-scripts`
+on 23 October reported **zero vulnerabilities** for the committed npm lockfile.
+GitHub reported 29 dependency alerts during the push. That separate warning
+has not been confirmed resolved. Check the repository's
+[dependency alerts](https://github.com/adamn676/richi-route/security/dependabot)
+and run `npm audit` and `npm outdated` when changing dependencies.
+The last version review found only the deliberate TypeScript major-version hold:
 
 | Component | Installed |
 | --- | --- |
@@ -181,14 +207,18 @@ apply per request; a changed routing policy recalculates cached legs. See the
 When updating an existing installation, stop BRouter before rebuilding the patch
 on Windows so its JAR is not locked. Start it again with `npm run bench:up`.
 
-## Start and stop
+## Start and stop the historical comparison services
+
+These commands start the historical Docker comparison environment. They do
+not replace `npm run dev:local` for the current planner. The comparison UI runs
+on port 5174. Keep the two BRouter versions on separate ports or stop one first.
 
 ```sh
 npm run bench:up
-npm run dev
+npm run bench:dev
 ```
 
-Open **http://127.0.0.1:5173/** for the planner. The first GraphHopper start imports
+Open **http://127.0.0.1:5174/** for the comparison. The first GraphHopper start imports
 the map; wait for its application connector on port 8989 before using local map
 tiles or comparisons. Check progress with:
 
@@ -210,13 +240,7 @@ Ubuntu follow-up reproduced all 42 Windows benchmark feature hashes; its median
 route times were 8.8-11.4% lower. CPU power settings differed, so this does not
 isolate the operating system's effect. See the routing guide for measurement scope.
 
-In another terminal, start the comparison app if needed:
-
-```sh
-npm run bench:dev
-```
-
-Open **http://127.0.0.1:5174/**. BRouter and GraphHopper run locally; ORS is optional:
+BRouter and GraphHopper run locally; ORS is optional:
 
 ```sh
 npm run bench:ors:up

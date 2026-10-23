@@ -13,6 +13,9 @@ For the first build, run `npm run bench:brouter:performance`, followed by
 before starting the engine. It checks the compiled integration against its
 source manifest, then loads `brouter-local-rules.jar` ahead of the preserved
 base JAR. The new JAR includes the measured cache and distance optimizations.
+Run it with `npm run dev:local`; the tracked launcher is `scripts/start-local.sh`.
+The [setup guide](../../../docs/local-development.md#native-linux-setup) lists the
+separate reviewed bundle required by this native build.
 
 To add another location, edit the shared JSON, run `npm run routing:prepare`,
 restart the native launcher, then run `npm run routing:check`. This changes
@@ -94,6 +97,12 @@ the original circle calculation. `routing:check` verifies active passage geometr
 tags and costs, directed turns, and mapped avoidance centers. Avoidance route
 preferences also need their route regression; snapping the center alone cannot
 prove the rider's preferred route.
+
+The profile-transformation unit test uses `fixtures/richi-weidweg-v1.brf`, a
+frozen copy of the reviewed BRouter 1.7.10 fastbike-derived profile, under the
+same [GPL license](LICENSE) as the upstream sources. This keeps ordinary unit
+tests independent of the external routing bundle. The original profile SHA-256
+is `aa05fd12c19cb5b6c0ea2271431553aec02838a5f20136e97534f8a73a0bb8a3`.
 
 `routing:benchmark` compares the previous optimized engine, the migrated rules,
 and 1,000/10,000 additional synthetic rules on two long routes. All variants use

@@ -24,6 +24,8 @@ dist-ssr
 *.sw?
 .env*
 prompt.md
+prompt-*.md
+RICHIROUTE-HANDOFF.txt
 RichiRoute.md
 yarn.lock
 

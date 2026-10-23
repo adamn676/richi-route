@@ -1,1 +1,2 @@
 experiments/routing/start-brouter.sh text eol=lf
+scripts/start-local.sh text eol=lf

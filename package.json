@@ -17,6 +17,7 @@
     "bench:brouter:performance": "node experiments/routing/brouter-patch/build-performance.mjs",
     "bench:brouter:patch": "node experiments/routing/brouter-patch/build.mjs",
     "dev": "vite",
+    "dev:local": "sh scripts/start-local.sh",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "bench:setup": "node experiments/routing/setup.mjs",

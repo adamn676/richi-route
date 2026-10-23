@@ -71,7 +71,7 @@ test('adding, disabling and changing rules changes the revision; JSON key order 
 });
 
 test('the new profile preserves the existing costs and retains the configured guard tags', async () => {
-  const original = await readFile('../richiroute-ubuntu-benchmark/profiles/richi-weidweg-v1.brf', 'utf8');
+  const original = await readFile(new URL('../experiments/routing/brouter-patch/fixtures/richi-weidweg-v1.brf', import.meta.url), 'utf8');
   const compiled = compileRules(config);
   const profile = localRulesProfile(original, compiled.retainedTags);
   assert.ok(!profile.includes('richiroute_weidweg_push'));
