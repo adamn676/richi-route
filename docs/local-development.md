@@ -310,7 +310,7 @@ turn instructions. Physical cycling-computer imports have not been tested.
 ## Import a GPX reference
 
 **GPX importieren** reads GPX 1.0 and 1.1 tracks locally and displays them as a
-violet reference layer. Importing leaves the editable route, its undo history,
+separate reference layer. Importing leaves the editable route, its undo history,
 saved routes and GPX export unchanged. It sends no routing requests. Use
 **Track zeigen** to fit the reference, **Track einblenden** to toggle it, and
 **Track entfernen** to remove it. A successful import replaces the previous
@@ -325,6 +325,24 @@ while stored coordinates, elevations and the map source retain every point.
 Date-line crossings shift display longitudes by whole worlds without changing
 the imported coordinates.
 
+Arrows follow the recorded point order. Each segment has **S** and **Z** markers
+for its start and finish. A closed segment or single point uses **S/Z**. Move
+across the elevation profile with a mouse or finger to show that position on the
+map. The slider also supports keyboard input. The readout shows distance,
+available elevation, estimated gradient and segment number. Crossing a segment
+boundary jumps to the next segment without inventing a connecting line.
+
+**Trackfarbe** offers a plain line, elevation bands relative to the track's
+minimum and maximum, or fixed gradient bands. Each colour mode has a legend;
+grey means unknown. Gradients use a roughly 50 m window within continuous
+elevation data. Sparse points can extend that window; spans shorter than 10 m
+have no gradient estimate. These are estimates from the file's heights, so noisy
+recordings can still distort them. Colour sections use at least 50 m, increasing
+for very long tracks to limit rendering work, while preserving all vertices.
+Profile movement updates only the map dot, without rebuilding the track.
+Road materials are not inferred from a GPX track; matching them to map data is
+not implemented.
+
 The reference lasts for the current page session and is not included in saved
 routes or RichiRoute backups. Reimport the original GPX after reloading. Editable
 conversion is not implemented. Files containing only route points or waypoints
@@ -338,6 +356,11 @@ long tracks, partial elevation, segment boundaries, cancellation and unchanged
 editor data. It uses synthetic GPX data and does not need a routing engine;
 `ROUTE_TEST_ORIGIN` selects a different frontend port. Screenshots and a report
 go to `.cache/gpx-import/`.
+
+Run `node tests/browser-gpx-inspection.mjs` to check direction markers, colour
+modes, mouse, keyboard and touch inspection, missing elevations, style changes
+and a 50,000-point track. It also checks that moving across the profile does not
+resend full track geometry. Screenshots and results go to `.cache/gpx-inspection/`.
 
 ## Inspect route surfaces
 

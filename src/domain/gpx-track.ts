@@ -15,6 +15,7 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
   let minimum = Infinity, maximum = -Infinity;
   const samples: ProfileSample[] = [];
   const features: Feature<LineString | Point>[] = [];
+  const distances: number[][] = [];
   let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
   const anchor = segments[0]?.coordinates[0]?.[0] ?? 0;
 
@@ -22,10 +23,12 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     run++;
     let previousLongitude = anchor;
     const displayCoordinates: Coord[] = [];
+    const segmentDistances: number[] = [];
     for (let i = 0; i < segment.coordinates.length; i++) {
       const coord = segment.coordinates[i];
       const elevation = segment.elevations[i];
       if (i > 0) distance += distanceMeters(segment.coordinates[i - 1], coord);
+      segmentDistances.push(distance);
       pointCount++;
       if (elevation === null) run++;
       else {
@@ -43,6 +46,7 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
       west = Math.min(west, longitude); east = Math.max(east, longitude);
       south = Math.min(south, coord[1]); north = Math.max(north, coord[1]);
     }
+    distances.push(segmentDistances);
     if (displayCoordinates.length) features.push({
       type: 'Feature', properties: { name: segment.name },
       geometry: displayCoordinates.length === 1
@@ -80,7 +84,7 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
   }
   const mapLatitude = (latitude: number) => Math.max(-85.051129, Math.min(85.051129, latitude));
   return {
-    name, fileName, segments, pointCount, elevationCount, distanceMeters: distance,
+    name, fileName, segments, distances, pointCount, elevationCount, distanceMeters: distance,
     ascentMeters: elevationCount === pointCount && pointCount > segments.length ? ascent : null,
     profile: elevationCount ? { minimum, maximum, path } : null,
     bounds: [[west, mapLatitude(south)], [east, mapLatitude(north)]] as [Coord, Coord],
