@@ -13,6 +13,7 @@
     </div>
 
     <SavedRoutes ref="savedRoutes" />
+    <GpxImport />
 
     <section class="planner__summary" aria-label="Streckendaten" aria-live="polite">
       <div><strong>{{ distanceLabel }}</strong><span>Distanz</span></div>
@@ -136,6 +137,7 @@ import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
+import GpxImport from '@/components/ui/GpxImport.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { saveDraftNow } from '@/services/draft.service';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';

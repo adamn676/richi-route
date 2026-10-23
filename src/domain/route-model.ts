@@ -84,7 +84,7 @@ export function distanceMeters(from: Coord, to: Coord): number {
   const a =
     Math.sin(latDifference / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(lonDifference / 2) ** 2;
-  return 2 * 6371008.8 * Math.asin(Math.sqrt(a));
+  return 2 * 6371008.8 * Math.asin(Math.sqrt(Math.min(1, a)));
 }
 
 export function airLeg(request: LegRequest, error?: string): RouteLeg {

@@ -307,6 +307,38 @@ points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
 turn instructions. Physical cycling-computer imports have not been tested.
 
+## Import a GPX reference
+
+**GPX importieren** reads GPX 1.0 and 1.1 tracks locally and displays them as a
+violet reference layer. Importing leaves the editable route, its undo history,
+saved routes and GPX export unchanged. It sends no routing requests. Use
+**Track zeigen** to fit the reference, **Track einblenden** to toggle it, and
+**Track entfernen** to remove it. A successful import replaces the previous
+reference; an invalid file leaves it intact.
+
+All tracks and nonempty track segments in the file are retained separately.
+Single-point segments appear as dots. Distance is calculated along each segment,
+without adding connections across gaps. Missing elevation remains unknown;
+ascent is shown only when all elevations are present and is summed without
+smoothing. The small elevation chart reduces display samples for long tracks,
+while stored coordinates, elevations and the map source retain every point.
+Date-line crossings shift display longitudes by whole worlds without changing
+the imported coordinates.
+
+The reference lasts for the current page session and is not included in saved
+routes or RichiRoute backups. Reimport the original GPX after reloading. Editable
+conversion is not implemented. Files containing only route points or waypoints
+are rejected with an explanation because they do not supply a track geometry.
+Time, extension and waypoint fields are not displayed. Limits are 32 MB and
+250,000 trackpoints per file. Malformed XML, invalid coordinates or elevations,
+unsupported versions and document-type declarations are rejected.
+
+Run `node tests/browser-gpx-import.mjs` against the frontend to check XML parsing,
+long tracks, partial elevation, segment boundaries, cancellation and unchanged
+editor data. It uses synthetic GPX data and does not need a routing engine;
+`ROUTE_TEST_ORIGIN` selects a different frontend port. Screenshots and a report
+go to `.cache/gpx-import/`.
+
 ## Inspect route surfaces
 
 After a route finishes calculating, open **Beläge prüfen** below the colour
@@ -414,6 +446,7 @@ node .cache/browser-tools/node_modules/playwright-core/cli.js install chromium
 node tests/browser-long-routes.mjs
 node tests/browser-surfaces.mjs
 node tests/browser-saved-routes.mjs
+node tests/browser-gpx-import.mjs
 node tests/browser-initial-performance.mjs --baseline 0.5
 ```
 

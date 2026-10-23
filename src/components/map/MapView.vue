@@ -2,6 +2,7 @@
   <div class="map-view">
     <div id="map" class="map-view__canvas" aria-label="Interaktive Karte von Graz" />
     <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
+    <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
     <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
     <div class="map-view__controls">
       <label>Karte <select v-model="basemap" aria-label="Kartenansicht">
@@ -27,9 +28,12 @@ import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
+import GpxReferenceLayer from '@/components/map/GpxReferenceLayer.vue';
+import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 
 const { map, basemap, mapError } = useMap('map');
 const { route, pendingSnapCount, pendingLegCount, focusedSurface } = storeToRefs(useRouteStore());
+const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
 const routingPending = computed(() => pendingSnapCount.value > 0 || pendingLegCount.value > 0);
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
@@ -41,7 +45,10 @@ useRouteDragging({ map });
 useMapInteractions(map);
 useMarkerWatches(map);
 watch(map, instance => {
-  if (instance) instance.once('load', () => { if (route.value) fitRoute(); });
+  if (instance) instance.once('load', () => {
+    if (gpxTrack.value && gpxVisible.value) instance.fitBounds(gpxTrack.value.bounds, { padding: 50, maxZoom: 16, duration: 0 });
+    else if (route.value) fitRoute();
+  });
 });
 function fitRoute() {
   const bounds = new LngLatBounds();

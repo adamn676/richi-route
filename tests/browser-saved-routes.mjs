@@ -113,10 +113,10 @@ try {
   await waitRows(2);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
 
-  await page.locator('input[type=file]').setInputFiles(output + '/roundtrip.richiroute.json');
+  await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute.json');
   await waitRows(3);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited), 'Import adds a route without replacing the current draft');
-  await page.locator('input[type=file]').setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
+  await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
   await page.getByRole('alert').filter({ hasText: 'Ungültige oder nicht unterstützte' }).waitFor();
   assert.equal(await list.getByRole('listitem').count(), 3);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));

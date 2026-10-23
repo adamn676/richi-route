@@ -18,6 +18,7 @@ Austria. The planner currently has a German interface.
 - Switch between street maps, aerial imagery with street names, and a local road map.
 - Save, reopen, rename and duplicate routes in a local route collection.
 - Back up editable routes as RichiRoute files and download calculated tracks as GPX.
+- Import GPX tracks as a separate reference, with distance and available elevation.
 
 Routing uses a local BRouter engine with a road-cycling profile. It prefers paved
 roads, but unpaved sections can still occur. Missing surface information remains
