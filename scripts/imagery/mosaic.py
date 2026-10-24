@@ -15,11 +15,11 @@ from rasterio.warp import reproject
 
 from prepare import CONFIG, DIRECTORY, ENV, intersects
 
-STEP_X, STEP_Y = .001, .0007  # Degrees per pixel: about 76 m by 78 m in Austria, matching the source.
-LEVEL = 2  # Sentinel's 80 m overview.
-MINZOOM, MAXZOOM = 8, 10  # Tile zooms served from the mosaic; from 11 aerial photos are sharper.
+STEP_X, STEP_Y = .0005, .00035  # Degrees per pixel: about 38 m by 39 m in Austria, matching the source.
+LEVEL = 1  # Sentinel's 40 m overview.
+MINZOOM, MAXZOOM = 8, 11  # Tile zooms served from the mosaic; from 12 aerial photos are sharper.
 BACKGROUND = [28, 58, 74]  # Same sea colour as the European overview.
-CELLS = DIRECTORY / 'region-cells'  # Finished cells; an interrupted build resumes from them.
+CELLS = DIRECTORY / 'region-cells-40m'  # Finished cells as JPEG; an interrupted build resumes from them.
 NETWORK = {**ENV, 'GDAL_HTTP_TIMEOUT': '30', 'GDAL_HTTP_MAX_RETRY': '3'}
 
 
@@ -37,9 +37,11 @@ def prepare_cell(name):
     # The same colour curve as live Sentinel tiles, so both match where they meet.
     rgb = (np.clip(data.filled(0).astype('float32') / 3000, 0, 1) ** (1 / 1.8) * 255).astype('uint8')
     alpha = (~np.ma.getmaskarray(data).any(axis=0)).astype('uint8') * 255
-    with rasterio.open(str(file) + '.part', 'w', driver='GTiff', width=rgb.shape[2], height=rgb.shape[1], count=4,
-                       dtype='uint8', crs=crs, transform=transform, compress='deflate') as dst:
-        dst.write(np.concatenate([rgb, alpha[None]]))
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True), rasterio.open(
+            str(file) + '.part', 'w', driver='GTiff', width=rgb.shape[2], height=rgb.shape[1], count=3, dtype='uint8',
+            crs=crs, transform=transform, tiled=True, compress='jpeg', photometric='YCBCR') as dst:
+        dst.write(rgb)
+        dst.write_mask(alpha)
     Path(str(file) + '.part').replace(file)
     return file
 
@@ -88,7 +90,7 @@ def main():
             continue
         data = np.zeros((4, y1 - y0, x1 - x0), dtype='uint8')
         with rasterio.open(CELLS / (cell['id'] + '.tif')) as src:
-            reproject(src.read(), data, src_transform=src.transform, src_crs=src.crs,
+            reproject(np.concatenate([src.read(), src.read_masks(1)[None]]), data, src_transform=src.transform, src_crs=src.crs,
                       dst_transform=transform * rasterio.Affine.translation(x0, y0), dst_crs='EPSG:4326',
                       src_alpha=4, dst_alpha=4, resampling=Resampling.bilinear)
         valid = data[3] > 0

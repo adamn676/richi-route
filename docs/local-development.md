@@ -531,12 +531,12 @@ npm run imagery:region                                  # Austria and its border
 npm run imagery:region -- --bbox 5.9,45.8,17.2,49.1     # another area: west,south,east,north
 ```
 
-It builds `.cache/imagery/region.tif` once from Sentinel's 80 m images
-(about 76 × 78 m per pixel, roughly two minutes and 10 MB for Austria; the
-per-cell downloads stay in `.cache/imagery/region-cells/` for rebuilds). Inside
-that area, tiles at tile zooms 8–10 come only from this local file: one even
-colour, rendered without network requests, also offline. Aerial photos take
-over from tile zoom 11. Building another area replaces the previous one.
+It builds `.cache/imagery/region.tif` once from Sentinel's 40 m images
+(about 38 × 39 m per pixel; for Austria roughly four minutes and 52 MB, with the
+per-cell downloads kept as 60 MB in `.cache/imagery/region-cells-40m/` for
+rebuilds). Inside that area, tiles at tile zooms 8–11 come only from this local
+file: one even colour, rendered without network requests, also offline. Aerial
+photos take over from tile zoom 12. Building another area replaces the previous one.
 Restart the map service afterwards; this also replaces cached tiles.
 
 The map service uses eight detail render workers, one offline fallback worker
