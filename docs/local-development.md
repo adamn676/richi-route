@@ -3,7 +3,7 @@
 Run commands from the repository root (`app/` in the prepared Ubuntu workspace).
 Use Node.js 26.12.1 and npm 12.2.1. The native Linux setup is described below;
 the historical Docker workflow retains earlier engine images and data.
-Native installation needs a POSIX shell, `tar` and `patch`; historical archive
+Native installation needs a POSIX shell, `tar`, `bzip2` and `patch`; historical archive
 setup also uses `unzip`. In PowerShell, use `npm.cmd` if execution policy blocks
 `npm`. The current native launcher supports Linux x64.
 
@@ -37,6 +37,9 @@ export PATH="$PWD/.cache/runtime/node/bin:$PATH"
 npm ci
 npm run bench:brouter:performance
 npm run routing:build
+npm run search:setup
+npm run maps:setup
+npm run terrain:setup
 npm run dev:local
 ```
 
@@ -51,8 +54,10 @@ The repository launcher, `scripts/start-local.sh`, verifies the original bundle
 and the separately built rules integration. It prepares the shared local rules
 and their profile, then starts GraalVM Community 25.4.4.1.1 with its default compiler, a 1 GB heap,
 the parallel collector and six routing workers. It binds BRouter to
-`127.0.0.1:17777` and Vite to `127.0.0.1:5173`. Ctrl+C stops both child processes.
-The log is `experiments/routing/.local/native-brouter.log`. Docker, GraphHopper
+`127.0.0.1:17777`, Photon to `127.0.0.1:2322`, the map service to
+`127.0.0.1:8088` and Vite to `127.0.0.1:5173`. It checks readiness before opening
+the frontend. Ctrl+C stops the processes it started. Logs are
+`experiments/routing/.local/native-{brouter,search,maps}.log`. Docker, GraphHopper
 and ORS are not required for this setup. The [performance build](../experiments/routing/brouter-patch/README.md#performance-overlay)
 documents the engine changes and parity checks. The current native profile is
 `richi-local-v1`; its comparison preset is `local-rules-v1`.
@@ -90,13 +95,14 @@ It uses separate local servers and leaves the active configuration unchanged.
 ## Dependency status
 
 The compatible-version review was completed on 22 October 2026. A clean
-`npm ci` succeeded. A fresh `npm audit --package-lock-only --ignore-scripts`
-on 23 October reported **zero vulnerabilities** for the committed npm lockfile.
+`npm ci` succeeded. A fresh `npm audit` on 24 October reported
+**zero vulnerabilities** for the npm lockfile.
 GitHub reported 29 dependency alerts during the push. That separate warning
 has not been confirmed resolved. Check the repository's
 [dependency alerts](https://github.com/adamn676/richi-route/security/dependabot)
 and run `npm audit` and `npm outdated` when changing dependencies.
-The last version review found only the deliberate TypeScript major-version hold:
+The last version review, on 24 October, found only the deliberate TypeScript
+major-version hold:
 
 | Component | Installed |
 | --- | --- |
@@ -108,6 +114,9 @@ The last version review found only the deliberate TypeScript major-version hold:
 | Node types / GeoJSON types | 26.6.5 / 7946.0.16 |
 | Node / npm | 26.12.1 / 12.2.1 |
 | Local browser tools | Playwright 1.64.1 / Chromium 156 |
+| Local search | Photon 1.3.0 |
+| Local map reader / style | PMTiles 4.5.0 / Protomaps basemaps 5.7.2 |
+| Map extraction tool | go-pmtiles 1.31.2 |
 
 TypeScript 7.0.2 is newer, but Vue's type checker still requires the JavaScript
 compiler API. The [upstream incompatibility](https://github.com/vuejs/language-tools/issues/6124)
@@ -126,8 +135,8 @@ Pinia 4's devtools peer and TypeScript 6's path configuration are also updated.
 Both production builds pass; their existing large-map-library size warnings
 remain. The locally pinned BRouter 1.7.10, GraphHopper 11.1 and ORS 10.1.0 are
 current upstream releases. Optional Docker image digests were checked and did
-not need changing. Optional GraphHopper, ORS and Photon are not installed in the
-native workspace.
+not need changing. GraphHopper and ORS remain optional; Photon is installed separately by
+`search:setup`.
 
 ## Historical Docker benchmark installation
 
@@ -261,11 +270,363 @@ Downloaded assets and generated graphs remain on disk.
 | BRouter | 17777 | Planner route calculation |
 | GraphHopper | 8989 | Comparison routing and local road tiles |
 | openrouteservice, optional | 8082 | Third comparison engine |
-| Photon, optional | 2322 | Address search |
+| Photon | 2322 | Local European address search |
+| Local maps | 8088 | European vector tiles, fonts and symbols |
 
-Photon is not installed by these scripts. Map placement and routing work without
-it. Street and aerial backgrounds use online basemap.at tiles. Published service
-ports bind to `127.0.0.1`.
+## European map data
+
+`npm run maps:setup` extracts a European PMTiles archive from the official
+[Protomaps builds](https://docs.protomaps.com/basemaps/downloads), with bounds
+25°W–45°E and 34°N–72°N, through zoom 14. The archive is about 25 GB; zooming
+closer keeps vector lines and labels sharp but cannot add details omitted from
+the source tiles. The archive does not cover the whole world. Routing still
+uses the separately installed BRouter data, currently a regional Austrian setup.
+
+Tiles, font glyphs, symbols and the generated German street style are served
+from `.cache/maps/` by `npm run maps:start`. The planner requests them through
+Vite's same-origin `/maps` proxy. No public map service is used for the street
+or **Straßennetz** views, and a failed local service never triggers an online
+fallback. All map choices preserve the route and profile overlays. The full
+street map and the simplified road view share the same vector source. The
+street style keeps buildings opaque and uses distinct road, water and vegetation
+colours. Straßennetz retains place names and water for orientation, with road
+classes shown in different colours. Labels remain above route geometry.
+Map labels fade over 100 ms. MapLibre allows eight outstanding image requests
+in detailed aerial mode and 32 in the other modes. The shorter queue prevents
+slow regional exports from delaying local labels on HTTP/1.1; the browser's
+connection limit still applies. The local overview is requested before detail.
+The imagery service keeps its bounded worker and queue limits.
+Street names remain visible in all six modes with or without a route. They
+render above route lines and surface highlights, while route markers stay on top.
+
+**Rennradkarte** gives minor roads stronger outlines, reduces motorway prominence
+and marks separately mapped cycleways in blue. These are road classes, not
+traffic measurements or a guarantee of paved surfaces. It reuses the street
+tiles, so changing between the vector maps does not reload their data.
+
+**Geländekarte** adds shaded relief beneath roads and labels. Run
+`npm run terrain:setup` after `maps:setup`, then restart `maps:start`.
+The setup extracts Europe from [Mapterhorn](https://mapterhorn.com/data-access/)
+into `.cache/maps/terrain.pmtiles`, about 2.3 GB. The local map service serves
+512-pixel Terrarium tiles through zoom 10; closer views enlarge that relief.
+This layer helps read hills and valleys, and does not supply route elevation
+measurements. [Mapterhorn and its data sources](https://mapterhorn.com/attribution/)
+are credited on the map. Setup keeps 15 GiB free and skips an existing archive.
+Missing terrain produces an error with retry, while other map views still work.
+
+**Luftbild · schnell** uses national tile services, avoiding the dynamic Graz
+and Styria exports. **Luftbild · Detail** retains those finer regional photos.
+The speed option uses Austria's 30 cm product; it does not provide Graz's finer
+regional detail. Both retain vector street names, dense-screen imagery and
+saved offline areas. Outside regions with a separate detail source they use
+the same providers. Uncached imagery still requires an internet connection.
+
+For national JPEG tiles fully inside Austria or France at tile zooms 10–19,
+the fast mode can deliver the original bytes without Python decoding and
+re-encoding. `imagery:setup` generates the small `direct-coverage.json` index
+from verified country boundaries. Border tiles, higher zooms, PNG imagery and
+missing coverage use the existing renderer. Connections and response sizes
+are bounded, obsolete requests are cancelled, and shared requests continue
+while another viewer needs them. Existing saved areas and cache limits apply.
+
+The archive source, bounds, tool version and asset checksums are recorded in
+`scripts/maps.json`. Installation verifies the native tool and font/symbol
+archive with SHA-256, and checks the resulting PMTiles structure before
+activating it. This structural check is not a checksum of every tile. A partial
+download is never served as a complete archive. The installer requires 40 GiB
+free and preserves a 15 GiB reserve during extraction. Allow more space when
+installing search at the same time. Download time depends heavily on the source. The native extractor uses
+HTTP/1.1 because large HTTP/2 transfers stalled in the reviewed setup.
+All datasets and native tools stay in ignored `.cache/` directories.
+
+For an update, choose an available dated build from the official build listing
+and update `scripts/maps.json`. Stop the map service, move the old archive and
+marker aside, run `maps:setup`, then restart the service. Daily build URLs have
+limited retention; an expired URL must be replaced with an available build.
+The installer does not silently replace an active archive. Keep the old archive
+until the replacement has been verified if disk space permits.
+Moving an old dataset to another folder on the same filesystem does not free
+space. On the reviewed machine, retaining a replacement alongside all installed
+datasets may require another disk.
+
+For an isolated review, select another archive and port:
+
+```sh
+RICHIROUTE_MAP_FILE=/absolute/path/area.pmtiles MAPS_PORT=8089 npm run maps:start
+```
+
+Start Vite with the same `MAPS_PORT`; the normal launcher uses 8088.
+
+## Online map choices
+
+The selector has six existing map modes and five optional online choices:
+
+| Map | Purpose | Source |
+| --- | --- | --- |
+| OpenStreetMap Standard | Familiar, detailed reference map | OSM raster tiles |
+| OpenFreeMap Liberty | Detailed street and place context | OpenMapTiles vector tiles |
+| OpenFreeMap Bright | Stronger road contrast | Same OpenFreeMap vector source |
+| OpenFreeMap Positron | Quiet background for route inspection | Same OpenFreeMap vector source |
+| OpenFreeMap Dark | Dark background for evening planning | Same OpenFreeMap vector source |
+
+Online styles and tiles load only after selection. The four OpenFreeMap styles
+share sources and reuse loaded tiles when switching. Changing a basemap keeps
+route geometry, profile inspection and cycling overlays. Selection persists;
+failed style or source downloads show a retry button. Online maps also load
+when the local map service is unavailable. Attribution stays expanded
+for online maps, including on mobile. OpenStreetMap Standard is raster, so its
+baked-in labels cannot be moved above route lines as vector labels can.
+
+[OpenFreeMap](https://openfreemap.org/) offers its public instance without API
+keys or request limits and publishes the software for self-hosting. It has no
+service-level guarantee. These choices use its public instance; installing a
+second European vector archive is unnecessary for the existing local styles.
+The local maps remain the default and never switch providers automatically.
+
+The [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/)
+requires visible attribution, normal browser caching and a valid Referer.
+Standard tiles are requested directly by the browser, without bulk downloads,
+offline saving or prefetching. Automated tests intercept that endpoint with
+fixture images; they must not pan or zoom against the public OSM tile server.
+The imagery-saving command applies only to our registered aerial sources.
+
+CyclOSM is useful for cycling, but its public OSM France host has
+[usage conditions](https://www.openstreetmap.fr/usage/) that do not make it a
+general-purpose backend for a private local installation. OpenTopoMap's
+[raster service is deprecated](https://github.com/der-stefan/OpenTopoMap).
+Neither endpoint is silently included. Adding either properly requires a
+suitable hosting arrangement and, for the new OpenTopoMap, its vector style
+and contour dependencies. A different map style does not extend routing data
+or make missing road-surface data available.
+
+`node tests/browser-online-maps.mjs` checks real OpenFreeMap labels, shared
+sources, route preservation, local font restoration, failure recovery,
+persisted selection and mobile attribution. Reports are in `.cache/online-maps/`.
+
+## Cycling overlays
+
+**Rad-Infos** independently toggles cycle paths, drinking-water sources,
+bicycle repair stations/shops, food stops and railway stations over all
+base maps. Cycle paths and food reuse the local Protomaps tiles.
+The cycle-path layer highlights `highway=cycleway`; it does not contain every
+roadside cycle lane or signed cycling route. Food coverage follows
+the selected basemap extract and its zoom-dependent feature selection.
+
+Water, bicycle services and railway stations use `.cache/cycling/points.sqlite`, queried by
+viewport through the local map service. Responses are limited to 2,000 points;
+the control asks users to zoom in when truncated. Disabled point overlays do
+not fetch data. Points start at zoom 12; food labels start at zoom 14.
+Selections persist in browser storage, and clicking a point shows its details
+without modifying the route.
+
+The water filter requires `amenity=drinking_water` without a contradictory
+`drinking_water` tag, or explicit `drinking_water=yes`. Decorative fountains
+and unclassified springs are excluded, as are known private, inaccessible,
+disused and abandoned sources. Railway stations require `railway=station` or
+`railway=halt`, excluding generic rail yards. Opening hours, seasonality and access/fee tags
+are retained when mapped. These records describe OSM data, not live water
+quality or operating status. Attribution remains © OpenStreetMap contributors
+under the [ODbL](https://www.openstreetmap.org/copyright).
+
+For a European extract, run this occasional setup download, then restart the
+map service. Overpass is used only during setup, never while browsing the map:
+
+```sh
+npm run cycling:setup
+```
+
+`RICHIROUTE_OVERPASS_URL` can point to your own Overpass instance. Public
+services may time out or reject requests; failed imports preserve the installed
+database. The download is bounded to 128 MiB and setup retains 15 GiB of free
+disk space. There is no automatic scheduled refresh.
+
+The initial installation uses the downloadable Austrian Geofabrik extract,
+because the public Overpass endpoints were unavailable. To reproduce that
+import without Overpass:
+
+```sh
+mkdir -p .cache/cycling
+curl -fL https://download.geofabrik.de/europe/austria-latest.osm.pbf -o .cache/cycling/austria.osm.pbf
+python3 -m pip install --target .cache/cycling-tools --only-binary=:all: osmium==4.3.2
+PYTHONPATH="$PWD/.cache/cycling-tools" python3 scripts/cycling/extract.py \
+  .cache/cycling/austria.osm.pbf .cache/cycling/austria.json --coverage Österreich
+npm run cycling:setup -- --file .cache/cycling/austria.json
+```
+
+The converter handles OSM nodes and ways, including unnamed fountains; it
+does not resolve relation geometries. It keeps coordinates only for matching
+ways rather than indexing every road node. Other regional PBF files work with
+the same command and an appropriate `--coverage` label. An import replaces the
+previous point database; restart `maps:start` after updating it. The actual
+installed coverage and OSM timestamp appear in the map control.
+
+`node tests/browser-cycling.mjs` checks real drinking-water coverage in Graz,
+map switching, point inspection, persisted selections, local requests and
+mobile controls. Screenshots and reports go to `.cache/cycling/`.
+
+## European imagery
+
+**Luftbild · Europa** combines a locally stored European overview with detail
+imagery fetched by the local map service. Street and place names come from the
+local vector map and remain above route lines in all three map modes.
+No account, API key or paid imagery service is used. On dense screens, the
+viewer requests up to one additional tile zoom level, capped at the source
+maximum. It draws each 256-pixel image across 128 CSS pixels on a 2× screen.
+This preserves available detail; it cannot add detail beyond the source image.
+
+| Area | Imagery | Detail and terms |
+| --- | --- | --- |
+| Europe | [Copernicus Sentinel-2 quarterly mirror](https://source.coop/tge-labs/sentinel-2-quarterly-cloudless-mosaics), 2026 Q2 | Native 10 m imagery; local overview is downsampled. Contains modified Copernicus Sentinel data 2026, distributed by Taylor Geospatial Engine. |
+| Austria | [basemap.at orthophotos](https://basemap.at/) | 30 cm product, up to tile zoom 20. CC BY 4.0, attribution "Grundkarte: basemap.at". |
+| Styria, tile zoom 16–20 | [Land Steiermark orthophotos](https://data.steiermark.at/cms/beitrag/12867727/97428847/) | 20 cm imagery, bilinear reprojection; CC BY 4.0, © Land Steiermark · GIS-Steiermark. Official district polygons clip coverage. |
+| Graz, tile zoom 16–20 | [City orthophotos](https://data.graz.gv.at/graz/orthophotos-graz-2/) | The catalogue links to the live OGD service, whose current layer is Orthophoto 2022. CC BY 4.0; attribution "Datenquelle: Stadt Graz – data.graz.gv.at". City boundary clipping and national fallback. |
+| Switzerland | [SWISSIMAGE](https://www.swisstopo.admin.ch/en/orthoimage-swissimage-10) | 10 cm in plains and main valleys, 25 cm in the Alps; up to zoom 20. [swisstopo free geodata terms](https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices), attribution required. |
+| France | [IGN BD ORTHO](https://www.data.gouv.fr/datasets/bd-ortho-r) | 20 cm product; source tiles up to zoom 19, enlarged at zoom 20. Licence Ouverte 2.0, attribution required. |
+
+Source resolution and flight dates vary within each country. Changing the
+viewer does not make the photography newer. Sentinel detail cannot show the
+same small features as aerial photos. Outside the European bounds
+`-25,34,45,72`, this installation has no imagery coverage. The historical
+comparison app keeps its existing Austrian basemap.at layers.
+
+```sh
+npm run imagery:setup
+npm run maps:start
+```
+
+Setup needs Python 3.12 or newer with pip. It installs pinned binary packages
+under `.cache/imagery-tools`, without changing system Python. It verifies the
+manifest and country-outline checksums, reads only small overviews from remote
+Sentinel files, and creates `.cache/imagery/overview.tif`. Completed cells survive
+an interrupted import. Failed cells get two retry passes; rerun setup if the
+source remains unavailable. Requests use Source Cooperative's public S3 object
+URLs; the manifest checksum matches the published mirror. Allow at least 2 GiB
+above the 15 GiB free-space reserve; setup makes no changes to other disks.
+
+The source registry is `scripts/imagery.json`. Country masks clip national
+photography at borders, with Sentinel underneath. These outlines come from
+[geoBoundaries](https://www.geoboundaries.org/), pinned to the revision in the
+registry. The Austrian boundary is from BEV under CC BY-SA 2.0, the French
+boundary is CC0, and the Swiss boundary follows swisstopo's OGD terms. Regional
+boundaries come from the city of Graz and Land Steiermark's INSPIRE district
+service under CC BY 4.0.
+Attribution and original source URLs are retained in the registry and map
+credits. Adaptations of the Austrian boundary remain under CC BY-SA 2.0.
+Imagery licenses remain those of each provider.
+
+The local overview draws immediately from prebuilt tiles while detail loads.
+The map service uses eight detail render workers, one offline fallback worker
+and a bounded request queue. It reads only image windows needed for the current
+view, selecting the appropriate Sentinel overview and loading the three colour
+bands concurrently. National and city photo requests reuse HTTPS connections.
+Cached boundary classification skips full polygon rasterization away from
+borders. Abandoned active requests yield their workers when the next view
+needs them. A local SQLite cache holds
+up to 2 GiB of tile data, plus database overhead, evicting the least recently
+used tiles. Cached tiles refresh after seven days when online; changes to
+swisstopo's advertised cache timestamp invalidate affected cache entries.
+Renderer-only code changes preserve cached imagery; source-registry changes
+invalidate it and version browser tile URLs.
+When an XYZ photo tile returns 404, the renderer tries up to two parent zooms
+and crops the matching area before falling back to another source. This keeps
+available aerial detail in places such as Virgen, where basemap.at's zoom 20
+tiles are missing. Enlarging a parent tile does not add photographic detail.
+Other provider failures fall back to existing cached tiles or the local overview.
+Fallback tiles are not saved as complete detail images. Refresh the view after
+connectivity returns to request missing detail again.
+
+Save a small area or a corridor around an exported GPX while the map service
+is running and online:
+
+```sh
+npm run imagery:save -- --name graz-center --bbox 15.43,47.065,15.45,47.08 --maxzoom 17
+npm run imagery:save -- --name weekend-ride --gpx /path/to/route.gpx --buffer-km 1 --maxzoom 16
+```
+
+The command saves zoom levels 9 through the selected maximum in
+`.cache/imagery/regions/<name>.mbtiles`. It limits a selection to 4,000 tiles,
+uses two download requests at a time and retries temporary failures up to
+three attempts. It retains interrupted downloads as `.part` files and stops before free space falls below 15 GiB. Rerun with the same
+arguments to resume. Use a smaller area, narrower corridor or lower maximum
+zoom for long routes. Restart the map service after a completed download.
+Saved areas are never evicted by the automatic cache and include source
+attribution, download date and a source-registry fingerprint. Interrupted
+downloads cannot resume against different source settings. When saved areas
+overlap, the most recently created archive takes priority. To update an area,
+save under a new name and restart; remove the older archive afterwards if it
+is no longer needed.
+
+For a bounded Graz installation, save a broad overview and a smaller central
+area with detail up to tile zoom 20:
+
+```sh
+npm run imagery:save -- --name graz-overview --bbox 15.42,47.055,15.52,47.10 --maxzoom 17
+npm run imagery:save -- --name graz-center-detail --bbox 15.432,47.065,15.445,47.076 --maxzoom 20
+```
+
+These selections contain 1,282 and 2,548 tiles. At 2× density, tile zoom 20
+supports map zoom 18 without enlarging pixels; higher map zooms magnify the
+same images. Outside the saved bounds or zoom levels, online imagery still
+loads on demand. Other areas and GPX corridors use the same command.
+
+The European overview works without internet. Detailed offline coverage is
+limited to the areas and zoom levels actually saved or still cached. To test
+without upstream imagery requests, start the map service with
+`RICHIROUTE_IMAGERY_OFFLINE=1 npm run maps:start`. Adding detailed imagery for
+another country or region means adding an openly licensed source and verified
+boundary to `countries` or `regions` in the registry. Regions take priority in
+reverse registry order from their configured `minzoom`, falling back to national
+photos when unavailable. XYZ URLs and image exports using a Web Mercator
+`{bbox}` are supported. After changing the registry, rerun setup, restart the
+map service and check border tiles.
+For a new Sentinel quarter, update the source URL, manifest URL, checksum and
+`revision` in `scripts/imagery.json`, rerun setup, and restart the map service.
+
+## Address search
+
+Address suggestions use the local Photon service through `/geocoding/api/`.
+Queries stay on this computer. Suggestions load after three characters and a
+350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
+loaded result. No routing geometry is sent to the search service, and unavailable
+local search never falls back to `photon.komoot.io`.
+
+`npm run search:setup` downloads the Photon executable and the European database
+recorded in `scripts/photon.json`. The executable is SHA-256 verified and the
+database is checked against the upstream MD5 before activation. The roughly
+32 GB compressed archive streams through `bzip2` into a staging directory, so
+it is not retained alongside the database. A locally installed `pbzip2` at
+`.cache/tools/pbzip2/usr/bin/pbzip2` enables parallel decoding; otherwise the
+installer uses the system's `bzip2`. Installation needs at least 65 GiB free and
+stops before the remaining space falls below 15 GiB. Interrupted setup can be
+rerun; incomplete data is not activated.
+
+The reviewed European search database occupies about 46 GiB after extraction;
+the street archive adds about 23 GiB. On the prepared 32 GiB Ryzen 7 7800X3D
+machine, these datasets leave about 20 GiB free on the Linux filesystem.
+Database replacements need additional space. Imagery setup and its bounded
+cache use the remaining space while preserving the 15 GiB reserve.
+
+`npm run search:start` uses the bundled Java runtime, a 6 GiB maximum heap and
+four active processors. It binds only to `127.0.0.1:2322`. The database stays in
+`.cache/services/photon/europe/`. These defaults leave room for the router,
+browser and filesystem cache on the reviewed 32 GiB machine. Keep the database
+on the NVMe for search latency; an external flash drive is better suited to
+archive storage. To update, stop Photon, move the old database aside, update the
+pinned download and checksum, rerun setup, then restart. There is no scheduled
+update job.
+The embedded OpenSearch index also uses loopback ports 9201 and 9300.
+
+An explicitly configured Photon service can still be selected with
+`VITE_GEOCODING_URL`. Export it in the shell before running Vite or building;
+`.env` loading is disabled. Absolute URLs need CORS on that service. Choosing an
+external URL sends search queries there. Local search is the default.
+
+`node tests/browser-search.mjs` checks real local suggestions, BRouter routing,
+keyboard and touch interaction, cancellation and controlled failure responses.
+It blocks external requests. Reports and screenshots go to `.cache/search/`.
+`node tests/browser-local-services.mjs` additionally checks real search and
+street tiles in eight European cities with external HTTP requests blocked; it
+requires the complete European datasets. Results go to `.cache/local-services/`.
 
 ## Route storage and export
 
@@ -297,21 +658,40 @@ replacing the current draft or existing entries. Imports are limited to 64 MB.
 This imports RichiRoute backups, not GPX files. Changed routing rules still cause
 recalculation when opening a saved route, keeping its old geometry visible.
 
-Clearing browser data removes both the draft and saved routes. The collection
-uses asynchronous IndexedDB storage; draft autosaving still uses localStorage
-and can reach its smaller quota. Named saves and backup downloads remain usable
-when draft autosaving fails. Storage is specific to the browser and site origin.
+Clearing browser data removes both the draft and saved routes. Both use
+asynchronous IndexedDB storage, so large routes fit within the browser's quota.
+A draft saved in localStorage by an earlier version moves there on first load.
+Named saves and backup downloads remain usable when draft autosaving fails.
+Storage is specific to the browser and site origin.
 
 **GPX herunterladen** exports the calculated track and known elevation once all
 points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
 turn instructions. Physical cycling-computer imports have not been tested.
 
+## Inspect the route elevation profile
+
+The planned route and imported GPX use the same interactive chart. Move the
+pointer or drag a finger across **Höhenprofil** to see distance, elevation and
+estimated gradient, with the corresponding position marked on the map. Focus
+the chart to use arrow keys, Home/End and Escape. No separate slider is shown.
+Changing the route or starting recalculation clears an old position. Missing
+heights stay unknown and gaps between legs are not connected in the profile.
+Hover updates only the marker; it does not reroute, change the draft or resend
+route geometry. Long profiles retain a bounded number of drawing samples.
+
+`node tests/browser-route-profile.mjs` checks the planned-route interaction,
+including mouse, touch, keyboard, out-and-back legs, missing heights and stale
+positions. It also checks the marker across all three map modes. Reports and
+screenshots go to `.cache/profile-hover/`.
+
 ## Import a GPX reference
 
 **GPX importieren** reads GPX 1.0 and 1.1 tracks locally and displays them as a
 separate reference layer. Importing leaves the editable route, its undo history,
-saved routes and GPX export unchanged. It sends no routing requests. Use
+saved routes and GPX export unchanged. It sends no routing requests. Parsing
+runs in a background worker, so large files keep the page responsive, and
+**Abbrechen** stops it. Use
 **Track zeigen** to fit the reference, **Track einblenden** to toggle it, and
 **Track entfernen** to remove it. A successful import replaces the previous
 reference; an invalid file leaves it intact.
@@ -328,8 +708,11 @@ the imported coordinates.
 Arrows follow the recorded point order. Each segment has **S** and **Z** markers
 for its start and finish. A closed segment or single point uses **S/Z**. Move
 across the elevation profile with a mouse or finger to show that position on the
-map. The slider also supports keyboard input. The readout shows distance,
-available elevation, estimated gradient and segment number. Crossing a segment
+map. The chart itself supports keyboard input: arrow keys move the position,
+Page Up/Down move further, Home/End select the endpoints and Escape clears it.
+There is no separate slider. A floating readout shows distance, available
+elevation and estimated gradient. Screen readers also receive the segment
+number. Crossing a segment
 boundary jumps to the next segment without inventing a connecting line.
 
 **Trackfarbe** offers a plain line, elevation bands relative to the track's
@@ -340,8 +723,29 @@ have no gradient estimate. These are estimates from the file's heights, so noisy
 recordings can still distort them. Colour sections use at least 50 m, increasing
 for very long tracks to limit rendering work, while preserving all vertices.
 Profile movement updates only the map dot, without rebuilding the track.
-Road materials are not inferred from a GPX track; matching them to map data is
-not implemented.
+
+**Belag (geschätzt)** starts optional surface lookup using the existing local
+BRouter service. Nothing is requested during import. Lookup runs sequentially,
+and queued route edits take priority. Switching away from this colour mode,
+hiding the track, cancelling, removing or replacing it stops outstanding work.
+Completed results stay in memory for this track; switching back reuses them.
+Service errors preserve completed portions and offer a retry.
+
+This is conservative route-following with geometry checks, not a probabilistic
+GPS map matcher. Each request follows recorded points roughly 10 m apart, with
+at most 64 anchors and a target length of 2 km. Edges longer than 200 m are left
+unknown. Returned geometry must follow the original in order, within 8 m at
+every vertex on both paths and at intervals of at most 10 m. Its length must
+differ by no more than 3% or 10 m, whichever is larger. A known material is copied
+only if it covers the entire original edge; transitions within an edge remain
+unknown. This preserves every original coordinate and segment break. Distances
+and percentages use the original track, including unknown parts.
+
+The checks reject detours, reversed paths and missing loop legs, but closely
+parallel roads and noisy recordings can still produce a wrong or missing
+estimate. Surface colours are therefore labelled as estimates. Road materials
+come from BRouter's OSM tags, not the online basemap. The multi-point request
+format is documented in [BRouter's server handler](https://github.com/abrensch/brouter/blob/master/brouter-server/src/main/java/btools/server/request/ServerHandler.java).
 
 The reference lasts for the current page session and is not included in saved
 routes or RichiRoute backups. Reimport the original GPX after reloading. Editable
@@ -351,7 +755,8 @@ Time, extension and waypoint fields are not displayed. Limits are 32 MB and
 250,000 trackpoints per file. Malformed XML, invalid coordinates or elevations,
 unsupported versions and document-type declarations are rejected.
 
-Run `node tests/browser-gpx-import.mjs` against the frontend to check XML parsing,
+`npm test` covers XML validation, versions and namespaces. Run
+`node tests/browser-gpx-import.mjs` against the frontend to check worker parsing,
 long tracks, partial elevation, segment boundaries, cancellation and unchanged
 editor data. It uses synthetic GPX data and does not need a routing engine;
 `ROUTE_TEST_ORIGIN` selects a different frontend port. Screenshots and a report
@@ -360,7 +765,19 @@ go to `.cache/gpx-import/`.
 Run `node tests/browser-gpx-inspection.mjs` to check direction markers, colour
 modes, mouse, keyboard and touch inspection, missing elevations, style changes
 and a 50,000-point track. It also checks that moving across the profile does not
-resend full track geometry. Screenshots and results go to `.cache/gpx-inspection/`.
+resend full track geometry, and that profile markers, colours and direction
+arrows survive switching all three map modes. Screenshots and results go to
+`.cache/gpx-inspection/`. These overlay checks stub local road tiles; testing
+actual local map data requires the local map service.
+
+`node tests/browser-gpx-surfaces.mjs` checks lookup, cache reuse, unknown parts,
+failure/retry, cancellation and stale replies using controlled routing responses.
+`node tests/browser-map-style.mjs` checks real local vector tiles at double pixel
+density, map switching, mobile layout, attribution and service failures.
+Its imagery checks need internet for tiles that are not cached or saved.
+`node tests/browser-imagery.mjs` checks national sources, Sentinel coverage,
+borders, HTTP caching and street labels with external browser requests blocked.
+Reports go to `.cache/gpx-surfaces/`, `.cache/map-style/` and `.cache/imagery-review/`.
 
 ## Inspect route surfaces
 
@@ -386,7 +803,9 @@ The [Checks workflow](../.github/workflows/checks.yml) runs on pushes to `main`
 and pull requests, and can also be started manually in GitHub Actions. It uses
 the Node version in `.nvmrc` and the npm version in `package.json`, performs
 `npm ci`, then runs both unit-test suites and both production builds, including
-TypeScript checks. Native engine, live routing and browser checks remain local
+TypeScript checks. It also runs the GPX import, GPX surface and saved-route
+browser checks against the development server, because they do not need local
+services. Native engine, live routing and the other browser checks remain local
 because they need the separate routing bundle and prepared services.
 
 Unit tests and builds do not need running engines:
@@ -512,9 +931,98 @@ node tests/browser-production.mjs
 
 The development servers proxy requests to local engines. Serving the built files
 alone does not provide routing: a deployment needs equivalent same-origin proxies
-for `/routing`, optional `/geocoding`, and `/tiles`. The comparison also needs its
+for `/routing`, `/maps` and `/geocoding`. The built planner has no default
+external street-map or address-search service. The historical comparison
+additionally uses `/tiles`.
+The comparison also needs its
 development API or a replacement server. There is no deployment configuration in
 this repository.
 
 Engine comparisons, profile history and map-data limitations are documented in
 the [routing guide](../experiments/routing/README.md).
+
+Imagery performance checks after setup:
+
+For cold-load comparisons, start a separate map service with
+`MAPS_PORT=8089 RICHIROUTE_IMAGERY_CACHE=/tmp/richiroute-benchmark-detail.sqlite npm run maps:start`
+and a preview with `MAPS_PORT=8089 npm run dev -- --port 5176`.
+Use a new cache filename for each run and restart the map service between modes:
+
+```sh
+ROUTE_TEST_ORIGIN=http://127.0.0.1:5176 TILE_BENCH_LABEL=detail node tests/browser-tile-loading.mjs
+# Restart the benchmark map service with another empty cache, then:
+ROUTE_TEST_ORIGIN=http://127.0.0.1:5176 TILE_BENCH_LABEL=fast TILE_BENCH_MODE=aerial-fast node tests/browser-tile-loading.mjs
+```
+
+The script waits for map idle and loaded tiles after each move. It records
+timings, cache misses and degraded responses under `.cache/tile-loading/`.
+On 2026-10-23, separate GPU Chromium runs at 1440×1000 and 2× pixel density
+measured the following. Both runs started with empty caches and fresh workers;
+all detail requests in these four views were misses, with no degraded responses.
+
+| Uncached aerial view | Detail | Fast |
+| --- | ---: | ---: |
+| First Graz view | 3.57 s | 1.30 s |
+| Pan to another Graz area | 5.95 s | 0.45 s |
+| Styria | 3.33 s | 0.65 s |
+| Virgen | 1.82 s | 1.72 s |
+
+These timings include network variation. The Graz/Styria improvement comes from
+choosing national tiled imagery instead of finer regional exports. Virgen uses
+the same provider in both modes. This is a separate browser measurement, not
+a measurement of VS Code's embedded browser. The discarded larger-export
+experiments were slower and are not part of the implementation.
+
+The 2026-10-24 scheduling check used the same GPU Chromium viewport and fresh
+temporary caches. In Graz's detailed view, requesting the local overview first
+and limiting slow-image queueing changed these source-load times:
+
+| Graz detailed view | Previous ordering, 32 requests | Final ordering, 8 requests |
+| --- | ---: | ---: |
+| Local overview ready | 4.33 s | 0.019 s |
+| Local vector source ready | 3.27 s | 1.10 s |
+| Detailed imagery complete | 4.52 s | 4.47 s |
+
+These are source readiness timings, not promises about the next painted frame.
+The full-resolution imagery is unchanged. The gain is an earlier usable map
+and labels while the regional provider finishes. An extra national preview
+layer did not help consistently and was discarded. Four and six image requests
+reduced imagery throughput; fast mode retains 32. Its final cold views measured
+0.53 s for Graz, 0.38 s for the Graz pan, 0.35 s for Styria and 1.95 s for Virgen,
+with no degraded responses. The Virgen result does not demonstrate an
+improvement over the earlier 1.72 s run; source latency and missing high-zoom
+tiles remain constraints there.
+
+`tests/browser-imagery-preview.mjs` reproduces scheduling experiments with
+`MAP_IMAGE_REQUESTS`, `IMAGERY_OVERVIEW_FIRST=0` for the old source order, and
+`IMAGERY_PREVIEW=1` for the rejected extra layer. Use a fresh temporary cache
+and service restart for each run. `tests/browser-map-zooming.mjs` measures rapid
+zoom cancellation, and `tests/browser-map-performance.mjs` compares vector
+worker counts and overscaling. Artifacts go to `.cache/map-speed-dive/` and
+`.cache/map-performance/`. Extra vector workers and tile splitting did not
+improve the reviewed machine: local vector views settled in roughly 0.14–0.27 s
+with 17 ms frame-time p95 and no recorded main-thread long tasks. VS Code's
+status reported hardware-accelerated WebGL, but these timings were measured
+in a separate GPU Chromium instance, not its embedded browser.
+
+```sh
+PYTHONPATH="$PWD/.cache/imagery-tools" python3 tests/imagery-render.test.py
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/browsers" node tests/browser-imagery-performance.mjs
+```
+
+Use `RICHIROUTE_IMAGERY_CACHE` on an isolated map-service instance for cold-cache
+measurements without deleting the normal cache. Browser measurements go to
+`.cache/imagery-performance/`; timings depend on upstream latency and cache state.
+
+`tests/browser-imagery-local.mjs` compares requested detail levels and load times
+on 1× and 2× screens. Set `IMAGERY_EXPECT_SAVED=1` and point `ROUTE_TEST_ORIGIN`
+to a preview backed by a map service running with `RICHIROUTE_IMAGERY_OFFLINE=1`
+to prove the central Graz views use only saved tiles. Reports and screenshots
+are stored under `.cache/imagery-local/`.
+
+`node tests/browser-map-rendering.mjs` measures complete view settling and frame
+intervals during pans in all three modes at map zooms 12, 16 and 18. It requests
+GPU acceleration and records the actual renderer in `.cache/map-rendering/report.json`.
+Compare runs with the same renderer, viewport and cache state. Headless Chromium
+can otherwise use SwiftShader, which is not representative of a GPU-accelerated
+VS Code browser. These timings do not measure the surrounding VS Code webview.

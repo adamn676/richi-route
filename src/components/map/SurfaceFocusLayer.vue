@@ -5,6 +5,7 @@ import { onMounted, onBeforeUnmount, watch } from 'vue';
 import { LngLatBounds, type Map, type GeoJSONSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { Coord } from '@/domain/route-model';
+import { MAP_LABELS_ANCHOR } from '@/config/map.config';
 
 const props = defineProps<{ map: Map; focus: { coordinates: Coord[] } | null }>();
 const source = 'surface-focus-source';
@@ -17,9 +18,9 @@ function update() {
   if (!props.map.getSource(source)) {
     props.map.addSource(source, { type: 'geojson', data });
     props.map.addLayer({ id: 'surface-focus-outline', type: 'line', source,
-      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 12 } });
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 12 } }, MAP_LABELS_ANCHOR);
     props.map.addLayer({ id: 'surface-focus-line', type: 'line', source,
-      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#19343c', 'line-width': 7, 'line-dasharray': [1, 1] } });
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#19343c', 'line-width': 7, 'line-dasharray': [1, 1] } }, MAP_LABELS_ANCHOR);
   } else {
     (props.map.getSource(source) as GeoJSONSource).setData(data);
   }

@@ -16,10 +16,11 @@ async function ready(page) {
 }
 
 async function snapshot(page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+    const { readDraft } = await import('/src/services/draft.service.ts');
     return { legs: JSON.parse(JSON.stringify(store.legs)), points: JSON.parse(JSON.stringify(store.points)),
-      draft: localStorage.getItem('richiroute.route-draft.v1'), undo: store.undoStack.length, redo: store.redoStack.length };
+      draft: await readDraft(), undo: store.undoStack.length, redo: store.redoStack.length };
   });
 }
 

@@ -1,6 +1,7 @@
-import type { Map, GeoJSONSource } from 'maplibre-gl';
-import type { FeatureCollection } from 'geojson';
+import type { Map as MaplibreMap, GeoJSONSource } from 'maplibre-gl';
+import type { Feature, LineString } from 'geojson';
 import {
+  MAP_LABELS_ANCHOR,
   SEGMENTS_AIR_LAYER,
   SEGMENTS_BASE_LAYER,
   SEGMENTS_OUTLINE_LAYER,
@@ -8,18 +9,33 @@ import {
   SEGMENTS_SOURCE_ID,
 } from '@/config/map.config';
 import { routeStyle } from '@/config/mapStyle';
-import type { EditorRoute } from '@/stores/route.store';
+import type { EditorRoute, RouteFeature } from '@/stores/route.store';
 import { getSegments } from '@/utils/geometry';
 
 export function useSegmentedRoute() {
-  function renderSegments(map: Map, route: EditorRoute | null): void {
-    const data: FeatureCollection = {
-      type: 'FeatureCollection',
-      features: route ? getSegments(route) : [],
-    };
+  // Segment ids per drawn leg feature, so that an edit only sends the changed legs to the map.
+  let drawn = new Map<RouteFeature, number[]>();
+  let nextId = 0;
 
-    if (!map.getSource(SEGMENTS_SOURCE_ID)) {
-      map.addSource(SEGMENTS_SOURCE_ID, { type: 'geojson', data });
+  function renderSegments(map: MaplibreMap, route: EditorRoute | null): void {
+    const next = new Map<RouteFeature, number[]>();
+    const add: Feature<LineString>[] = [];
+    for (const feature of route?.features ?? []) {
+      let ids = drawn.get(feature);
+      if (!ids) {
+        ids = [];
+        for (const segment of getSegments(feature)) {
+          segment.id = nextId;
+          ids.push(nextId++);
+          add.push(segment);
+        }
+      }
+      next.set(feature, ids);
+    }
+
+    const source = map.getSource<GeoJSONSource>(SEGMENTS_SOURCE_ID);
+    if (!source) {
+      map.addSource(SEGMENTS_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: add } });
       map.addLayer({
         id: SEGMENTS_OUTLINE_LAYER,
         type: 'line',
@@ -31,7 +47,7 @@ export function useSegmentedRoute() {
           'line-width': 9,
           'line-opacity': .95,
         },
-      });
+      }, MAP_LABELS_ANCHOR);
       map.addLayer({
         id: SEGMENTS_ROUTE_LAYER,
         type: 'line',
@@ -50,7 +66,7 @@ export function useSegmentedRoute() {
           ],
           'line-width': 5,
         },
-      });
+      }, MAP_LABELS_ANCHOR);
       map.addLayer({
         id: SEGMENTS_AIR_LAYER,
         type: 'line',
@@ -62,16 +78,19 @@ export function useSegmentedRoute() {
           'line-width': 4,
           'line-dasharray': [2, 2],
         },
-      });
+      }, MAP_LABELS_ANCHOR);
       map.addLayer({
         id: SEGMENTS_BASE_LAYER,
         type: 'line',
         source: SEGMENTS_SOURCE_ID,
         paint: { 'line-color': '#fff', 'line-width': 30, 'line-opacity': .01 },
-      });
+      }, MAP_LABELS_ANCHOR);
     } else {
-      (map.getSource(SEGMENTS_SOURCE_ID) as GeoJSONSource).setData(data);
+      const remove = [...drawn].flatMap(([feature, ids]) => next.has(feature) ? [] : ids);
+      // Nothing recorded, e.g. after a remount: replace whatever the source holds.
+      if (add.length || remove.length) source.updateData({ removeAll: !drawn.size, remove, add });
     }
+    drawn = next;
   }
 
   return { renderSegments };

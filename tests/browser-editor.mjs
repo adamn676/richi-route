@@ -10,13 +10,11 @@ const tracing = process.env.PLAYWRIGHT_TRACE === '1';
 if (tracing) await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
 const page = await context.newPage();
 const errors = [];
-const tiles = { street: 0, aerial: 0, labels: 0 };
+const tiles = { aerial: 0 };
 page.on('pageerror', error => errors.push(error.message));
 page.on('response', response => {
   if (response.status() !== 200) return;
-  for (const [key, layer] of Object.entries({ street: 'geolandbasemap', aerial: 'bmaporthofoto30cm', labels: 'bmapoverlay' })) {
-    if (response.url().includes('/' + layer + '/')) tiles[key]++;
-  }
+  if (response.url().includes('/maps/imagery/')) tiles.aerial++;
 });
 async function state() {
   return page.evaluate(async () => {
@@ -31,7 +29,8 @@ async function state() {
 async function idle() {
   await page.waitForFunction(() => {
     const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
-    return !s.pendingSnapCount && !s.pendingLegCount && (!s.hasAirLines || s.errorMessage);
+    const source = document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('segments-source');
+    return !s.pendingSnapCount && !s.pendingLegCount && (!s.hasAirLines || s.errorMessage) && source?.loaded() !== false;
   }, null, { timeout: 90000 });
 }
 async function pixel(coord) {
@@ -42,7 +41,7 @@ async function pixel(coord) {
   }, coord);
 }
 try {
-  await page.goto('http://127.0.0.1:5173/');
+  await page.goto(process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173/');
   await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
   await idle();
   const initial = await state();
@@ -52,15 +51,23 @@ try {
   await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
-  assert.ok(tiles.street > 0, 'Street imagery loaded');
+  await page.waitForFunction(() => {
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
+    const ids = map.getStyle().layers.filter(layer => layer.id.startsWith('basemap-vector-') && layer.type === 'line').map(layer => layer.id);
+    return ids.length && map.queryRenderedFeatures({ layers: ids }).length > 0;
+  });
   await page.screenshot({ path: `${output}/editor-desktop.png` });
   await Promise.all([
-    page.waitForResponse(response => response.url().includes('/bmaporthofoto30cm/') && response.status() === 200),
-    page.waitForResponse(response => response.url().includes('/bmapoverlay/') && response.status() === 200),
+    page.waitForResponse(response => response.url().includes('/maps/imagery/') && response.status() === 200),
     page.getByRole('combobox', { name: 'Kartenansicht' }).selectOption('aerial'),
   ]);
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
-  assert.ok(tiles.aerial > 0 && tiles.labels > 0, 'Aerial and labels loaded');
+  await page.waitForFunction(() => {
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
+    const ids = map.getStyle().layers.filter(layer => layer.id.startsWith('basemap-hybrid-') && layer.type === 'symbol').map(layer => layer.id);
+    return ids.length && map.queryRenderedFeatures({ layers: ids }).length > 0;
+  });
+  assert.ok(tiles.aerial > 0, 'Aerial imagery loaded');
   await page.screenshot({ path: `${output}/editor-aerial.png` });
 
   const coord = initial.legs[0].coordinates[70];

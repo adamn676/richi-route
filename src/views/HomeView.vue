@@ -23,7 +23,7 @@ import MapView from "@/components/map/MapView.vue";
   height: 100dvh;
   overflow: hidden;
 }
-.editor-layout__sidebar { overflow-y: auto; background: #f3f7f5; border-right: 1px solid #e3eae7; }
+.editor-layout__sidebar { overflow-y: auto; background: #ffffff; border-right: 1px solid #dfe5e1; }
 .editor-layout__map { position: relative; min-width: 0; min-height: 0; }
 .editor-layout__compare { position: absolute; top: 1rem; right: 1rem; z-index: 2; padding: .6rem .75rem; border: 1px solid #cddbd9; border-radius: .4rem; background: #fff; color: #16515a; font-size: .8rem; font-weight: 700; text-decoration: none; box-shadow: 0 2px 12px #19343c26; }
 .editor-layout__compare:hover { background: #e9f5f1; }

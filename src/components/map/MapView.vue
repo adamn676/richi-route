@@ -1,19 +1,31 @@
 <template>
   <div class="map-view">
-    <div id="map" class="map-view__canvas" aria-label="Interaktive Karte von Graz" />
+    <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
     <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
     <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
     <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
+    <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
     <div class="map-view__controls">
-      <label>Karte <select v-model="basemap" aria-label="Kartenansicht">
-        <option value="street">Straßenkarte</option>
-        <option value="aerial">Luftbild + Straßennamen</option>
-        <option value="local">Lokale Straßen</option>
+      <label>Karte <select v-model="basemap" aria-label="Kartenansicht" :title="onlineBasemap(basemap)?.description">
+        <optgroup label="Eigene Karten · Europa">
+          <option value="street">OpenStreetMap · lokal</option>
+          <option value="cycling">Rennradkarte · Europa</option>
+          <option value="terrain">Geländekarte · Europa</option>
+          <option value="aerial-fast">Luftbild · schnell</option>
+          <option value="aerial">Luftbild · Detail</option>
+          <option value="local">Straßennetz</option>
+        </optgroup>
+        <optgroup label="Online · Internet erforderlich">
+          <option v-for="item in onlineBasemaps" :key="item.id" :value="item.id">{{ item.label }}</option>
+        </optgroup>
       </select></label>
-      <button type="button" :disabled="!route" @click="fitRoute">Route zeigen</button>
+      <CyclingOverlays :map="map" />
+      <button v-if="route" type="button" @click="fitRoute">Route zeigen</button>
       <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
     </div>
-    <p v-if="mapError" class="map-view__error" role="alert">{{ mapError }}</p>
+    <div v-if="mapError" class="map-view__error" role="alert">
+      {{ mapError }} <button type="button" @click="retryBasemap">Erneut laden</button>
+    </div>
   </div>
 </template>
 
@@ -30,8 +42,13 @@ import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
 import GpxReferenceLayer from '@/components/map/GpxReferenceLayer.vue';
 import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
+import { useRouteProfileStore } from '@/stores/route-profile.store';
+import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
+import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
+import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 
-const { map, basemap, mapError } = useMap('map');
+const { map, basemap, mapError, retryBasemap } = useMap('map');
+const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
 const { route, pendingSnapCount, pendingLegCount, focusedSurface } = storeToRefs(useRouteStore());
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
@@ -62,7 +79,7 @@ function fitRoute() {
 <style scoped>
 .map-view { position: relative; width: 100%; height: 100%; min-height: 0; }
 .map-view__canvas { width: 100%; height: 100%; }
-.map-view__controls { position: absolute; top: .75rem; left: .75rem; display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem; background: white; border-radius: .5rem; box-shadow: 0 2px 10px #0002; font-size: .8rem; }
+.map-view__controls { position: absolute; top: .75rem; left: .75rem; display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem; background: white; border: 1px solid #dfe5e1; border-radius: .5rem; box-shadow: 0 2px 8px #172b2414; font-size: .8rem; }
 .map-view__controls select, .map-view__controls button { padding: .45rem; border: 1px solid #cddbd9; border-radius: .3rem; background: white; }
 .map-view__progress { align-self: center; color: #304951; }
 .map-view__error {
@@ -78,4 +95,5 @@ function fitRoute() {
   box-shadow: 0 4px 16px #0002;
   color: #81392d;
 }
+.map-view__error button { margin-left: .5rem; padding: .4rem .65rem; border: 1px solid currentColor; border-radius: .3rem; background: transparent; color: inherit; cursor: pointer; }
 </style>

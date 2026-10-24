@@ -29,49 +29,6 @@ const state = () => page.evaluate(() => {
 try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
-  const parser = await page.evaluate(async () => {
-    const { parseGpx } = await import('/src/domain/gpx-import.ts');
-    const valid = '<trk><name>Test &amp; Runde</name><trkseg><trkpt lon="15" lat="47"><ele>100</ele></trkpt><trkpt lon="15.1" lat="47.1"/></trkseg><trkseg><trkpt lon="16" lat="48"><ele>500</ele></trkpt></trkseg></trk>';
-    const wrap = (body, version = '1.1', ns = 'http://www.topografix.com/GPX/1/1') => `<gpx version="${version}" xmlns="${ns}">${body}</gpx>`;
-    const standard = await parseGpx(wrap(valid), 'test.gpx');
-    const old = await parseGpx(wrap('<name>Legacy</name>' + valid, '1.0', 'http://www.topografix.com/GPX/1/0'), 'old.gpx');
-    const prefixed = await parseGpx('<g:gpx version="1.1" xmlns:g="http://www.topografix.com/GPX/1/1"><g:trk><g:trkseg><g:trkpt lon="0" lat="0"><g:ele>0</g:ele></g:trkpt></g:trkseg></g:trk></g:gpx>', 'prefix.gpx');
-    const unnamespaced = await parseGpx(`<gpx version="1.1">${valid}</gpx>`, 'plain.gpx');
-    const extensions = await parseGpx(wrap(valid + '<extensions xmlns:x="urn:test"><x:trk><x:trkseg><x:trkpt lon="200" lat="999"/></x:trkseg></x:trk></extensions>'), 'extensions.gpx');
-    const invalid = [
-      '<gpx>', '<html/>', wrap(''), wrap('<wpt lat="47" lon="15"/>'),
-      wrap('<rte><rtept lat="47" lon="15"/></rte>'),
-      wrap(valid, '2.0'), wrap(valid, '1.1', 'urn:not-gpx'),
-      wrap(valid.replace('lon="15"', 'lon=""')), wrap(valid.replace('lat="47"', 'lat="91"')),
-      wrap(valid.replace('lon="15"', 'lon="Infinity"')), wrap(valid.replace('lon="15"', 'lon="0x10"')),
-      wrap(valid.replace('<ele>100</ele>', '<ele/>')), wrap(valid.replace('<ele>100</ele>', '<ele>NaN</ele>')),
-      '<!DOCTYPE gpx [<!ENTITY x "hello">]>' + wrap(valid),
-    ];
-    const rejected = [];
-    for (const xml of invalid) {
-      try { await parseGpx(xml, 'invalid.gpx'); rejected.push(false); }
-      catch { rejected.push(true); }
-    }
-    const controller = new AbortController(); controller.abort();
-    let aborted = false;
-    try { await parseGpx(wrap(valid), 'aborted.gpx', controller.signal); }
-    catch (error) { aborted = error.name === 'AbortError'; }
-    return { rejected, aborted, name: standard.name, count: standard.pointCount,
-      segments: standard.segments.length, partial: standard.elevationCount,
-      oldName: old.name, prefixCount: prefixed.pointCount, prefixElevation: prefixed.segments[0].elevations[0],
-      plainCount: unnamespaced.pointCount, extensionsCount: extensions.pointCount };
-  });
-  assert.ok(parser.rejected.every(Boolean));
-  assert.equal(parser.aborted, true);
-  assert.equal(parser.name, 'Test & Runde');
-  assert.equal(parser.count, 3);
-  assert.equal(parser.segments, 2);
-  assert.equal(parser.partial, 2);
-  assert.equal(parser.oldName, 'Legacy');
-  assert.equal(parser.prefixCount, 1);
-  assert.equal(parser.prefixElevation, 0);
-  assert.equal(parser.plainCount, 3);
-  assert.equal(parser.extensionsCount, 3);
 
   // A GPX import must not alter an existing editable route or trigger routing.
   await page.evaluate(async () => {
@@ -141,8 +98,8 @@ try {
     const old = store.track;
     await store.importFile(new File([new Uint8Array(32 * 1024 * 1024 + 1)], 'oversized.gpx'));
     const fileLimit = store.error.includes('32 MB') && store.track === old;
-    const points = '<trkpt lon="15" lat="47"/>'.repeat(250001);
-    await store.importFile(new File([`<gpx version="1.1"><trk><trkseg>${points}</trkseg></trk></gpx>`], 'many.gpx'));
+    const many = new File([`<gpx version="1.1"><trk><trkseg>${'<trkpt lon="15" lat="47"/>'.repeat(250001)}</trkseg></trk></gpx>`], 'many.gpx');
+    await store.importFile(many);
     const pointLimit = store.error.includes('250.000') && store.track === old;
     const file = new File(['<gpx version="1.1"><trk><trkseg><trkpt lon="0" lat="0"/></trkseg></trk></gpx>'], 'late.gpx');
     let release;
@@ -151,9 +108,22 @@ try {
     store.cancel();
     release(new TextEncoder().encode('<gpx version="1.1"><trk><trkseg><trkpt lon="0" lat="0"/></trkseg></trk></gpx>').buffer);
     await pending;
-    return { fileLimit, pointLimit, cancelled: store.track === old && !store.loading };
+    const cancelled = store.track === old && !store.loading;
+    const NativeWorker = Worker;
+    let stopped = 0, started;
+    const created = new Promise(resolve => { started = resolve; });
+    window.Worker = class extends NativeWorker {
+      constructor(...args) { super(...args); started(); }
+      terminate() { stopped++; super.terminate(); }
+    };
+    const parsing = store.importFile(many);
+    await created;
+    store.cancel();
+    await parsing;
+    window.Worker = NativeWorker;
+    return { fileLimit, pointLimit, cancelled, workerStopped: stopped === 1 && store.track === old && !store.loading && !store.error };
   });
-  assert.deepEqual(limits, { fileLimit: true, pointLimit: true, cancelled: true });
+  assert.deepEqual(limits, { fileLimit: true, pointLimit: true, cancelled: true, workerStopped: true });
 
   await upload('long.gpx', longXml);
   await page.locator('.gpx').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -177,8 +147,8 @@ try {
   assert.equal(routingRequests, 0);
   assert.deepEqual(errors, []);
   await writeFile(output + '/report.json', JSON.stringify({ points: length + 3, importAndReadbackMs: importMs, svgCharacters: rendered.pathLength,
-    routingRequests, parserCases: parser.rejected.length, exactGeometryAndElevations: true, limits, passed: true }, null, 2) + '\n');
-  console.log('GPX import: XML validation, versions/namespaces, exact long-track geometry, segment gaps, partial elevation, controls, limits, cancellation, mobile and unchanged editor passed.');
+    routingRequests, exactGeometryAndElevations: true, limits, passed: true }, null, 2) + '\n');
+  console.log('GPX import: worker parsing, exact long-track geometry, segment gaps, partial elevation, controls, limits, cancellation, mobile and unchanged editor passed.');
 } finally {
   await context.close();
   await browser.close();

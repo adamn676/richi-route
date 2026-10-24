@@ -34,6 +34,7 @@ interface RouteFeatureProperties {
 }
 
 export type EditorRoute = FeatureCollection<LineString, RouteFeatureProperties>;
+export type RouteFeature = EditorRoute['features'][number];
 
 interface SurfaceFocus {
   leg: RouteLeg;
@@ -53,6 +54,8 @@ interface PendingOperations {
 }
 
 const pending = new WeakMap<object, PendingOperations>();
+// Legs are replaced as a unit, so one feature per leg lets the map skip unchanged legs by identity.
+const legFeatures = new WeakMap<RouteLeg, RouteFeature>();
 const routeFailureMessage = 'Routing fehlgeschlagen. Betroffene Abschnitte bleiben als gestrichelte Luftlinie sichtbar.';
 
 function newId(prefix: string): string {
@@ -197,17 +200,22 @@ export const useRouteStore = defineStore('route', {
           const to = placed[index + 1];
           const leg = state.legs[legId(from.id, to.id)];
           if (!leg) return [];
-          return [{
-            type: 'Feature' as const,
-            geometry: { type: 'LineString' as const, coordinates: leg.coordinates },
-            properties: {
-              legId: leg.id,
-              fromId: leg.fromId,
-              toId: leg.toId,
-              status: leg.status,
-              surfaces: leg.surfaces,
-            },
-          }];
+          let feature = legFeatures.get(leg);
+          if (!feature) {
+            feature = {
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: leg.coordinates },
+              properties: {
+                legId: leg.id,
+                fromId: leg.fromId,
+                toId: leg.toId,
+                status: leg.status,
+                surfaces: leg.surfaces,
+              },
+            };
+            legFeatures.set(leg, feature);
+          }
+          return [feature];
         }),
       };
     },

@@ -33,11 +33,12 @@ try {
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
   await reset(); await idle();
   assert.equal(await notice.count(), 1, 'Two flights produce one rule notice');
-  const before = await page.evaluate(() => {
+  const before = await page.evaluate(async () => {
     const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
-    const draft = JSON.parse(localStorage.getItem('richiroute.route-draft.v1'));
+    const { readDraft, writeDraft } = await import('/src/services/draft.service.ts');
+    const draft = JSON.parse(await readDraft());
     for (const leg of Object.values(draft.legs)) leg.routingPolicy = 'old-policy';
-    localStorage.setItem('richiroute.route-draft.v1', JSON.stringify(draft));
+    await writeDraft(JSON.stringify(draft));
     return Object.values(s.legs).map(l => l.coordinates);
   });
   hold = new Promise(resolve => { release = resolve; });

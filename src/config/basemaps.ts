@@ -1,34 +1,98 @@
-import type { RasterSourceSpecification } from 'maplibre-gl';
+import type { LayerSpecification, LineLayerSpecification, RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
+import { onlineBasemap, type OnlineBasemap } from './online-basemaps';
 
 export type Basemap = 'street' | 'aerial' | 'local';
+export type EditorBasemap = Basemap | 'cycling' | 'terrain' | 'aerial-fast' | OnlineBasemap;
+export const vectorBasemapUrl = '/maps/style.json';
+export const imagerySource: RasterSourceSpecification = { type: 'raster', url: '/maps/imagery.json', tileSize: 256 };
+export const fastImagerySource: RasterSourceSpecification = { type: 'raster', url: '/maps/imagery-fast.json', tileSize: 256 };
+export const imageryOverviewSource: RasterSourceSpecification = {
+  type: 'raster', url: '/maps/imagery-overview.json', tileSize: 256,
+};
 export const basemapOptions: { id: Basemap; label: string }[] = [
   { id: 'street', label: 'Street map' },
   { id: 'aerial', label: 'Aerial + labels' },
-  { id: 'local', label: 'Local roads' },
+  { id: 'local', label: 'Road network' },
 ];
 
 // WMTS templates verified against basemap.at's EPSG:3857 capabilities.
 function raster(layer: string, extension: string): RasterSourceSpecification {
   return {
     type: 'raster',
-    tiles: [`https://maps.wien.gv.at/basemap/${layer}/normal/google3857/{z}/{y}/{x}.${extension}`],
+    tiles: [`https://mapsneu.wien.gv.at/basemap/${layer}/normal/google3857/{z}/{y}/{x}.${extension}`],
     tileSize: 256,
     minzoom: 0,
-    maxzoom: 19,
-    bounds: [9.4, 46.3, 17.2, 49.1],
+    maxzoom: 20,
+    bounds: [8.782379, 46.358770, 17.5, 49.037872],
     attribution: 'Grundkarte: <a href="https://basemap.at/" target="_blank" rel="noopener">basemap.at</a>',
   };
 }
 
 export const basemapSources = {
-  'basemap-street': raster('geolandbasemap', 'png'),
+  'basemap-street': raster('bmapgrau', 'png'),
   'basemap-aerial': raster('bmaporthofoto30cm', 'jpeg'),
   'basemap-labels': raster('bmapoverlay', 'png'),
 };
 
-export function initialBasemap(): Basemap {
+export function aerialVectorLayers(style: StyleSpecification): LayerSpecification[] {
+  const road = style.layers.find(layer => layer.type === 'line' && layer['source-layer'] === 'roads');
+  const layers: LayerSpecification[] = [];
+  if (road && 'source' in road) {
+    for (const casing of [true, false]) layers.push({
+      id: `basemap-hybrid-road${casing ? '-casing' : ''}`,
+      type: 'line', source: `basemap-vector-${road.source}`, 'source-layer': 'roads', minzoom: 12,
+      filter: ['all', ['==', ['geometry-type'], 'LineString'],
+        ['match', ['get', 'kind'], ['highway', 'major_road', 'minor_road'], true, false]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': casing ? '#14291e' : '#f7f5e8',
+        'line-opacity': casing ? .35 : .6,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 12, casing ? 1.5 : .5, 16, casing ? 3 : 1.2, 20, casing ? 4 : 2],
+      },
+    });
+    layers.push({
+      id: 'basemap-hybrid-path', type: 'line', source: `basemap-vector-${road.source}`,
+      'source-layer': 'roads', minzoom: 15,
+      filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'kind'], 'path']],
+      paint: { 'line-color': '#e2e9ce', 'line-opacity': .6, 'line-width': 1, 'line-dasharray': [2, 2] },
+    });
+  }
+  for (const layer of style.layers) {
+    if (layer.type !== 'symbol' || !layer.layout?.['text-field']) continue;
+    const sourceLayer = layer['source-layer'];
+    if (sourceLayer !== 'places' && sourceLayer !== 'water' && !layer.id.startsWith('roads_labels_')) continue;
+    layers.push({
+      ...layer, id: `basemap-hybrid-${layer.id}`, source: `basemap-vector-${layer.source}`,
+      ...(layer.id === 'places_locality' ? { maxzoom: 14 } : {}),
+      layout: { ...layer.layout, 'icon-image': '' },
+      paint: { ...layer.paint, 'text-color': '#ffffff', 'text-halo-color': '#172a22',
+        'text-halo-width': 1.6, 'text-halo-blur': .5 },
+    });
+  }
+  return layers;
+}
+
+export function cyclingRoadPaint(layer: LineLayerSpecification): LineLayerSpecification['paint'] {
+  if (layer['source-layer'] !== 'roads') return undefined;
+  if (layer.id.includes('highway')) return { 'line-color': layer.id.includes('casing') ? '#b9bbb3' : '#dddcd3' };
+  if (layer.id.includes('minor') && layer.id.includes('casing')) return { 'line-color': '#738f81' };
+  if (layer.id.includes('major') && layer.id.includes('casing')) return { 'line-color': '#b7a581' };
+  return undefined;
+}
+
+export const cyclingMapLayer: LineLayerSpecification = {
+  id: 'basemap-cycling-paths', type: 'line', source: 'basemap-vector-europe', 'source-layer': 'roads', minzoom: 11,
+  filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'kind_detail'], 'cycleway']],
+  layout: { 'line-cap': 'round', 'line-join': 'round' },
+  paint: { 'line-color': '#386bd1', 'line-opacity': .85,
+    'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 14, 2, 18, 3] },
+};
+
+export function initialBasemap(): EditorBasemap {
   try {
     const value = localStorage.getItem('richiroute.review-basemap');
-    return value === 'local' || value === 'aerial' ? value : 'street';
+    const online = value && onlineBasemap(value);
+    if (online) return online.id;
+    return value === 'local' || value === 'aerial' || value === 'aerial-fast' || value === 'cycling' || value === 'terrain' ? value : 'street';
   } catch { return 'street'; }
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 
-const draftKey = 'richiroute.route-draft.v1';
+const legacyDraftKey = 'richiroute.route-draft.v1';
 const origin = 'http://127.0.0.1:5173';
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const errors = [];
@@ -26,6 +26,8 @@ async function idle(page) {
     return s && !s.pendingSnapCount && !s.pendingLegCount && !s.hasAirLines;
   }, null, { timeout: 90000 });
 }
+const storedDraft = page => page.evaluate(async () => (await import('/src/services/draft.service.ts')).readDraft());
+const storedInput = async page => JSON.parse(await storedDraft(page)).points[0].userInput;
 async function saved(page) {
   await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').draftStatus === 'saved');
 }
@@ -56,8 +58,8 @@ try {
   const original = await state(page);
   assert.equal(original.points.filter(p => p.type === 'shape').length, 1);
   assert.equal(original.distance, 5888);
-  const stored = await page.evaluate(key => localStorage.getItem(key), draftKey);
-  const storageState = await context.storageState();
+  const stored = await storedDraft(page);
+  const storageState = await context.storageState({ indexedDB: true });
   await context.close();
 
   context = await makeContext({ storageState });
@@ -128,43 +130,46 @@ try {
   await second.getByText(/anderen Registerkarte geändert/).waitFor();
   await query(second, 'My explicit replacement');
   await second.waitForTimeout(300);
-  assert.equal(await second.evaluate(key => JSON.parse(localStorage.getItem(key)).points[0].userInput, draftKey), 'Changed in first tab');
+  assert.equal(await storedInput(second), 'Changed in first tab');
   await second.getByRole('button', { name: 'Aktuelle Route hier speichern' }).click();
   await saved(second);
-  assert.equal(await second.evaluate(key => JSON.parse(localStorage.getItem(key)).points[0].userInput, draftKey), 'My explicit replacement');
+  assert.equal(await storedInput(second), 'My explicit replacement');
   await context.close();
 
-  const corrupt = await makeContext({ storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: draftKey, value: '{broken' }] }] } });
+  const corrupt = await makeContext({ storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: legacyDraftKey, value: '{broken' }] }] } });
   const corruptPage = await corrupt.newPage();
   await corruptPage.goto(origin);
   await corruptPage.getByText(/bisherige Entwurf wurde nicht überschrieben/).waitFor();
-  assert.equal(await corruptPage.evaluate(key => localStorage.getItem(key), draftKey), '{broken');
+  assert.equal(await storedDraft(corruptPage), '{broken', 'An unreadable legacy draft moves to IndexedDB unchanged');
   await corrupt.close();
 
   const quota = await makeContext({ storageState });
-  await quota.addInitScript(key => {
+  await quota.addInitScript(() => {
     if (location.origin !== 'http://127.0.0.1:5173') return;
-    const set = Storage.prototype.setItem;
+    const put = IDBObjectStore.prototype.put;
     window.denyDraftSave = true;
-    Storage.prototype.setItem = function(name, value) {
-      if (name === key && window.denyDraftSave) throw new DOMException('Full', 'QuotaExceededError');
-      return set.call(this, name, value);
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === 'draft' && window.denyDraftSave) throw new DOMException('Full', 'QuotaExceededError');
+      return put.apply(this, args);
     };
-  }, draftKey);
+  });
   const quotaPage = await quota.newPage();
   await quotaPage.goto(origin);
   await idle(quotaPage);
   await query(quotaPage, 'Unsaved change');
   await quotaPage.getByText(/Änderungen sind noch nicht gesichert/).waitFor();
-  assert.equal(await quotaPage.evaluate(key => localStorage.getItem(key), draftKey), stored);
+  assert.equal(await storedDraft(quotaPage), stored);
   await quotaPage.evaluate(() => { window.denyDraftSave = false; });
   await quotaPage.getByRole('button', { name: 'Aktuelle Route hier speichern' }).click();
   await saved(quotaPage);
   await query(quotaPage, 'Flush immediately on exit');
   await quotaPage.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-  assert.equal(await quotaPage.evaluate(key => JSON.parse(localStorage.getItem(key)).points[0].userInput, draftKey), 'Flush immediately on exit');
+  assert.equal(await storedInput(quotaPage), 'Flush immediately on exit');
   await quotaPage.getByRole('button', { name: 'Neue Route', exact: true }).click();
-  await saved(quotaPage);
+  await quotaPage.waitForFunction(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+    return s.draftStatus === 'saved' && s.points.every(p => p.coord === null);
+  });
   await quotaPage.reload();
   await quotaPage.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
   assert.ok((await state(quotaPage)).points.every(p => p.coord === null));

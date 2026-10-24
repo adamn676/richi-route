@@ -25,7 +25,7 @@ const upload = async segments => {
 };
 const data = id => page.evaluate(async id => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource(id).getData(), id);
 const focus = () => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('gpx-reference').focus);
-const setPosition = async value => page.getByRole('slider', { name: 'Position im GPX-Track', exact: true }).evaluate((input, value) => { input.value = String(value); input.dispatchEvent(new Event('input', { bubbles: true })); }, value);
+const setPosition = value => page.evaluate(value => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('gpx-reference').focusAt(value), value);
 const waitDot = async count => page.waitForFunction(async count => {
   const source = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('gpx-reference-focus');
   return (await source.getData()).features.length === count;
@@ -75,7 +75,7 @@ try {
   const total = await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.track.distanceMeters);
   assert.ok(Math.abs(middle.distance - total / 2) < 1);
   assert.deepEqual((await data('gpx-reference-focus')).features[0].geometry.coordinates, middle.coordinate);
-  assert.match(await page.locator('.gpx-profile__readout').innerText(), /km.*m Höhe.*% Steigung/);
+  assert.match(await page.getByRole('slider', { name: 'Position im GPX-Track', exact: true }).getAttribute('aria-valuetext'), /km.*m Höhe.*% Steigung/);
   for (let i = 1; i < 20; i++) await page.mouse.move(box.x + box.width * i / 20, box.y + box.height / 2);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.screenshot({ path: output + '/desktop.png', fullPage: true });
@@ -87,6 +87,7 @@ try {
   await page.mouse.move(1400, 10);
   await waitDot(0);
   const slider = page.getByRole('slider', { name: 'Position im GPX-Track', exact: true });
+  assert.equal(await page.locator('.gpx input[type=range]').count(), 0, 'The chart has no separate slider');
   await slider.focus(); await slider.press('End');
   await waitDot(1);
   assert.ok(Math.abs((await focus()).distance - total) < .2);
@@ -95,14 +96,29 @@ try {
   assert.deepEqual((await focus()).coordinate, points[0].slice(0, 2));
   await page.getByLabel('Track einblenden', { exact: true }).uncheck();
   await waitDot(0);
-  assert.equal(await slider.isDisabled(), true);
+  assert.equal(await slider.getAttribute('aria-disabled'), 'true');
   await page.getByRole('button', { name: 'Track zeigen', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Kartenansicht', exact: true }).selectOption('aerial');
-  await page.getByRole('combobox', { name: 'Kartenansicht', exact: true }).selectOption('local');
-  await page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return map.hasImage('gpx-arrow') && map.getLayoutProperty('gpx-reference-color-line', 'visibility') === 'visible';
-  });
+  await profile.scrollIntoViewIfNeeded();
+  const mapBox = await profile.boundingBox();
+  await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  await waitDot(1);
+  const basemaps = ['street', 'aerial', 'local'];
+  for (const basemap of basemaps) {
+    const selected = await focus();
+    await page.getByRole('combobox', { name: 'Kartenansicht', exact: true }).selectOption(basemap);
+    if (basemap === 'street') await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')
+      .__vueParentComponent.props.map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-')));
+    await waitDot(1);
+    assert.deepEqual(await focus(), selected, `${basemap} preserves the inspected position`);
+    await page.mouse.move(mapBox.x + mapBox.width * .4, mapBox.y + mapBox.height / 2);
+    await page.waitForFunction(() => {
+      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      return map.hasImage('gpx-arrow') && map.getLayoutProperty('gpx-reference-color-line', 'visibility') === 'visible'
+        && map.queryRenderedFeatures({ layers: ['gpx-reference-dot'] }).length > 0
+        && map.queryRenderedFeatures({ layers: ['gpx-reference-arrows'] }).length > 0;
+    });
+    assert.equal(JSON.stringify(await data('gpx-reference')), original);
+  }
 
   // A westbound track must retain its coordinate order and reverse the arrows.
   await upload([[...points].reverse()]);
@@ -134,7 +150,7 @@ try {
   await setPosition((await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.track.distanceMeters)) / 4);
   await waitDot(1);
   assert.equal((await focus()).elevation, null);
-  assert.match(await page.locator('.gpx-profile__readout').innerText(), /Höhe unbekannt/);
+  assert.match(await page.getByRole('slider', { name: 'Position im GPX-Track', exact: true }).getAttribute('aria-valuetext'), /Höhe unbekannt/);
 
   await upload([[[15.4, 47.1, null], [15.41, 47.1, null]]]);
   assert.equal(await page.getByLabel('Trackfarbe', { exact: true }).inputValue(), 'plain');
@@ -162,6 +178,6 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(await page.evaluate(() => window.gpxMapErrors ?? []), []);
   await writeFile(output + '/report.json', JSON.stringify({ passed: true, points: longPoints.length, colorAndReadbackMs,
-    colorSections: colored.features.length, hoverSourceWrites: writes, routingRequests }, null, 2) + '\n');
+    colorSections: colored.features.length, hoverSourceWrites: writes, basemaps, routingRequests }, null, 2) + '\n');
   console.log('GPX inspection: directions, endpoints, colours, profile hover, keyboard, touch, missing heights, style changes and 50,000-point track passed.');
 } finally { await context.close(); await browser.close(); }

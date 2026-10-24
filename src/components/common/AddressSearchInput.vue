@@ -21,6 +21,7 @@
     <span v-if="isLoading" class="address-search__loading" aria-live="polite">Suche …</span>
     <ul
       v-if="isOpen && suggestions.length"
+      ref="popup"
       :id="`suggestions-${waypointId}`"
       role="listbox"
       class="address-search__results"
@@ -32,15 +33,17 @@
         role="option"
         :aria-selected="activeIndex === index"
         :class="{ 'is-active': activeIndex === index }"
-        @pointerdown.prevent="selectPlace(place)"
+        @mousedown.prevent
+        @click="selectPlace(place)"
         @mouseenter="activeIndex = index"
       >
         {{ place.label }}
       </li>
     </ul>
-    <div v-if="isOpen && errorMessage" class="address-search__feedback" role="alert">{{ errorMessage }}</div>
+    <div v-if="isOpen && errorMessage" ref="popup" class="address-search__feedback" role="alert">{{ errorMessage }}</div>
     <div
       v-else-if="isOpen && !isLoading && inputValue.trim().length >= 3 && !suggestions.length && !isWaiting"
+      ref="popup"
       class="address-search__feedback"
       aria-live="polite"
     >
@@ -59,7 +62,7 @@ const props = withDefaults(defineProps<{
   placeholder?: string;
   disabled?: boolean;
 }>(), {
-  placeholder: 'Adresse in Graz suchen',
+  placeholder: 'Adresse suchen',
   disabled: false,
 });
 
@@ -76,6 +79,7 @@ const isLoading = ref(false);
 const isWaiting = ref(false);
 const activeIndex = ref(-1);
 const errorMessage = ref<string | null>(null);
+const popup = ref<HTMLElement>();
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let blurTimer: ReturnType<typeof setTimeout> | undefined;
 let currentRequest: AbortController | null = null;
@@ -89,6 +93,12 @@ watch(() => props.modelValue, (value) => {
     isOpen.value = false;
   }
 });
+
+watch([suggestions, isLoading, errorMessage, isOpen, activeIndex], () => {
+  const target = activeIndex.value >= 0 && suggestions.value.length
+    ? popup.value?.children[activeIndex.value] : popup.value;
+  target?.scrollIntoView({ block: 'nearest' });
+}, { flush: 'post' });
 
 function cancelSearch(): void {
   version++;
@@ -122,12 +132,12 @@ function queueSearch(value: string): void {
       .catch((error: unknown) => {
         if (controller.signal.aborted || version !== requestVersion) return;
         console.error('Adressvorschläge konnten nicht geladen werden:', error);
-        errorMessage.value = 'Adresssuche nicht erreichbar. Bitte später erneut versuchen oder auf die Karte klicken.';
+        errorMessage.value = error instanceof Error ? error.message : 'Adresssuche fehlgeschlagen. Bitte erneut versuchen.';
       })
       .finally(() => {
         if (version === requestVersion) isLoading.value = false;
       });
-  }, 250);
+  }, 350);
 }
 
 function onInput(event: Event): void {
@@ -171,8 +181,8 @@ function onKeydown(event: KeyboardEvent): void {
     activeIndex.value = (activeIndex.value - 1 + suggestions.value.length) % suggestions.value.length;
   } else if (event.key === 'Enter') {
     event.preventDefault();
-    if (isOpen.value && activeIndex.value >= 0 && suggestions.value[activeIndex.value]) {
-      selectPlace(suggestions.value[activeIndex.value]);
+    if (isOpen.value && suggestions.value.length) {
+      selectPlace(suggestions.value[Math.max(0, activeIndex.value)]);
     } else if (inputValue.value.trim().length >= 3) {
       cancelSearch();
       isOpen.value = false;

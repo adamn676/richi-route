@@ -23,6 +23,8 @@ export interface SurfaceSection {
   surface: Surface;
 }
 
+export function surfaceLabel(key: string) { return labels[key] ?? `Belag: ${key}`; }
+
 export function inspectSurfaces(points: RoutePoint[], legs: Record<string, RouteLeg>) {
   const placed = points.filter(isPlaced);
   if (placed.length < 2) return null;
@@ -44,7 +46,7 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
       sections.push({
         id: `${leg.id}:${fromIndex}:${toIndex}`, legId: leg.id, fromIndex, toIndex,
         fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex],
-        key, label: labels[key] ?? `Belag: ${key}`, surface,
+        key, label: surfaceLabel(key), surface,
       });
     }
     let cursor = 0;

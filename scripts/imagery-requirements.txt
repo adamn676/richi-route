@@ -1,0 +1,9 @@
+affine==3.0.1
+attrs==26.1.0
+certifi==2026.10.23
+click==8.5.0
+duckdb==2.0.0
+numpy==2.5.4
+pillow==13.0.0
+pyparsing==3.3.3
+rasterio==1.5.2

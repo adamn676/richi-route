@@ -7,7 +7,7 @@ import type { FeatureCollection, Point } from 'geojson';
 import type { GpxTrack } from '../../domain/gpx-track';
 import { colorGpxTrack, gpxEndpoints } from '../../domain/gpx-inspection';
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
-import { SEGMENTS_OUTLINE_LAYER } from '../../config/map.config';
+import { MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '../../config/map.config';
 
 const props = defineProps<{ map: Map; track: GpxTrack | null; visible: boolean; fitRequest: number }>();
 const reference = useGpxReferenceStore();
@@ -21,7 +21,8 @@ const layers = ['gpx-reference-outline', 'gpx-reference-line', 'gpx-reference-po
 const icons = ['gpx-arrow', 'gpx-start', 'gpx-end', 'gpx-both'];
 const empty: FeatureCollection<Point> = { type: 'FeatureCollection', features: [] };
 const colors = computed(() => props.track && reference.colorMode !== 'plain'
-  ? colorGpxTrack(props.track, reference.colorMode, reference.colorMode === 'gradient' ? reference.gradients : []) : empty);
+  ? reference.colorMode === 'surface' ? reference.surfaceInspection!.geojson
+    : colorGpxTrack(props.track, reference.colorMode, reference.colorMode === 'gradient' ? reference.gradients : []) : empty);
 let ready = false;
 
 function addIcons() {
@@ -61,7 +62,7 @@ function update() {
     props.map.addSource(colorSource, { type: 'geojson', data: colors.value });
     props.map.addSource(endpointSource, { type: 'geojson', data: gpxEndpoints(props.track) });
     props.map.addSource(focusSource, { type: 'geojson', data: empty });
-    const before = props.map.getLayer(SEGMENTS_OUTLINE_LAYER) ? SEGMENTS_OUTLINE_LAYER : undefined;
+    const before = props.map.getLayer(SEGMENTS_OUTLINE_LAYER) ? SEGMENTS_OUTLINE_LAYER : MAP_LABELS_ANCHOR;
     props.map.addLayer({ id: layers[0], type: 'line', source,
       filter: ['==', '$type', 'LineString'],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -121,6 +122,7 @@ function fit() {
 function styleLoaded() { ready = true; update(); fit(); }
 watch(() => props.track, () => { update(); fit(); });
 watch(() => reference.colorMode, updateColors);
+watch(() => reference.surfaces, () => { if (reference.colorMode === 'surface') updateColors(); });
 watch(() => reference.focus, updateFocus);
 watch(() => props.visible, () => { setVisibility(); updateFocus(); });
 watch(() => props.fitRequest, fit);

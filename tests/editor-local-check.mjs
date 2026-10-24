@@ -62,7 +62,7 @@ for (let i = 0; i < 12; i++) {
 }
 durations.sort((a, b) => a - b);
 const coordinates = Array.from({ length: 10000 }, (_, i) => [15.4 + i / 100000, 47]);
-const synthetic = { features: [{ geometry: { coordinates }, properties: { legId: 'long', fromId: 'a', toId: 'b', status: 'routed', surfaces: [{ fromIndex: 0, toIndex: 9999, surface: 'asphalt' }] } }] };
+const synthetic = { geometry: { coordinates }, properties: { legId: 'long', fromId: 'a', toId: 'b', status: 'routed', surfaces: [{ fromIndex: 0, toIndex: 9999, surface: 'asphalt' }] } };
 const renderTimes = [];
 for (let i = 0; i < 200; i++) {
   const start = performance.now();

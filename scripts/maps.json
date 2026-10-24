@@ -1,0 +1,10 @@
+{
+  "url": "https://build.protomaps.com/20261022.pmtiles",
+  "dataDate": "2026-10-22",
+  "bounds": [-25, 34, 45, 72],
+  "maxzoom": 14,
+  "toolUrl": "https://github.com/protomaps/go-pmtiles/releases/download/v1.31.2/go-pmtiles_1.31.2_Linux_x86_64.tar.gz",
+  "toolSha256": "3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f",
+  "assetsUrl": "https://github.com/protomaps/basemaps-assets/archive/028c18f713baecad011301ff7a69acc39bcc2ae7.tar.gz",
+  "assetsSha256": "57e40e8c512bd8042d0a3a251f19d0d1c8523ad963c666c3c6643bada4dc92d0"
+}

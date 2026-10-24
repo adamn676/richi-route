@@ -1,50 +1,8 @@
 import { parseDraft } from '../domain/route-draft.ts';
 import { routeName, routeSummary, type SavedRouteSummary } from '../domain/saved-route.ts';
+import { transaction } from './database.service.ts';
 
-const databaseName = 'richiroute.routes.v1';
 const conflictMessage = 'Diese Route wurde inzwischen geändert oder gelöscht. Bitte die Liste aktualisieren und erneut versuchen.';
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 1);
-    let blocked = false;
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore('summaries', { keyPath: 'id' });
-      request.result.createObjectStore('payloads');
-    };
-    request.onerror = () => reject(request.error);
-    request.onblocked = () => {
-      blocked = true;
-      reject(new Error('Der Routenspeicher ist blockiert. Bitte andere RichiRoute-Tabs schließen und erneut versuchen.'));
-    };
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onversionchange = () => db.close();
-      if (blocked) db.close();
-      else resolve(db);
-    };
-  });
-}
-
-async function transaction<T>(mode: IDBTransactionMode, stores: string[], run: (
-  tx: IDBTransaction, result: (value: T) => void, fail: (error: Error) => void,
-) => void): Promise<T> {
-  const db = await openDatabase();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(stores, mode);
-      let value: T;
-      let error: Error | undefined;
-      tx.oncomplete = () => resolve(value);
-      tx.onabort = () => reject(error ?? tx.error ?? new Error('Speichern wurde abgebrochen.'));
-      const fail = (cause: Error) => { error = cause; tx.abort(); };
-      try { run(tx, result => { value = result; }, fail); }
-      catch (cause) { fail(cause instanceof Error ? cause : new Error('Routenspeicher nicht verfügbar.')); }
-    });
-  } finally {
-    db.close();
-  }
-}
 
 function requireRevision(actual: SavedRouteSummary | undefined, expected: SavedRouteSummary): SavedRouteSummary {
   if (!actual || actual.revision !== expected.revision) throw new Error(conflictMessage);

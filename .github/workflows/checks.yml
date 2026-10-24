@@ -17,6 +17,8 @@ jobs:
   test-and-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/browsers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,3 +39,15 @@ jobs:
         run: npm run build
       - name: Build routing comparisons
         run: npm run bench:build
+      - name: Install browser test tools
+        run: |
+          npm install --prefix .cache/browser-tools --no-save --package-lock=false playwright-core@1.64.1
+          node .cache/browser-tools/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      # These browser checks mock or tolerate the absent local map, routing and search services.
+      - name: Test the planner in a browser
+        run: |
+          npm run dev &
+          timeout 60 sh -c 'until curl -sf http://127.0.0.1:5173/ > /dev/null; do sleep 1; done'
+          node tests/browser-gpx-import.mjs
+          node tests/browser-gpx-surfaces.mjs
+          node tests/browser-saved-routes.mjs

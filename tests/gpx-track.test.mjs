@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildGpxTrack } from '../src/domain/gpx-track.ts';
 import { distanceMeters } from '../src/domain/route-model.ts';
-import { decodeGpx } from '../src/domain/gpx-import.ts';
+import { decodeGpx, parseGpx } from '../src/domain/gpx-import.ts';
 
 const segment = (coordinates, elevations, name = '') => ({ name, coordinates, elevations });
 
@@ -20,6 +20,42 @@ test('GPX decoding handles UTF-8, UTF-16 and declared Latin encodings without co
   assert.throws(() => decodeGpx(new Uint8Array([0xff, 0xff]).buffer), /Zeichenkodierung/);
 });
 
+test('GPX parsing reads tracks across versions and namespaces and rejects invalid files', () => {
+  const valid = '<trk><name>Test &amp; Runde</name><trkseg><trkpt lon="15" lat="47"><ele>100</ele></trkpt><trkpt lon="15.1" lat="47.1"/></trkseg><trkseg><trkpt lon="16" lat="48"><ele>500</ele></trkpt></trkseg></trk>';
+  const wrap = (body, version = '1.1', ns = 'http://www.topografix.com/GPX/1/1') => `<gpx version="${version}" xmlns="${ns}">${body}</gpx>`;
+  const standard = parseGpx(wrap(valid), 'test.gpx');
+  assert.equal(standard.name, 'Test & Runde');
+  assert.equal(standard.pointCount, 3);
+  assert.deepEqual(standard.segments.map(segment => segment.name), ['Test & Runde', 'Test & Runde']);
+  assert.equal(standard.elevationCount, 2);
+  assert.equal(parseGpx(wrap('<name>Legacy</name>' + valid, '1.0', 'http://www.topografix.com/GPX/1/0'), 'old.gpx').name, 'Legacy');
+  const prefixed = parseGpx('<g:gpx version="1.1" xmlns:g="http://www.topografix.com/GPX/1/1"><g:trk><g:trkseg><g:trkpt lon="0" lat="0"><g:ele>0</g:ele></g:trkpt></g:trkseg></g:trk></g:gpx>', 'prefix.gpx');
+  assert.deepEqual(prefixed.segments[0].elevations, [0]);
+  assert.equal(parseGpx(`<gpx version="1.1">${valid}</gpx>`, 'plain.gpx').pointCount, 3);
+  assert.equal(parseGpx(wrap(valid + '<extensions xmlns:x="urn:test"><x:trk><x:trkseg><x:trkpt lon="200" lat="999"/></x:trkseg></x:trk></extensions>'), 'extensions.gpx').pointCount, 3);
+  const mixed = parseGpx(`<?xml version="1.0" encoding="UTF-8"?>\n<!-- export -->\n<gpx version='1.1' xmlns='http://www.topografix.com/GPX/1/1' xmlns:x="urn:x" x:a="1" xml:lang="de"><metadata><name><![CDATA[Ä & <b>]]> &#x31;</name></metadata><trk><trkseg><trkpt lat="1" lon="2"><ele> 5 </ele><ele>ignored</ele><x:e><ele>skipped</ele></x:e></trkpt></trkseg><name>Late</name></trk></gpx>\n`, 'mixed.gpx');
+  assert.equal(mixed.name, 'Ä & <b> 1');
+  assert.equal(mixed.segments[0].name, 'Late');
+  assert.deepEqual(mixed.segments[0].elevations, [5]);
+  const commented = parseGpx(wrap(`<!--${'x'.repeat(10_000_000)}--><trk><name>Zwei\r\nZeilen</name><trkseg><trkpt lon="1" lat="2"/></trkseg></trk>`), 'c.gpx');
+  assert.equal(commented.name, 'Zwei\nZeilen', 'Large comments are skipped and line ends normalized');
+
+  for (const xml of ['', '<gpx>', '<html/>', wrap(valid) + '<gpx/>', wrap(valid) + 'x', wrap(valid).replace('</trk>', '</trK>'),
+    wrap(valid).replace('&amp;', '&'), wrap(valid).replace('&amp;', '&#0;'), wrap(valid).replace('lon="15"', 'lon=15'),
+    wrap(valid).replace('<trk>', '<trk a="1" a="2">'), wrap(valid).replace('<trk>', '<p:trk>').replace('</trk>', '</p:trk>'),
+    wrap(valid).replace('Runde', 'Run<de')]) {
+    assert.throws(() => parseGpx(xml, 'invalid.gpx'), /kein gültiges GPX-XML|Version 1.0 und 1.1/, xml);
+  }
+  for (const xml of [wrap(''), wrap('<wpt lat="47" lon="15"/>'), wrap('<rte><rtept lat="47" lon="15"/></rte>'),
+    wrap(valid, '2.0'), wrap(valid, '1.1', 'urn:not-gpx'),
+    wrap(valid.replace('lon="15"', 'lon=""')), wrap(valid.replace('lat="47"', 'lat="91"')),
+    wrap(valid.replace('lon="15"', 'lon="Infinity"')), wrap(valid.replace('lon="15"', 'lon="0x10"')),
+    wrap(valid.replace('<ele>100</ele>', '<ele/>')), wrap(valid.replace('<ele>100</ele>', '<ele>NaN</ele>')),
+    '<!DOCTYPE gpx [<!ENTITY x "hello">]>' + wrap(valid)]) {
+    assert.throws(() => parseGpx(xml, 'invalid.gpx'), undefined, xml);
+  }
+});
+
 test('GPX distance and ascent exclude jumps between track segments', () => {
   const segments = [
     segment([[15, 47], [15.01, 47]], [100, 120]),
@@ -31,6 +67,7 @@ test('GPX distance and ascent exclude jumps between track segments', () => {
   assert.equal(track.geojson.features.length, 2);
   assert.equal(track.pointCount, 4);
   assert.equal(track.profile.path.match(/M/g).length, 2);
+  assert.equal(track.profile.areaPath.match(/Z/g).length, 2, 'Area fill does not bridge separate profile runs');
   assert.strictEqual(track.segments, segments);
 });
 
@@ -73,7 +110,20 @@ test('long tracks retain all data and keep the elevation SVG bounded with extrem
   assert.equal(track.segments[0].elevations.length, length);
   assert.equal(track.profile.maximum, 9999);
   assert.ok(track.profile.path.length < 25000);
+  assert.ok(track.profile.areaPath.length < 26000, 'Area fill stays bounded for long tracks');
   assert.match(track.profile.path, /,10\.0/);
+});
+
+test('downsampled profiles keep heights beside missing values without bridging gaps', () => {
+  const length = 10000;
+  const coordinates = Array.from({ length }, (_, i) => [15 + i / 10000, 47]);
+  const elevations = Array.from({ length }, (_, i) => i % 20 === 0 || (i >= 4000 && i < 6000) ? null : 300 + i % 7);
+  const { profile } = buildGpxTrack('Gaps', 'gaps.gpx', [segment(coordinates, elevations)]);
+  const points = [...profile.path.matchAll(/([ML])([\d.]+),/g)].map(([, command, x]) => ({ command, x: Number(x) }));
+  assert.ok(points.length > 480, 'Every chart column with heights stays visible');
+  assert.ok(profile.path.length < 25000 && profile.areaPath.length < 26000);
+  assert.ok(points.every((point, i) => point.command === 'M' || !(points[i - 1].x < 121 && point.x > 179)),
+    'The line does not bridge the missing block');
 });
 
 test('polar viewport bounds and nearly antipodal distances remain finite', () => {

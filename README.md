@@ -15,10 +15,12 @@ Austria. The planner currently has a German interface.
 - Drag points or route sections, with undo and redo.
 - Inspect distance, ascent, elevation and surface types along the route.
 - Highlight individual surface sections on the map.
-- Switch between street maps, aerial imagery with street names, and a local road map.
+- Choose a street, road-cycling, terrain or simplified road map, plus fast and detailed aerial views with street names.
+- Switch on cycle paths, drinking-water sources, bicycle services, food stops and railway stations over any map.
 - Save, reopen, rename and duplicate routes in a local route collection.
 - Back up editable routes as RichiRoute files and download calculated tracks as GPX.
 - Import GPX tracks with direction arrows, a linked elevation profile, and height or gradient colours.
+- Estimate GPX surface materials on demand, with unknown sections kept separate.
 
 Routing uses a local BRouter engine with a road-cycling profile. It prefers paved
 roads, but unpaved sections can still occur. Missing surface information remains
@@ -41,8 +43,8 @@ npm run dev:local
 ```
 
 Open **http://127.0.0.1:5173/**. Click the map to place a start and destination,
-then drag the route to choose different roads. Ctrl+C stops the planner and
-routing engine. The launcher is included in `scripts/start-local.sh`.
+then drag the route to choose different roads. Ctrl+C stops the planner,
+routing engine, search and map services. The launcher is included in `scripts/start-local.sh`.
 
 Without the routing bundle, the frontend and unit tests can still be built
 from a clone with the required Node version:
@@ -59,9 +61,25 @@ npm run bench:build
 native service. The Docker configuration under `experiments/routing/` preserves
 an earlier comparison engine and does not serve the current planner's profile.
 
-Route calculation stays on your computer. Street maps and aerial imagery need
-an internet connection. The local road map needs the optional GraphHopper
-comparison service. Address search needs a separate local Photon service.
+Route calculation, European street maps and European address search run locally
+once their datasets are installed. Run `npm run search:setup` and
+`npm run maps:setup`, `npm run terrain:setup` and `npm run imagery:setup` before the first `npm run dev:local`; the initial downloads
+are large. See [local development](docs/local-development.md#european-map-data)
+for storage, coverage and update instructions. Search has no automatic public
+fallback. The aerial view combines a local European Sentinel overview with
+detailed photographs in Austria, Switzerland and France, with regional detail
+from Graz and Styria. Dense screens request finer imagery where available.
+New detail imagery needs internet; cached tiles and explicitly saved areas work offline. See
+[imagery and offline areas](docs/local-development.md#european-imagery).
+European map coverage does not extend BRouter's installed routing coverage.
+The map selector also offers **OpenStreetMap Standard** and **OpenFreeMap
+Liberty, Bright, Positron and Dark**. These optional online maps need no account
+or API key. They contact their providers only when selected; the local maps
+remain the default. See [map choices](docs/local-development.md#online-map-choices).
+Water, bicycle-service and railway-station overlays use a separate local OSM extract. Their
+installed coverage and data date appear under **Rad-Infos**; the initial extract
+covers Austria. See [cycling overlays](docs/local-development.md#cycling-overlays)
+for setup and updates.
 
 ## Routing development
 
@@ -94,5 +112,7 @@ and a named route collection. Download RichiRoute backups to keep editable copie
 outside the browser; clearing browser data removes locally stored routes.
 
 Built with Vue 3, TypeScript, Pinia and MapLibre GL JS. Routing data comes from
-OpenStreetMap; street maps and aerial imagery come from basemap.at. Provider
-attribution is displayed on the map.
+OpenStreetMap. The planner serves its own [Protomaps](https://protomaps.com/)
+vector tiles, fonts and symbols. Photon supplies local address search. Imagery
+comes from Copernicus Sentinel, basemap.at, swisstopo and IGN, with attribution
+on the map. The historical comparison map still uses basemap.at.

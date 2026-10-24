@@ -214,21 +214,18 @@ test('reordering stops keeps shape IDs and every unaffected leg unchanged', () =
 test('surface display splits within a leg but keeps point IDs instead of geometry indexes', () => {
   const coordinates = Array.from({ length: 5 }, (_, index) => [15.4 + index * .01, 47.05 + index * .01]);
   const segments = getSegments({
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates },
-      properties: {
-        legId: legId('start', 'end'),
-        fromId: 'start',
-        toId: 'end',
-        status: 'routed',
-        surfaces: [
-          { fromIndex: 0, toIndex: 2, surface: 'asphalt' },
-          { fromIndex: 2, toIndex: 4, surface: 'unpaved' },
-        ],
-      },
-    }],
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates },
+    properties: {
+      legId: legId('start', 'end'),
+      fromId: 'start',
+      toId: 'end',
+      status: 'routed',
+      surfaces: [
+        { fromIndex: 0, toIndex: 2, surface: 'asphalt' },
+        { fromIndex: 2, toIndex: 4, surface: 'unpaved' },
+      ],
+    },
   });
 
   assert.deepEqual(segments.map((segment) => segment.properties.surface), ['asphalt', 'unpaved']);

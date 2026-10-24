@@ -1,4 +1,4 @@
-:root { font-family: system-ui, sans-serif; color: #19343c; background: #f3f7f5; }
+:root { font-family: system-ui, sans-serif; color: #243b32; background: #f7f8f6; font-synthesis: none; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
@@ -29,3 +29,7 @@ body { margin: 0; }
 }
 .route-marker--preview { background: #b33c4b; pointer-events: none; }
 .route-marker:active { cursor: grabbing; }
+.cycling-popup { font: .8rem/1.45 system-ui, sans-serif; color: #243b32; padding: .25rem; }
+.cycling-popup strong { display: block; padding-right: 1rem; font-size: .9rem; }
+.cycling-popup p { margin: .45rem 0; }
+.cycling-popup a { color: #086c78; }

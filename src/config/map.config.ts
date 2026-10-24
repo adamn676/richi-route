@@ -1,3 +1,4 @@
+export const MAP_LABELS_ANCHOR = 'map-labels-anchor';
 export const SEGMENTS_SOURCE_ID = 'segments-source';
 export const SEGMENTS_OUTLINE_LAYER = 'segments-outline';
 export const SEGMENTS_ROUTE_LAYER = 'segments-routed';

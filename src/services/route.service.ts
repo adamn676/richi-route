@@ -6,17 +6,21 @@ const maxSnapDistance = 250;
 const unavailableMessage = 'Der lokale Routing-Dienst ist nicht erreichbar. Bitte den Routing-Dienst starten und erneut versuchen.';
 const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.';
 const waiting: (() => void)[] = [];
+const backgroundWaiting: (() => void)[] = [];
 let active = 0;
 
 function pump(): void {
-  while (active < routingConcurrency && waiting.length) waiting.shift()!();
+  while (active < routingConcurrency && (waiting.length || backgroundWaiting.length)) {
+    (waiting.length ? waiting : backgroundWaiting).shift()!();
+  }
 }
 
-function withSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
+function withSlot<T>(signal: AbortSignal, work: () => Promise<T>, background = false): Promise<T> {
+  const queue = background ? backgroundWaiting : waiting;
   return new Promise((resolve, reject) => {
     const cancel = () => {
-      const index = waiting.indexOf(start);
-      if (index >= 0) waiting.splice(index, 1);
+      const index = queue.indexOf(start);
+      if (index >= 0) queue.splice(index, 1);
       signal.removeEventListener('abort', cancel);
       reject(signal.reason);
     };
@@ -27,14 +31,14 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
       void Promise.resolve().then(work).then(resolve, reject).finally(() => { active--; pump(); });
     };
     if (signal.aborted) { reject(signal.reason); return; }
-    waiting.push(start);
+    queue.push(start);
     signal.addEventListener('abort', cancel, { once: true });
     pump();
   });
 }
 
-async function request(from: Coord, to: Coord, signal: AbortSignal): Promise<unknown> {
-  const params = new URLSearchParams({ profile: routingProfile, lonlats: [from.join(','), to.join(',')].join('|'), format: 'geojson', alternativeidx: '0' });
+async function request(points: Coord[], signal: AbortSignal, background = false): Promise<unknown> {
+  const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0' });
   // Guide the initial search and its refinement; road costs stay in the profile.
   for (const [name, value] of Object.entries(routingParameters)) params.set(`profile:${name}`, String(value));
   return withSlot(signal, async () => {
@@ -59,7 +63,11 @@ async function request(from: Coord, to: Coord, signal: AbortSignal): Promise<unk
       throw new Error(`Die Route konnte nicht berechnet werden (HTTP ${response.status}). Bitte erneut versuchen.`);
     }
     return response.json();
-  });
+  }, background);
+}
+
+export async function traceGpxPortion(points: Coord[], signal: AbortSignal) {
+  return parseBRouterLeg(await request(points, signal, true));
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {
@@ -70,13 +78,13 @@ function checkSnap(requested: Coord, snapped: Coord): void {
 
 export const routingEngine: RoutingEngine = {
   async snap(coord, signal) {
-    const { coordinates } = parseBRouterLine(await request(coord, coord, signal));
+    const { coordinates } = parseBRouterLine(await request([coord, coord], signal));
     const snapped = coordinates[0];
     checkSnap(coord, snapped);
     return snapped;
   },
   async routeLeg(from, to, signal) {
-    const leg = parseBRouterLeg(await request(from, to, signal));
+    const leg = parseBRouterLeg(await request([from, to], signal));
     checkSnap(from, leg.coordinates[0]);
     checkSnap(to, leg.coordinates.at(-1)!);
     return { ...leg, routingPolicy: routingPolicyVersion };

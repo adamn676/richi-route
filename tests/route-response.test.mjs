@@ -17,7 +17,7 @@ test('BRouter message endpoints delimit surfaces; missing tags and unmatched tai
     { fromIndex: 0, toIndex: 1, surface: 'asphalt', surfaceTag: 'asphalt' },
     { fromIndex: 1, toIndex: 2, surface: 'unknown' },
   ]);
-  const segments = getSegments({ features: [{ geometry: { coordinates: leg.coordinates }, properties: { status: 'routed', surfaces: leg.surfaces } }] });
+  const segments = getSegments({ geometry: { coordinates: leg.coordinates }, properties: { status: 'routed', surfaces: leg.surfaces } });
   assert.equal(segments.at(-1).properties.surface, 'unknown');
   assert.deepEqual(segments.at(-1).geometry.coordinates.at(-1), [15.003, 47]);
 });

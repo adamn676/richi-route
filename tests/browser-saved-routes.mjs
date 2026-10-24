@@ -204,24 +204,24 @@ try {
 
   // Edits made while a recovery transaction is pending must not be replaced on completion.
   await page.evaluate(() => {
-    window.originalDatabaseOpen = IDBFactory.prototype.open;
-    IDBFactory.prototype.open = function(...args) {
-      const request = window.originalDatabaseOpen.apply(this, args);
-      request.addEventListener('success', event => {
-        event.stopImmediatePropagation();
-        window.releaseRecovery = () => request.onsuccess.call(request, event);
-      }, { once: true });
-      return request;
+    window.originalTransaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function(stores, ...args) {
+      const tx = window.originalTransaction.call(this, stores, ...args);
+      if (stores.includes('payloads')) {
+        IDBDatabase.prototype.transaction = window.originalTransaction;
+        tx.addEventListener('complete', event => {
+          event.stopImmediatePropagation();
+          window.releaseRecovery = () => tx.oncomplete.call(tx, event);
+        }, { once: true });
+      }
+      return tx;
     };
   });
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await page.waitForFunction(() => Boolean(window.releaseRecovery));
   await setQuery('Bearbeitung während des Wechsels');
   const duringSwitch = await state();
-  await page.evaluate(() => {
-    IDBFactory.prototype.open = window.originalDatabaseOpen;
-    window.releaseRecovery();
-  });
+  await page.evaluate(() => window.releaseRecovery());
   await page.getByRole('alert').filter({ hasText: 'während des Speicherns geändert' }).waitFor();
   assert.deepEqual(JSON.parse(await state()), JSON.parse(duringSwitch));
 

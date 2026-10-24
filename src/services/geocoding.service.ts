@@ -11,7 +11,9 @@ export interface Place {
   };
 }
 
-const baseUrl = '/geocoding';
+const baseUrl = (import.meta.env?.VITE_GEOCODING_URL?.trim() || '/geocoding').replace(/\/+$/, '');
+export const usesLocalGeocoding = baseUrl === '/geocoding';
+const unavailableMessage = 'Adresssuche nicht erreichbar. Bitte später erneut versuchen oder den Punkt auf der Karte setzen.';
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -30,11 +32,14 @@ function parsePlace(value: unknown): Place {
   const coordinates = geometry?.coordinates;
   if (
     !properties ||
+    geometry?.type !== 'Point' ||
     !Array.isArray(coordinates) ||
     typeof coordinates[0] !== 'number' ||
     typeof coordinates[1] !== 'number' ||
     !Number.isFinite(coordinates[0]) ||
-    !Number.isFinite(coordinates[1])
+    !Number.isFinite(coordinates[1]) ||
+    Math.abs(coordinates[0]) > 180 ||
+    Math.abs(coordinates[1]) > 90
   ) {
     throw new Error('Der Adressdienst lieferte ungültige Ortsdaten.');
   }
@@ -61,11 +66,22 @@ function parsePlace(value: unknown): Place {
   };
 }
 
-async function search(path: string, params: URLSearchParams, signal: AbortSignal): Promise<Place[]> {
-  const response = await fetch(`${baseUrl}/${path}?${params}`, {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
-  });
-  if (!response.ok) throw new Error('Lokale Adresssuche nicht verfügbar. Bitte den Punkt auf der Karte setzen.');
+async function search(params: URLSearchParams, signal: AbortSignal): Promise<Place[]> {
+  signal.throwIfAborted();
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/?${params}`, {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+      referrerPolicy: 'no-referrer',
+      credentials: 'omit',
+    });
+  } catch (error) {
+    signal.throwIfAborted();
+    throw new Error(error instanceof Error && error.name === 'TimeoutError'
+      ? 'Die Adresssuche dauert zu lange. Bitte erneut versuchen.' : unavailableMessage, { cause: error });
+  }
+  if (response.status === 429) throw new Error('Zu viele Suchanfragen. Bitte kurz warten und erneut suchen.');
+  if (!response.ok) throw new Error(unavailableMessage);
   const data: unknown = await response.json();
   const features = record(data)?.features;
   if (!Array.isArray(features)) throw new Error('Der Adressdienst lieferte keine gültige Ergebnisliste.');
@@ -74,18 +90,16 @@ async function search(path: string, params: URLSearchParams, signal: AbortSignal
 
 export async function forwardGeocode(query: string, signal: AbortSignal): Promise<Place[]> {
   if (query.trim().length < 3) throw new Error('Bitte mindestens drei Zeichen eingeben.');
-  const places = await search('api', new URLSearchParams({
+  const places = await search(new URLSearchParams({
     q: query.trim(),
     lang: 'de',
     limit: '8',
-    lon: '15.4395',
-    lat: '47.0707',
   }), signal);
-  const labels = new Set<string>();
+  const seen = new Set<string>();
   return places.filter((place) => {
-    const key = place.label.toLocaleLowerCase('de-AT');
-    if (labels.has(key)) return false;
-    labels.add(key);
+    const key = `${place.label.toLocaleLowerCase('de-AT')}|${place.coord.join(',')}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }

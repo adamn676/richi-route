@@ -1,0 +1,80 @@
+{
+  "revision": "europe-2026-q2-v1",
+  "bounds": [
+    -25,
+    34,
+    45,
+    72
+  ],
+  "cacheBytes": 2147483648,
+  "reserveBytes": 16106127360,
+  "sentinel": {
+    "baseUrl": "https://s3.us-west-2.amazonaws.com/us-west-2.opendata.source.coop/tge-labs/sentinel-2-quarterly-cloudless-mosaics/2026/Q2/",
+    "manifestUrl": "https://s3.us-west-2.amazonaws.com/us-west-2.opendata.source.coop/tge-labs/sentinel-2-quarterly-cloudless-mosaics/manifest/manifest_2026_Q2.parquet",
+    "manifestSha256": "50979551c146d5afb7a6c4b13c9cdd2c937a3becc178dd1b2d56d4d4d96e4b99",
+    "attribution": "Contains modified Copernicus Sentinel data 2026 · Taylor Geospatial Engine"
+  },
+  "countries": [
+    {
+      "id": "AUT",
+      "name": "Österreich",
+      "maxzoom": 20,
+      "url": "https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/{z}/{y}/{x}.jpeg",
+      "attribution": "Grundkarte: <a href=\"https://basemap.at/\">basemap.at</a>",
+      "license": "CC BY 4.0",
+      "boundaryUrl": "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/AUT/ADM0/geoBoundaries-AUT-ADM0.geojson",
+      "boundarySha256": "ae3048c48e97713a4b06481eb3793d4ae85c14799218851d1ff0cd5d8dc66d1b",
+      "boundaryLicense": "CC BY-SA 2.0; Federal Office for Metrology and Survey, Austria; geoBoundaries"
+    },
+    {
+      "id": "FRA",
+      "name": "Frankreich",
+      "maxzoom": 19,
+      "url": "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM_0_19&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}",
+      "attribution": "<a href=\"https://www.data.gouv.fr/datasets/bd-ortho-r\">IGN BD ORTHO</a>",
+      "license": "Licence Ouverte 2.0",
+      "boundaryUrl": "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/FRA/ADM0/geoBoundaries-FRA-ADM0.geojson",
+      "boundarySha256": "23f47cf0a5e122f4179825cac36ec5affc30bc84552aff65357b301705cac91c",
+      "boundaryLicense": "CC0; geoBoundaries"
+    },
+    {
+      "id": "CHE",
+      "name": "Schweiz",
+      "maxzoom": 20,
+      "url": "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage-product/default/current/3857/{z}/{x}/{y}.png",
+      "attribution": "<a href=\"https://www.swisstopo.admin.ch/en/orthoimage-swissimage-10\">©swisstopo</a>",
+      "license": "swisstopo OGD terms; attribution required",
+      "boundaryUrl": "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/CHE/ADM0/geoBoundaries-CHE-ADM0.geojson",
+      "boundarySha256": "3eb2414cea931ee2c2927d718b8ef57b4e492543bd8a34af4233e1d43007a55d",
+      "boundaryLicense": "swisstopo OGD terms; geoBoundaries"
+    }
+  ],
+  "regions": [
+    {
+      "id": "AT-STYRIA",
+      "name": "Steiermark",
+      "minzoom": 16,
+      "maxzoom": 20,
+      "url": "https://gis.stmk.gv.at/image/rest/services/OGD_DOP/Orthofotos_akt/ImageServer/exportImage?bbox={bbox}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&f=image&interpolation=RSP_BilinearInterpolation",
+      "attribution": "<a href=\"https://data.steiermark.at/\">© Land Steiermark · GIS-Steiermark</a>",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://www.landesentwicklung.steiermark.at/cms/ziel/143660187/DE/",
+      "boundaryUrl": "https://gis.stmk.gv.at/arcgis/rest/services/INSPIRE/AT_0023_04_Verwaltungseinheiten/MapServer/0/query?where=1%3D1&outFields=OBJECTID&outSR=4326&f=geojson",
+      "boundarySha256": "f8a981dc60486a70693dafbcd25e5a5b0855597177674cf6b4d63601df645873",
+      "boundaryLicense": "CC BY 4.0; Land Steiermark"
+    },
+    {
+      "id": "AT-GRAZ",
+      "name": "Graz",
+      "minzoom": 16,
+      "maxzoom": 20,
+      "url": "https://geodaten.graz.at/arcgis/rest/services/OGD/LUFTBILD_WMS/MapServer/export?bbox={bbox}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&f=image&transparent=true&layers=show:4&dpi=192",
+      "attribution": "Datenquelle: Stadt Graz – <a href=\"https://data.graz.gv.at/\">data.graz.gv.at</a>",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://data.graz.gv.at/graz/orthophotos-graz-2/",
+      "boundaryUrl": "https://geodaten.graz.at/arcgis/rest/services/OGD/Orthofoto_WMS/MapServer/1/query?where=1%3D1&outFields=%2A&outSR=4326&f=geojson",
+      "boundarySha256": "b0583c87aad6aedcf0a830ff937074f15bb9747478ef3fa1bfa15a87a47565de",
+      "boundaryLicense": "CC BY 4.0; Stadt Graz"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 <template>
   <div class="planner">
     <header class="planner__header">
-      <span class="planner__eyebrow">GRAZ · RENNRAD</span>
+      <span class="planner__eyebrow">Rennrad-Routenplaner</span>
       <h1>RichiRoute</h1>
-      <p>Lokales Rennrad-Routing · bevorzugt befestigte Wege.</p>
+      <p>Bevorzugt befestigte Wege.</p>
     </header>
 
     <div class="planner__draft" aria-live="polite">
@@ -15,11 +15,12 @@
     <SavedRoutes ref="savedRoutes" />
     <GpxImport />
 
+    <template v-if="!gpxReference.track || routeStore.route">
     <section class="planner__summary" aria-label="Streckendaten" aria-live="polite">
       <div><strong>{{ distanceLabel }}</strong><span>Distanz</span></div>
       <div><strong>{{ ascentLabel }}</strong><span>Aufstieg</span></div>
     </section>
-    <ElevationProfile :points="routeStore.points" :legs="routeStore.legs" />
+    <ElevationProfile />
     <div class="planner__legend" aria-label="Oberflächenfarben">
       <span><i class="surface asphalt" />Asphalt</span>
       <span><i class="surface paved" />Befestigt</span>
@@ -30,6 +31,7 @@
     </div>
 
     <SurfaceDetails />
+    </template>
 
     <p v-for="notice in routingNotices" :key="notice.id" class="planner__hint" role="status">
       {{ notice.text }}
@@ -44,6 +46,10 @@
       <h2>Streckenpunkte</h2>
       <span>{{ routeStore.pendingLegCount || routeStore.pendingSnapCount ? 'Berechnung läuft …' : 'Klick auf die Karte' }}</span>
     </div>
+    <p class="planner__help">
+      <template v-if="usesLocalGeocoding">Lokale Adresssuche · Europa</template>
+      <template v-else>Adresssuche über den konfigurierten Suchdienst.</template>
+    </p>
     <ol class="planner__stops">
       <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop">
         <div class="planner__stop-head">
@@ -123,7 +129,7 @@
       Karte anklicken: Start, Ziel, dann Stopps. Auf die Linie klicken: Stopp setzen.
       Linie ziehen: Formpunkt setzen. Nur betroffene Abschnitte werden neu berechnet.
     </p>
-    <p class="planner__help">Unbefestigte Abschnitte bleiben möglich und werden farbig markiert. Adresssuche benötigt den optionalen lokalen Suchdienst. Straßenkarte und Luftbilder benötigen Internet.</p>
+    <p class="planner__help">Unbefestigte Abschnitte bleiben möglich und werden farbig markiert. Luftbilder: Details in Österreich, Schweiz und Frankreich, sonst Satellitenübersicht. Neue Detailbilder benötigen Internet.</p>
     <p class="planner__credit">Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende</a></p>
   </div>
 </template>
@@ -138,11 +144,14 @@ import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
 import GpxImport from '@/components/ui/GpxImport.vue';
+import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { saveDraftNow } from '@/services/draft.service';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
+import { usesLocalGeocoding } from '@/services/geocoding.service';
 
 const routeStore = useRouteStore();
+const gpxReference = useGpxReferenceStore();
 const savedRoutes = ref<InstanceType<typeof SavedRoutes>>();
 function loadWesternLoop(): void {
   void savedRoutes.value?.newRoute(westernLoop.coords, westernLoop.shapeIndices);
@@ -229,7 +238,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__header p, .planner__help { color: #60757b; font-size: .82rem; line-height: 1.5; margin: .2rem 0 0; }
 .planner__eyebrow { font-size: .68rem; letter-spacing: .15em; font-weight: 800; color: #0d7d72; }
 .planner__summary { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
-.planner__summary > div { display: grid; gap: .1rem; border: 1px solid #dde7e5; border-radius: .75rem; padding: .75rem .9rem; background: white; }
+.planner__summary > div { display: grid; gap: .1rem; border-bottom: 1px solid #e5eae6; padding: .65rem 0; background: white; }
 .planner__summary strong { font-size: 1.3rem; letter-spacing: -.04em; }
 .planner__summary span, .planner__heading span { font-size: .73rem; color: #62777b; }
 .planner__legend { display: flex; flex-wrap: wrap; column-gap: .75rem; row-gap: .4rem; }

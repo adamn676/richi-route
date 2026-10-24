@@ -8,7 +8,7 @@ export interface GpxSegment {
 }
 
 interface ProfileSample { distance: number; height: number; index: number; run: number }
-interface ProfileBucket { run: number; first: ProfileSample; last: ProfileSample; min: ProfileSample; max: ProfileSample }
+interface ProfileBucket { first: ProfileSample; last: ProfileSample; min: ProfileSample; max: ProfileSample }
 
 export function buildGpxTrack(name: string, fileName: string, segments: GpxSegment[]) {
   let distance = 0, pointCount = 0, elevationCount = 0, ascent = 0, run = 0;
@@ -59,13 +59,12 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     throw new Error('Die GPX-Höhenwerte sind für eine Auswertung zu groß.');
   }
 
-  // Bound the SVG work by chart width, retaining extrema within continuous runs.
+  // Bound the SVG work by chart width, retaining extrema; runs still break the path at missing heights.
   const buckets: (ProfileBucket | undefined)[] = Array(300);
   for (const sample of samples) {
     const index = distance > 0 ? Math.min(299, Math.floor(sample.distance / distance * 300)) : 0;
     const bucket = buckets[index];
-    if (!bucket) buckets[index] = { run: sample.run, first: sample, last: sample, min: sample, max: sample };
-    else if (bucket.run !== sample.run) bucket.run = -1;
+    if (!bucket) buckets[index] = { first: sample, last: sample, min: sample, max: sample };
     else {
       bucket.last = sample;
       if (sample.height < bucket.min.height) bucket.min = sample;
@@ -73,20 +72,27 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     }
   }
   const selected = samples.length <= 1200 ? samples : buckets.flatMap(bucket =>
-    !bucket || bucket.run < 0 ? [] : [...new Set([bucket.first, bucket.min, bucket.max, bucket.last])].sort((a, b) => a.index - b.index));
-  let path = '', previousRun = -1;
+    !bucket ? [] : [...new Set([bucket.first, bucket.min, bucket.max, bucket.last])].sort((a, b) => a.index - b.index));
+  let path = '', areaPath = '', previousRun = -1, endX = 0;
   for (const sample of selected) {
     const x = 5 + (distance > 0 ? sample.distance / distance * 290 : 0);
     const y = 78 - (sample.height - minimum) / Math.max(1, maximum - minimum) * 68;
+    if (sample.run !== previousRun) {
+      if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},84 Z `;
+      areaPath += `M${x.toFixed(1)},84 `;
+    }
+    areaPath += `L${x.toFixed(1)},${y.toFixed(1)} `;
     path += `${sample.run === previousRun ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
     if (sample.run !== previousRun) path += 'l0.01,0 ';
     previousRun = sample.run;
+    endX = x;
   }
+  if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},84 Z`;
   const mapLatitude = (latitude: number) => Math.max(-85.051129, Math.min(85.051129, latitude));
   return {
     name, fileName, segments, distances, pointCount, elevationCount, distanceMeters: distance,
     ascentMeters: elevationCount === pointCount && pointCount > segments.length ? ascent : null,
-    profile: elevationCount ? { minimum, maximum, path } : null,
+    profile: elevationCount ? { minimum, maximum, path, areaPath } : null,
     bounds: [[west, mapLatitude(south)], [east, mapLatitude(north)]] as [Coord, Coord],
     geojson: { type: 'FeatureCollection', features } as FeatureCollection<LineString | Point>,
   };

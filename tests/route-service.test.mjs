@@ -61,3 +61,26 @@ test('network failure and timeout have distinct messages; cancellation stays can
   controller.abort();
   await assert.rejects(routingEngine.snap(to, controller.signal), error => error === controller.signal.reason);
 });
+
+test('foreground routing takes the next slot ahead of queued surface lookup', async t => {
+  const { traceGpxPortion } = await import('../src/services/route.service.ts');
+  const releases = [], started = [];
+  t.mock.method(globalThis, 'fetch', url => new Promise(resolve => {
+    const coords = new URL(url, 'http://localhost').searchParams.get('lonlats').split('|').map(p => p.split(',').map(Number));
+    started.push(coords[0][0]);
+    releases.push(() => resolve(Response.json({ features: [{ geometry: { type: 'LineString', coordinates: coords }, properties: { 'track-length': '100' } }] })));
+  }));
+  const signal = new AbortController().signal;
+  const running = Array.from({ length: 6 }, (_, i) => routingEngine.routeLeg([i, 47], [i + .01, 47], signal));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const background = traceGpxPortion([[10, 47], [10.01, 47]], signal);
+  const foreground = routingEngine.routeLeg([11, 47], [11.01, 47], signal);
+  releases.shift()();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(started, [0, 1, 2, 3, 4, 5, 11]);
+  releases.shift()();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(started.at(-1), 10);
+  releases.splice(0).forEach(release => release());
+  await Promise.all([...running, background, foreground]);
+});

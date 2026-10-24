@@ -55,7 +55,7 @@ try {
     assert.ok(original.reduce((sum, leg) => sum + leg.coordinates.length, 0) > 7000);
     assert.ok(original.every(leg => leg.elevations?.length === leg.coordinates.length && leg.surfaces.length > 0));
     await page.locator('svg[aria-label="Höhenprofil der Route"]').waitFor();
-    const originalProfile = await page.locator('.profile svg path[fill="none"]').getAttribute('d');
+    const originalProfile = await page.locator('.profile .elevation-chart__line').getAttribute('d');
 
     const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: 'GPX herunterladen', exact: true }).click();
@@ -95,7 +95,7 @@ try {
     await ready(page);
     assert.equal(requests - initialRequests, 3, 'Undo does not recalculate');
     assert.equal(hash(await geometry(page)), hash(original));
-    assert.equal(await page.locator('.profile svg path[fill="none"]').getAttribute('d'), originalProfile);
+    assert.equal(await page.locator('.profile .elevation-chart__line').getAttribute('d'), originalProfile);
     assert.deepEqual(errors, []);
     results.push({ name: item.name, distanceKm: distance / 1000, vertices: exported.length, hash: hash(original), initialRequests, editRequests: 3 });
     console.log(`${item.name}: complete drawing, exact GPX, saved reload, local edit and undo passed.`);

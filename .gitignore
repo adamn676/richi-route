@@ -31,6 +31,7 @@ yarn.lock
 
 # Local routing experiment downloads, caches and private results
 .cache/
+__pycache__/
 experiments/routing/.local/
 experiments/routing/dist/
 experiments/routing/browser-artifacts/

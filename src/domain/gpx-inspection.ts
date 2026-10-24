@@ -2,7 +2,7 @@ import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type { Coord } from './route-model.ts';
 import type { GpxTrack } from './gpx-track.ts';
 
-export type GpxColorMode = 'plain' | 'elevation' | 'gradient';
+export type GpxColorMode = 'plain' | 'elevation' | 'gradient' | 'surface';
 export const unknownGpxColor = '#87939a';
 export const elevationColors = ['#3563b5', '#199b9b', '#74a840', '#db9d29', '#bd3c46'];
 export const gradientBands = [
@@ -80,7 +80,7 @@ function colorFor(track: GpxTrack, mode: GpxColorMode, value: number | null): st
   return elevationColors[Math.max(0, Math.min(elevationColors.length - 1, bin))];
 }
 
-export function colorGpxTrack(track: GpxTrack, mode: GpxColorMode, gradients: (number | null)[][]): FeatureCollection<LineString | Point> {
+export function colorGpxTrack(track: GpxTrack, mode: Exclude<GpxColorMode, 'surface'>, gradients: (number | null)[][]): FeatureCollection<LineString | Point> {
   if (mode === 'plain') return track.geojson;
   const features: Feature<LineString | Point>[] = [];
   const blockMeters = Math.max(50, track.distanceMeters / 5000);

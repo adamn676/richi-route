@@ -28,6 +28,7 @@ async function settled() {
   });
 }
 async function drawnFeatures() {
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('segments-source').loaded());
   return page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map
     .getSource('segments-source').serialize().data.features.length);
 }
