@@ -1,73 +1,77 @@
 <template>
-  <section class="library" aria-label="Meine Routen">
-    <details>
-      <summary>Meine Routen <span>{{ entries.length }}</span></summary>
-      <p class="library__help">Routen bleiben in diesem Browser. Lade eine Sicherung herunter, um sie auch außerhalb des Browsers aufzubewahren.</p>
-      <p v-if="active" class="library__help">Änderungen an der geöffneten Route mit „Änderungen speichern“ übernehmen.</p>
-      <form class="library__save" @submit.prevent="save()">
-        <label for="route-name">Routenname</label>
-        <input id="route-name" v-model="name" maxlength="120" placeholder="Zum Beispiel: Feierabendrunde" :disabled="busy" required />
-        <div class="library__actions">
-          <button type="submit" :disabled="busy || !hasDraft || !name.trim()">{{ active ? 'Änderungen speichern' : 'Route speichern' }}</button>
-          <button v-if="active" type="button" :disabled="busy || !hasDraft || !name.trim()" @click="save(true)">Als Kopie speichern</button>
-        </div>
-      </form>
+  <section class="library">
+    <form class="library__form" @submit.prevent="save()">
+      <label for="route-name" class="label">Routenname</label>
+      <input id="route-name" v-model="name" class="field" maxlength="120" placeholder="Zum Beispiel: Feierabendrunde" required />
       <div class="library__actions">
-        <button type="button" :disabled="busy || !hasDraft" @click="download">Sicherung herunterladen</button>
-        <button type="button" :disabled="busy" @click="fileInput?.click()">Sicherung importieren</button>
-        <input ref="fileInput" class="library__file" type="file" accept=".json,application/json" aria-label="RichiRoute-Sicherung auswählen" @change="importSelected" />
+        <button type="submit" class="btn btn--primary" :disabled="busy || !hasDraft || !name.trim()">
+          <IconDeviceFloppy :size="16" aria-hidden="true" />{{ active ? 'Änderungen speichern' : 'Route speichern' }}
+        </button>
+        <button v-if="active" type="button" class="btn" :disabled="busy || !hasDraft || !name.trim()" @click="save(true)">Als Kopie speichern</button>
       </div>
+      <p v-if="active" class="muted">Änderungen an der geöffneten Route mit „Änderungen speichern“ übernehmen.</p>
+    </form>
+
+    <div class="library__group">
+      <p v-if="busy" class="muted" role="status">Routenspeicher wird aktualisiert …</p>
       <div class="library__heading">
-        <h2>Gespeicherte Routen</h2>
-        <button type="button" :disabled="busy" @click="refreshList">Aktualisieren</button>
+        <h2 class="section-title">Gespeicherte Routen <span>{{ entries.length }}</span></h2>
+        <button type="button" class="btn btn--ghost btn--sm" :disabled="busy" @click="refreshList"><IconRefresh :size="16" aria-hidden="true" />Aktualisieren</button>
       </div>
-      <p v-if="!entries.length" class="library__help">Noch keine gespeicherten Routen.</p>
+      <p v-if="!entries.length" class="muted">Noch keine gespeicherten Routen. Plane eine Route und gib ihr oben einen Namen.</p>
       <ul v-else class="library__list">
-        <li v-for="entry in entries" :key="entry.id" :aria-label="entry.name">
-          <strong>{{ entry.name }}</strong>
-          <span v-if="active?.id === entry.id" class="library__current">Geöffnet</span>
-          <p class="library__help">{{ (entry.distanceMeters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 1 }) }} km · {{ entry.pointCount }} Punkte · {{ dateLabel(entry.updatedAt) }}</p>
-          <form v-if="renaming?.id === entry.id" @submit.prevent="finishRename(entry)">
-            <label :for="`rename-${entry.id}`">Neuer Routenname</label>
-            <input :id="`rename-${entry.id}`" v-model="renameValue" maxlength="120" required :disabled="busy" />
+        <li v-for="entry in entries" :key="entry.id" :aria-label="entry.name" :class="{ 'library__item--active': active?.id === entry.id }">
+          <div class="library__title">
+            <strong>{{ entry.name }}</strong>
+            <span v-if="active?.id === entry.id" class="library__current">Geöffnet</span>
+          </div>
+          <p class="muted">{{ (entry.distanceMeters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 1 }) }} km · {{ entry.pointCount }} Punkte · {{ dateLabel(entry.updatedAt) }}</p>
+          <form v-if="renaming?.id === entry.id" class="library__form" @submit.prevent="finishRename(entry)">
+            <label :for="`rename-${entry.id}`" class="label">Neuer Routenname</label>
+            <input :id="`rename-${entry.id}`" v-model="renameValue" class="field" maxlength="120" required />
             <div class="library__actions">
-              <button type="submit" :disabled="busy || !renameValue.trim()">Namen speichern</button>
-              <button type="button" :disabled="busy" @click="renaming = undefined">Abbrechen</button>
+              <button type="submit" class="btn btn--primary btn--sm" :disabled="busy || !renameValue.trim()">Namen speichern</button>
+              <button type="button" class="btn btn--sm" :disabled="busy" @click="renaming = undefined">Abbrechen</button>
             </div>
           </form>
-          <div v-else-if="deleting?.id === entry.id">
-            <p class="library__help">„{{ entry.name }}“ aus den gespeicherten Routen löschen?</p>
+          <template v-else-if="deleting?.id === entry.id">
+            <p class="muted">„{{ entry.name }}“ aus den gespeicherten Routen löschen?</p>
             <div class="library__actions">
-              <button type="button" :disabled="busy" @click="finishDelete(entry)">Endgültig löschen</button>
-              <button type="button" :disabled="busy" @click="deleting = undefined">Abbrechen</button>
+              <button type="button" class="btn btn--danger btn--sm" :disabled="busy" @click="finishDelete(entry)">Endgültig löschen</button>
+              <button type="button" class="btn btn--sm" :disabled="busy" @click="deleting = undefined">Abbrechen</button>
             </div>
-          </div>
+          </template>
           <div v-else class="library__actions">
-            <button type="button" :disabled="busy" @click="open(entry)">Öffnen</button>
-            <button type="button" :disabled="busy" @click="duplicate(entry)">Duplizieren</button>
-            <button type="button" :disabled="busy" @click="startRename(entry)">Umbenennen</button>
-            <button type="button" :disabled="busy" @click="deleting = entry; renaming = undefined">Löschen</button>
+            <button type="button" class="btn btn--sm" :disabled="busy" @click="open(entry)"><IconFolderOpen :size="16" aria-hidden="true" />Öffnen</button>
+            <button type="button" class="btn btn--ghost btn--sm" :disabled="busy" @click="duplicate(entry)">Duplizieren</button>
+            <button type="button" class="btn btn--ghost btn--sm" :disabled="busy" @click="startRename(entry)">Umbenennen</button>
+            <button type="button" class="btn btn--ghost btn--sm" :disabled="busy" @click="deleting = entry; renaming = undefined">Löschen</button>
           </div>
         </li>
       </ul>
-    </details>
-    <p v-if="busy" class="library__help" role="status">Routenspeicher wird aktualisiert …</p>
-    <p v-if="error" class="library__error" role="alert">{{ error }}</p>
-    <p v-else-if="message" class="library__help" role="status">{{ message }}</p>
+    </div>
+
+    <div class="library__group">
+      <h2 class="section-title">Sicherung</h2>
+      <p class="muted">Routen bleiben in diesem Browser. Lade eine Sicherung herunter, um sie auch außerhalb des Browsers aufzubewahren.</p>
+      <div class="library__actions">
+        <button type="button" class="btn" :disabled="busy || !hasDraft" @click="download"><IconDownload :size="16" aria-hidden="true" />Sicherung herunterladen</button>
+        <button type="button" class="btn" :disabled="busy" @click="fileInput?.click()"><IconUpload :size="16" aria-hidden="true" />Sicherung importieren</button>
+        <input ref="fileInput" class="library__file" type="file" accept=".json,application/json" aria-label="RichiRoute-Sicherung auswählen" @change="importSelected" />
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef } from 'vue';
-import { useRouteLibrary } from '../../composables/useRouteLibrary';
-import { hasDraftPoints } from '../../domain/route-draft';
+import { nextTick, ref, shallowRef } from 'vue';
+import { IconDeviceFloppy, IconDownload, IconFolderOpen, IconRefresh, IconUpload } from '@/components/icons';
+import type { useRouteLibrary } from '../../composables/useRouteLibrary';
 import type { SavedRouteSummary } from '../../domain/saved-route';
-import { useRouteStore } from '../../stores/route.store';
 
-const store = useRouteStore();
-const { entries, active, name, busy, error, message, save, open, newRoute, rename, duplicate, remove,
-  importFile, download, refreshList } = useRouteLibrary();
-const hasDraft = computed(() => hasDraftPoints(store.points));
+const props = defineProps<{ library: ReturnType<typeof useRouteLibrary> }>();
+const { entries, active, name, busy, error, hasDraft, save, open, rename, duplicate, remove,
+  importFile, download, refreshList } = props.library;
 const fileInput = ref<HTMLInputElement>();
 const renaming = shallowRef<SavedRouteSummary>();
 const deleting = shallowRef<SavedRouteSummary>();
@@ -95,26 +99,20 @@ async function importSelected(event: Event) {
   if (file) await importFile(file);
   input.value = '';
 }
-defineExpose({ newRoute });
 </script>
 
 <style scoped>
-.library { border-block: 1px solid #d8e4e1; padding-block: .75rem; }
-summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
-summary span { float: right; font-weight: 400; color: #60757b; }
-.library__help { color: #60757b; font-size: .76rem; line-height: 1.5; margin: .5rem 0; overflow-wrap: anywhere; }
-.library__save { display: grid; gap: .4rem; margin-block: .75rem; }
-.library label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: .2rem; }
-.library input { width: 100%; min-width: 0; padding: .5rem; border: 1px solid #cddbd9; border-radius: .4rem; background: white; color: #19343c; }
-.library__actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
-.library button { min-height: 2.2rem; padding: .4rem .6rem; font-size: .75rem; border: 1px solid #cddbd9; border-radius: .4rem; background: white; color: #16515a; }
-.library button:hover:not(:disabled) { background: #e9f5f1; border-color: #08796f; }
-.library__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: 1rem; }
-.library h2 { font-size: .85rem; margin: 0; }
-.library__list { list-style: none; margin: .5rem 0 0; padding: 0; max-height: 24rem; overflow-y: auto; }
-.library__list li { padding: .75rem 0; border-top: 1px solid #d8e4e1; }
-.library__list strong { font-size: .85rem; overflow-wrap: anywhere; }
-.library__current { display: inline-block; margin-left: .4rem; color: #0b706c; font-size: .7rem; }
-.library__error { color: #812f23; background: #fff1ed; padding: .6rem; border-radius: .4rem; font-size: .8rem; }
+.library { display: grid; gap: 1.25rem; padding: 1rem var(--gutter) 1.5rem; }
+.library__form, .library__group { display: grid; gap: .5rem; }
+.library__group { padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.library__actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+h2 span { margin-left: .3rem; color: var(--text-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.library__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.library__list { display: grid; gap: .5rem; max-height: 26rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.library__list > li { display: grid; gap: .35rem; padding: .7rem .75rem; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.library__list > li.library__item--active { border-color: var(--accent); background: var(--accent-soft); }
+.library__title { display: flex; align-items: baseline; gap: .5rem; }
+.library__title strong { font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.library__current { color: var(--accent-hover); font-size: .75rem; font-weight: 600; }
 .library__file { display: none; }
 </style>

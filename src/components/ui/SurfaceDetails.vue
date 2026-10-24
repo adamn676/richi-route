@@ -10,7 +10,7 @@
       <div class="surfaces__totals" aria-label="Belag auswählen">
         <button v-for="total in inspection.totals" :key="total.key" type="button"
           :aria-pressed="selectedKey === total.key" @click="selectSurface(total.key)">
-          <i :style="{ background: routeStyle[total.surface] }" aria-hidden="true" />
+          <i class="swatch" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" />
           <span>{{ total.label }}</span><strong>{{ lengthLabel(total.meters) }}</strong>
         </button>
       </div>
@@ -25,8 +25,8 @@
             </button>
           </li>
         </ol>
-        <button v-if="matching.length > visibleCount" class="surfaces__more" type="button" @click="visibleCount += 10">Weitere Abschnitte</button>
-        <button v-if="store.focusedSurface" class="surfaces__more" type="button" @click="store.surfaceFocus = null">Markierung aufheben</button>
+        <button v-if="matching.length > visibleCount" class="btn surfaces__more" type="button" @click="visibleCount += 10">Weitere Abschnitte</button>
+        <button v-if="store.focusedSurface" class="btn surfaces__more" type="button" @click="store.surfaceFocus = null">Markierung aufheben</button>
       </template>
       <p class="surfaces__note">Längen entlang des eingezeichneten Verlaufs, gerundet.</p>
     </details>
@@ -79,21 +79,18 @@ watch(inspection, value => {
 </script>
 
 <style scoped>
-.surfaces { border: 1px solid #dde7e5; border-radius: .7rem; padding: .8rem; background: #fff; }
-summary { cursor: pointer; color: #19343c; font-size: .83rem; }
-summary > span { display: block; margin-top: .35rem; color: #60757b; font-size: .76rem; line-height: 1.4; }
-p { margin: .65rem 0; color: #60757b; font-size: .75rem; line-height: 1.45; }
-h3 { margin: 1rem 0 .3rem; font-size: .8rem; }
-.surfaces__totals { display: grid; gap: .2rem; }
-button { border: 1px solid transparent; border-radius: .35rem; padding: .5rem .35rem; background: transparent; color: #19343c; cursor: pointer; text-align: left; font: inherit; font-size: .76rem; }
-.surfaces__totals button { display: grid; grid-template-columns: .7rem 1fr auto; align-items: center; gap: .4rem; }
-i { width: .7rem; height: .25rem; border-radius: .1rem; }
-button:hover { background: #f3f7f5; }
-button[aria-pressed="true"] { border-color: #08796f; background: #e9f5f1; }
-button:focus-visible, summary:focus-visible { outline: 2px solid #086c78; outline-offset: 2px; }
-.surfaces__sections { list-style: none; margin: 0; padding: 0; display: grid; gap: .2rem; }
-.surfaces__sections button { display: flex; justify-content: space-between; gap: .4rem; width: 100%; }
-strong { font-variant-numeric: tabular-nums; }
-.surfaces__more { margin-top: .5rem; border-color: #cddbd9; margin-right: .3rem; }
-.surfaces__note { font-size: .7rem; margin-bottom: 0; }
+.surfaces { padding: .7rem .8rem; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+summary { cursor: pointer; font-size: .85rem; }
+summary > span { display: block; margin-top: .2rem; color: var(--text-muted); font-size: .75rem; line-height: 1.4; }
+p { margin: .6rem 0; color: var(--text-muted); font-size: .75rem; line-height: 1.45; }
+h3 { margin: .9rem 0 .3rem; font-size: .8rem; }
+.surfaces__totals, .surfaces__sections { display: grid; gap: .15rem; margin: 0; padding: 0; list-style: none; }
+button[aria-pressed] { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .5rem; width: 100%; min-height: 2rem;
+  padding: .35rem .5rem; border: 1px solid transparent; border-radius: var(--radius); background: none; text-align: left; font-size: .78rem; }
+.surfaces__totals button { grid-template-columns: 1rem 1fr auto; }
+button[aria-pressed]:hover { background: var(--surface-muted); }
+button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+.surfaces__more { margin: .5rem .4rem 0 0; }
+.surfaces__note { margin-bottom: 0; }
 </style>

@@ -38,7 +38,7 @@ try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
   await idle();
-  await page.locator('.library summary').click();
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await page.evaluate(async () => {
     const { routingPolicyVersion } = await import('/src/config/routing-policy.ts');
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
@@ -121,7 +121,7 @@ try {
   assert.equal(await list.getByRole('listitem').count(), 3);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
   await page.reload();
-  await page.locator('.library summary').click();
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await waitRows(3);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
   assert.equal(requests, 0);
@@ -227,7 +227,7 @@ try {
 
   const second = await context.newPage();
   await second.goto(origin);
-  await second.locator('.library summary').click();
+  await second.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await second.locator('.library__list > li').first().waitFor();
   const secondEntry = second.locator('.library__list').getByRole('listitem', { name: 'Andere Registerkarte', exact: true });
   await secondEntry.getByRole('button', { name: 'Umbenennen', exact: true }).click();

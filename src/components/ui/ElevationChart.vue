@@ -5,8 +5,8 @@
       <span v-if="!focus" class="elevation-chart__unit">Höhe in m</span>
       <div v-else class="elevation-chart__tooltip" aria-hidden="true">
         <span>{{ formatDistance(focus.distance) }} km</span>
-        <strong>{{ focus.elevation === null ? '–' : Math.round(focus.elevation) }} m</strong>
-        <span :style="{ color: gradientColor }">{{ focus.gradient == null ? '–' : focus.gradient.toLocaleString('de-AT', { maximumFractionDigits: 1, signDisplay: 'exceptZero' }) }} %</span>
+        <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : `${Math.round(focus.elevation)} m` }}</strong>
+        <span v-if="gradientText">{{ gradientText }} %</span>
       </div>
     </div>
     <div class="elevation-chart__plot">
@@ -22,15 +22,15 @@
         @keydown="key" @blur="selectDistance(null)">
         <svg viewBox="0 0 300 88" preserveAspectRatio="none" role="img" :aria-label="chartLabel">
           <defs><linearGradient :id="fillId" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#188c7f" stop-opacity=".28" />
-            <stop offset="1" stop-color="#188c7f" stop-opacity=".04" />
+            <stop offset="0" stop-opacity=".22" />
+            <stop offset="1" stop-opacity=".03" />
           </linearGradient></defs>
-          <path d="M5,10 H295 M5,44 H295 M5,78 H295" fill="none" stroke="#e1e9e5" stroke-width="1" vector-effect="non-scaling-stroke" />
+          <path class="elevation-chart__grid" d="M5,10 H295 M5,44 H295 M5,78 H295" fill="none" vector-effect="non-scaling-stroke" />
           <template v-if="track.profile">
             <path :d="track.profile.areaPath" :fill="`url(#${fillId})`" />
-            <path class="elevation-chart__line" :d="track.profile.path" fill="none" stroke="#127b70" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+            <path class="elevation-chart__line" :d="track.profile.path" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
           </template>
-          <line v-if="focus" :x1="focusX" :x2="focusX" y1="5" y2="84" stroke="#405f56" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+          <line v-if="focus" class="elevation-chart__cursor" :x1="focusX" :x2="focusX" y1="5" y2="84" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
         </svg>
         <span v-if="focus && focusY !== null" class="elevation-chart__position" :style="{ left: `${focusX / 3}%`, top: `${focusY / 88 * 100}%` }" />
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
@@ -56,9 +56,8 @@ const formatDistance = (meters: number) => (meters / 1000).toLocaleString('de-AT
 const focusX = computed(() => 5 + (props.track.distanceMeters ? (focus.value?.distance ?? 0) / props.track.distanceMeters * 290 : 0));
 const focusY = computed(() => focus.value?.elevation == null || !props.track.profile ? null
   : 78 - (focus.value.elevation - props.track.profile.minimum) / Math.max(1, props.track.profile.maximum - props.track.profile.minimum) * 68);
-const gradientColor = computed(() => (focus.value?.gradient ?? 0) > 3 ? '#a35d12' : (focus.value?.gradient ?? 0) < -3 ? '#176ca3' : '#127b70');
-const gradientLabel = computed(() => focus.value?.gradient == null ? 'Steigung unbekannt'
-  : `${focus.value.gradient.toLocaleString('de-AT', { maximumFractionDigits: 1, signDisplay: 'exceptZero' })} % Steigung`);
+const gradientText = computed(() => focus.value?.gradient?.toLocaleString('de-AT', { maximumFractionDigits: 1, signDisplay: 'exceptZero' }));
+const gradientLabel = computed(() => gradientText.value ? `${gradientText.value} % Steigung` : 'Steigung unbekannt');
 const readout = computed(() => {
   if (!focus.value) return 'Noch keine Position gewählt';
   const f = focus.value;
@@ -87,19 +86,22 @@ function key(event: KeyboardEvent) {
 </script>
 
 <style scoped>
-.elevation-chart { margin-top: 1rem; font-size: .75rem; color: #64736d; font-variant-numeric: tabular-nums; }
+.elevation-chart { font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .elevation-chart__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 1.6rem; margin-bottom: .5rem; }
-.elevation-chart__heading > strong { font-weight: 650; color: #243b32; white-space: nowrap; }
+.elevation-chart__heading strong { font-weight: 600; color: var(--text); white-space: nowrap; }
 .elevation-chart__unit { font-size: .68rem; }
 .elevation-chart__tooltip { display: flex; align-items: baseline; gap: .6rem; white-space: nowrap; font-size: .7rem; }
-.elevation-chart__tooltip strong { font-weight: 650; color: #243b32; }
 .elevation-chart__plot { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); grid-template-rows: 8.5rem auto; }
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
 .elevation-chart__altitudes span { position: absolute; right: .55rem; transform: translateY(-50%); }
-.elevation-chart__chart { grid-column: 2; grid-row: 1; position: relative; touch-action: none; cursor: crosshair; border-radius: .25rem; }
+.elevation-chart__chart { grid-column: 2; grid-row: 1; position: relative; touch-action: none; cursor: crosshair; border-radius: var(--radius); }
 .elevation-chart__chart[aria-disabled=true] { cursor: default; opacity: .6; }
 svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.elevation-chart__position { position: absolute; width: 8px; height: 8px; border: 2px solid white; border-radius: 50%; background: #127b70; box-shadow: 0 0 0 1px #127b70; transform: translate(-50%, -50%); pointer-events: none; }
+stop { stop-color: var(--accent); }
+.elevation-chart__grid { stroke: var(--border); }
+.elevation-chart__line { stroke: var(--accent); }
+.elevation-chart__cursor { stroke: var(--text-muted); }
+.elevation-chart__position { position: absolute; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); transform: translate(-50%, -50%); pointer-events: none; }
 .elevation-chart__distances { grid-column: 2; display: flex; justify-content: space-between; padding: .25rem 1.67% 0; font-size: .65rem; }
 .elevation-chart__empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 </style>

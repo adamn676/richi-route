@@ -1,35 +1,113 @@
-:root { font-family: system-ui, sans-serif; color: #243b32; background: #f7f8f6; font-synthesis: none; -webkit-font-smoothing: antialiased; }
+:root {
+  color-scheme: light;
+  --font: system-ui, sans-serif;
+  --bg: #eef1f0;
+  --surface: #fcfcfb;
+  --surface-muted: #f2f5f4;
+  --border: #dde3e1;
+  --border-input: #848f8d;
+  --text: #17262a;
+  --text-muted: #56676b;
+  /* Same green as asphalt on the map (routeStyle.asphalt). */
+  --accent: #187b5a;
+  --accent-hover: #136649;
+  --accent-soft: #e6f2ec;
+  --danger: #a3261b;
+  --danger-soft: #fdf0ee;
+  --warning: #7a5200;
+  --warning-soft: #fff6e0;
+  /* Controls use --radius, panels and popovers --radius-lg. */
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 2px rgb(23 38 42 / .06), 0 6px 20px rgb(23 38 42 / .1);
+  --gutter: 1.25rem;
+  accent-color: var(--accent);
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+@media (max-width: 760px) { :root { --gutter: 1rem; } }
 * { box-sizing: border-box; }
-button, input, select { font: inherit; }
+button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-button:disabled { cursor: default; opacity: .5; }
-:focus-visible { outline: 2px solid #086c78; outline-offset: 3px; }
+button:disabled { cursor: not-allowed; }
+/* An outline, so elevation shadows never hide the focus ring. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 html, body, #app { width: 100%; height: 100%; }
 body { margin: 0; }
 .maplibregl-map { width: 100%; height: 100%; }
+svg.tabler-icon { stroke-width: 1.75; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  min-height: 2.25rem; padding: .4rem .8rem; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); font-size: .85rem; font-weight: 550; line-height: 1.2; white-space: nowrap;
+  transition: background-color .15s, border-color .15s, transform .1s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--border-input); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .45; }
+.btn--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.btn--primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
+.btn--danger { border-color: var(--danger); color: var(--danger); }
+.btn--ghost { border-color: transparent; background: transparent; }
+.btn--ghost:hover:not(:disabled) { border-color: transparent; }
+.btn--sm { min-height: 2rem; padding-inline: .6rem; font-size: .8rem; }
+.btn--icon { width: 2.25rem; padding: 0; }
+.btn--sm.btn--icon { width: 2rem; }
+.btn svg { flex-shrink: 0; }
+.field {
+  width: 100%; min-width: 0; min-height: 2.5rem; padding: .5rem .7rem; border: 1px solid var(--border-input);
+  border-radius: var(--radius); background: #fff; font-size: .9rem;
+}
+.field::placeholder { color: var(--text-muted); }
+.field:focus-visible { border-color: var(--accent); }
+.field:disabled { background: var(--surface-muted); }
+.label { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+.notice { margin: 0; padding: .65rem .75rem; border-radius: var(--radius); font-size: .82rem; line-height: 1.45; }
+.notice--error { color: var(--danger); background: var(--danger-soft); }
+.notice--warning { color: var(--warning); background: var(--warning-soft); }
+.notice--success { color: var(--accent-hover); background: var(--accent-soft); }
+.notice .btn { display: flex; margin-top: .5rem; }
+.muted { margin: 0; color: var(--text-muted); font-size: .8rem; line-height: 1.5; }
+.section-title { margin: 0; font-size: .95rem; font-weight: 650; }
+.popover { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0; }
+.stats dt { color: var(--text-muted); font-size: .78rem; }
+.stats dd { margin: .1rem 0 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: 0; padding: 0; list-style: none; color: var(--text-muted); font-size: .75rem; }
+.legend li { display: inline-flex; align-items: center; gap: .35rem; }
+.swatch { width: 1rem; height: 4px; flex-shrink: 0; border-radius: 2px; }
+.swatch--dashed { height: 0; border-top: 2px dashed; border-radius: 0; }
+.disclosure { color: var(--text-muted); font-size: .8rem; line-height: 1.5; }
+.disclosure summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.disclosure p { margin: .5rem 0 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 .route-marker {
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border: 3px solid white;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid #fff;
   border-radius: 50%;
-  background: #096e69;
-  box-shadow: 0 2px 12px #092e3899;
-  color: white;
-  font: 700 .8rem system-ui, sans-serif;
+  background: var(--accent);
+  box-shadow: 0 1px 6px rgb(23 38 42 / .45);
+  color: #fff;
+  font: 700 .78rem var(--font);
   cursor: grab;
 }
 .route-marker--shape, .route-marker--preview {
-  width: 1.8rem;
-  height: 1.8rem;
-  border: 5px solid white;
-  background: #bd6f28;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 4px solid var(--accent);
+  background: #fff;
 }
-.route-marker--preview { background: #b33c4b; pointer-events: none; }
+.route-marker--preview { border-color: var(--text); pointer-events: none; }
 .route-marker:active { cursor: grabbing; }
-.cycling-popup { font: .8rem/1.45 system-ui, sans-serif; color: #243b32; padding: .25rem; }
+.cycling-popup { font: .8rem/1.45 var(--font); padding: .25rem; }
 .cycling-popup strong { display: block; padding-right: 1rem; font-size: .9rem; }
 .cycling-popup p { margin: .45rem 0; }
-.cycling-popup a { color: #086c78; }
+.cycling-popup a { color: var(--accent); }

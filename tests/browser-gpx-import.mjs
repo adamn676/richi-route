@@ -19,6 +19,7 @@ page.on('pageerror', error => errors.push(error.message));
 const gpx = (body, namespace = 'http://www.topografix.com/GPX/1/1', version = '1.1') => `<gpx version="${version}" xmlns="${namespace}">${body}</gpx>`;
 const point = (lon, lat, ele = '') => `<trkpt lon="${lon}" lat="${lat}">${ele === '' ? '' : `<ele>${ele}</ele>`}</trkpt>`;
 const upload = async (name, contents) => {
+  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
   await page.waitForFunction(() => !document.querySelector('.gpx')?.textContent.includes('GPX wird eingelesen'));
 };

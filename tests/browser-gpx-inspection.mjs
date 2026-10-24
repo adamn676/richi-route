@@ -19,6 +19,7 @@ page.on('pageerror', error => errors.push(error.message));
 const gpx = segments => '<gpx version="1.1"><trk><name>Track prüfen</name>' + segments.map(points => '<trkseg>' + points.map(([lon, lat, height]) =>
   `<trkpt lon="${lon}" lat="${lat}">${height === null ? '' : `<ele>${height}</ele>`}</trkpt>`).join('') + '</trkseg>').join('') + '</trk></gpx>';
 const upload = async segments => {
+  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name: 'inspection.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(gpx(segments)) });
   await page.waitForFunction(() => !document.querySelector('.gpx')?.textContent.includes('GPX wird eingelesen'));
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('gpx-reference'));

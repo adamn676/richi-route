@@ -19,6 +19,6 @@ onBeforeUnmount(() => inspection.focusAt(null));
 </script>
 
 <style scoped>
-.profile { font-size: .78rem; color: #304951; }
-.profile p { margin: .75rem 0 0; color: #67777c; font-size: .77rem; }
+.profile { font-size: .8rem; }
+.profile p { margin: .4rem 0 0; color: var(--text-muted); }
 </style>

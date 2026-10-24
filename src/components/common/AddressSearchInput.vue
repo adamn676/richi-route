@@ -2,6 +2,7 @@
   <div class="address-search">
     <input
       :id="`address-${waypointId}`"
+      class="field"
       type="text"
       autocomplete="off"
       :value="inputValue"
@@ -24,7 +25,7 @@
       ref="popup"
       :id="`suggestions-${waypointId}`"
       role="listbox"
-      class="address-search__results"
+      class="address-search__results popover"
     >
       <li
         v-for="(place, index) in suggestions"
@@ -40,11 +41,11 @@
         {{ place.label }}
       </li>
     </ul>
-    <div v-if="isOpen && errorMessage" ref="popup" class="address-search__feedback" role="alert">{{ errorMessage }}</div>
+    <div v-if="isOpen && errorMessage" ref="popup" class="address-search__feedback popover" role="alert">{{ errorMessage }}</div>
     <div
       v-else-if="isOpen && !isLoading && inputValue.trim().length >= 3 && !suggestions.length && !isWaiting"
       ref="popup"
-      class="address-search__feedback"
+      class="address-search__feedback popover"
       aria-live="polite"
     >
       Keine Adresse gefunden. Du kannst den Punkt auch auf der Karte setzen.
@@ -201,35 +202,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .address-search { position: relative; }
-.address-search input {
-  width: 100%;
-  min-height: 2.6rem;
-  border: 1px solid #cad1d8;
-  border-radius: .65rem;
-  padding: .6rem .75rem;
-  color: #192c36;
-  background: white;
-}
-.address-search input:focus-visible { outline: 2px solid #086c78; outline-offset: 2px; }
-.address-search input:disabled { background: #f3f5f5; }
-.address-search__loading { position: absolute; right: .6rem; top: .7rem; color: #40646c; font-size: .75rem; }
-.address-search__results, .address-search__feedback {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + .2rem);
-  left: 0;
-  right: 0;
-  max-height: 14rem;
-  overflow: auto;
-  margin: 0;
-  padding: .35rem;
-  list-style: none;
-  border: 1px solid #cad1d8;
-  border-radius: .6rem;
-  background: white;
-  box-shadow: 0 8px 28px #17333822;
-}
-.address-search__results li { cursor: pointer; border-radius: .3rem; padding: .55rem .5rem; font-size: .84rem; }
-.address-search__results li:hover, .address-search__results li.is-active { background: #def2f0; }
-.address-search__feedback { color: #a33523; font-size: .8rem; }
+.address-search__loading { position: absolute; right: .7rem; top: .7rem; color: var(--text-muted); font-size: .75rem; }
+.address-search__results, .address-search__feedback { position: absolute; z-index: 20; top: calc(100% + .25rem); left: 0; right: 0;
+  max-height: 14rem; overflow: auto; margin: 0; padding: .3rem; list-style: none; }
+.address-search__results li { cursor: pointer; border-radius: var(--radius); padding: .5rem .55rem; font-size: .85rem; }
+.address-search__results li:hover, .address-search__results li.is-active { background: var(--accent-soft); }
+.address-search__feedback { padding: .55rem .65rem; color: var(--text-muted); font-size: .82rem; }
+.address-search__feedback[role=alert] { color: var(--danger); }
 </style>

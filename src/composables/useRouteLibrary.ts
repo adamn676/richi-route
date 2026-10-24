@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
 import type { Coord } from '../domain/route-model.ts';
 import { exportRouteBackup, importRouteBackup, type SavedRouteSummary } from '../domain/saved-route.ts';
@@ -13,6 +13,7 @@ export function useRouteLibrary() {
   const busy = ref(false);
   const error = ref('');
   const message = ref('');
+  const hasDraft = computed(() => hasDraftPoints(store.points));
   let activePayload = '';
   let channel: BroadcastChannel | undefined;
   let refreshId = 0;
@@ -55,7 +56,7 @@ export function useRouteLibrary() {
   }
 
   async function protectDraft() {
-    if (!hasDraftPoints(store.points)) return;
+    if (!hasDraft.value) return;
     const points = store.points, legs = store.legs;
     const snapshot = payload();
     const alreadySaved = snapshot === activePayload && active.value && await routeLibrary.isCurrent(active.value);
@@ -162,6 +163,6 @@ export function useRouteLibrary() {
   });
   onBeforeUnmount(() => { window.removeEventListener('focus', refreshList); channel?.close(); });
 
-  return { entries, active, name, busy, error, message, save, open, newRoute, rename, duplicate, remove,
+  return { entries, active, name, busy, error, message, hasDraft, save, open, newRoute, rename, duplicate, remove,
     importFile, download, refreshList };
 }

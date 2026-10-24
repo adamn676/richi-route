@@ -1,7 +1,7 @@
 <template>
   <details class="cycling-controls" @keydown.esc="close">
-    <summary>Rad-Infos <span v-if="error" title="Einige Rad-Infos konnten nicht geladen werden">!</span><span v-else-if="selected.length">{{ selected.length }}</span></summary>
-    <div class="cycling-controls__panel">
+    <summary class="btn"><IconBike :size="18" aria-hidden="true" />Rad-Infos <span v-if="error" class="cycling-controls__alert" title="Einige Rad-Infos konnten nicht geladen werden">!</span><span v-else-if="selected.length" class="cycling-controls__count">{{ selected.length }}</span></summary>
+    <div class="cycling-controls__panel popover">
       <fieldset>
         <legend>Auf der Karte anzeigen</legend>
         <label v-for="item in cyclingOverlays" :key="item.id">
@@ -10,12 +10,12 @@
           <span>{{ item.label }}<small>{{ item.hint }}</small></span>
         </label>
       </fieldset>
-      <p v-if="zoom < 12">Zum Anzeigen näher heranzoomen.</p>
-      <p v-else-if="zoom < 14 && selected.includes('food')">Verpflegung erscheint ab Zoom 14.</p>
-      <p v-if="loading" role="status">Rad-Infos werden geladen …</p>
-      <p v-if="error" role="alert">{{ error }} <button type="button" @click="loadPoints">Erneut laden</button></p>
-      <p v-else-if="truncated">Viele Treffer. Für weitere Details näher heranzoomen.</p>
-      <p v-if="updated" class="cycling-controls__date">Trinkwasser, Radservice & Bahnhöfe: {{ coverage }} · {{ new Date(updated).toLocaleDateString('de-AT') }}</p>
+      <p v-if="zoom < 12" class="muted">Zum Anzeigen näher heranzoomen.</p>
+      <p v-else-if="zoom < 14 && selected.includes('food')" class="muted">Verpflegung erscheint ab Zoom 14.</p>
+      <p v-if="loading" class="muted" role="status">Rad-Infos werden geladen …</p>
+      <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="loadPoints">Erneut laden</button></p>
+      <p v-else-if="truncated" class="muted">Viele Treffer. Für weitere Details näher heranzoomen.</p>
+      <p v-if="updated" class="muted">Trinkwasser, Radservice & Bahnhöfe: {{ coverage }} · {{ new Date(updated).toLocaleDateString('de-AT') }}</p>
     </div>
   </details>
 </template>
@@ -23,7 +23,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Popup, type Map, type MapMouseEvent, type GeoJSONSource, type FilterSpecification } from 'maplibre-gl';
-import { cyclingOverlays, cyclingPoiLayers, type CyclingOverlay } from '@/config/cycling-overlays';
+import { IconBike } from '@/components/icons';
+import { cyclingOverlays, cyclingPoiLayers, poiHitBox, type CyclingOverlay } from '@/config/cycling-overlays';
 
 const props = defineProps<{ map: Map | null }>();
 const storageKey = 'richiroute.cycling-overlays';
@@ -64,7 +65,8 @@ function install() {
       : item.id === 'food' ? ['supermarket', 'bakery', 'cafe', 'convenience', 'grocery'] : ['station'];
     const filter: FilterSpecification = ['in', ['get', 'kind'], ['literal', kinds]];
     map.addLayer({ id, type: 'circle', ...source, minzoom: item.minzoom, filter, layout,
-      paint: { 'circle-radius': 6, 'circle-color': item.color, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } }, 'map-labels-top');
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5, 17, 6], 'circle-color': item.color,
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 15, 2] } }, 'map-labels-top');
     map.addLayer({ id: `${id}-labels`, type: 'symbol', ...source, minzoom: Math.max(14, item.minzoom), filter,
       layout: { ...layout, 'text-field': ['coalesce', ['get', 'name'], item.label], 'text-font': ['Noto Sans Regular'],
         'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, .9], 'text-max-width': 12 },
@@ -100,7 +102,7 @@ async function loadPoints() {
 function inspect(event: MapMouseEvent) {
   const map = props.map;
   if (!installed || !map) return;
-  const feature = map.queryRenderedFeatures(event.point, { layers: cyclingPoiLayers })[0];
+  const feature = map.queryRenderedFeatures(poiHitBox(event.point), { layers: cyclingPoiLayers })[0];
   if (!feature || feature.geometry.type !== 'Point') return;
   const p = feature.properties, kind = p.kind;
   const title = kind === 'water' ? 'Trinkwasser' : kind === 'repair' ? 'Reparaturstation' : kind === 'shop' ? 'Fahrradgeschäft'
@@ -148,19 +150,19 @@ onBeforeUnmount(() => detach(props.map));
 </script>
 
 <style scoped>
-.cycling-controls { color: #243b32; }
-summary { cursor: pointer; padding: .45rem; border: 1px solid #cddbd9; border-radius: .3rem; list-style: none; }
-summary::after { content: '⌄'; margin-left: .55rem; }
-summary span { margin-left: .25rem; color: #086c78; font-variant-numeric: tabular-nums; }
-.cycling-controls__panel { position: absolute; top: calc(100% + .5rem); left: 0; z-index: 5; width: min(290px, calc(100vw - 2rem)); padding: .85rem; border: 1px solid #dfe5e1; border-radius: .5rem; background: white; box-shadow: 0 5px 18px #19343c26; max-height: min(55dvh, 420px); overflow-y: auto; }
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+.cycling-controls__count, .cycling-controls__alert { min-width: 1.25rem; padding: 0 .3rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent-hover); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.cycling-controls__alert { background: var(--danger-soft); color: var(--danger); }
+.cycling-controls__panel { position: absolute; top: calc(100% + .5rem); left: 0; z-index: 5; width: min(18rem, calc(100vw - 2rem)); max-height: min(55dvh, 26rem); overflow-y: auto; padding: .85rem; }
 fieldset { padding: 0; margin: 0; border: 0; }
-legend { font-size: .8rem; font-weight: 650; margin-bottom: .5rem; }
-label { display: flex; align-items: flex-start; gap: .55rem; padding: .55rem 0; cursor: pointer; font-size: .8rem; }
-input { margin: .2rem 0 0; accent-color: #096e69; width: 1rem; height: 1rem; flex-shrink: 0; }
-small { display: block; margin-top: .2rem; color: #64736d; line-height: 1.4; font-size: .7rem; }
-.cycling-controls__swatch { width: .55rem; height: .55rem; margin-top: .35rem; border-radius: 50%; flex-shrink: 0; }
-.cycling-controls__swatch--line { height: .2rem; margin-top: .5rem; border-radius: 0; }
-p { margin: .6rem 0 0; font-size: .72rem; line-height: 1.45; }
-.cycling-controls__date { color: #64736d; }
-@media (max-width: 760px) { .cycling-controls__panel { max-height: min(40dvh, calc(100dvh - 350px)); } }
+legend { margin-bottom: .4rem; font-size: .85rem; font-weight: 650; }
+label { display: flex; align-items: flex-start; gap: .55rem; padding: .5rem 0; cursor: pointer; font-size: .85rem; }
+input { margin: .15rem 0 0; width: 1rem; height: 1rem; flex-shrink: 0; }
+small { display: block; margin-top: .15rem; color: var(--text-muted); line-height: 1.4; font-size: .75rem; }
+.cycling-controls__swatch { width: .6rem; height: .6rem; margin-top: .35rem; border-radius: 50%; flex-shrink: 0; }
+.cycling-controls__swatch--line { height: 4px; margin-top: .5rem; border-radius: 2px; }
+p { margin-top: .6rem; }
+/* Stays within the map, which fills the top half on phones. */
+@media (max-width: 760px) { .cycling-controls__panel { max-height: calc(50dvh - 7rem); } }
 </style>

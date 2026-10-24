@@ -1,13 +1,18 @@
 import type { Ref } from 'vue';
 import { Marker, type Map as MaplibreMap } from 'maplibre-gl';
-import type { Coord, ShapePoint, Waypoint } from '@/domain/route-model';
+import { stopBadge, stopLabel, type Coord, type ShapePoint, type Waypoint } from '@/domain/route-model';
 import { useRouteStore } from '@/stores/route.store';
 
-function markerElement(kind: 'stop' | 'shape' | 'preview', number?: number): HTMLElement {
+function markerElement(kind: 'stop' | 'shape' | 'preview'): HTMLElement {
   const element = document.createElement('div');
   element.className = `route-marker route-marker--${kind}`;
-  element.textContent = number === undefined ? '' : String(number);
-  element.setAttribute('aria-label', kind === 'shape' ? 'Formpunkt verschieben' : kind === 'preview' ? 'Neuer Formpunkt' : `Streckenpunkt ${number} verschieben`);
+  if (kind !== 'stop') element.setAttribute('aria-label', kind === 'shape' ? 'Formpunkt verschieben' : 'Neuer Formpunkt');
+  return element;
+}
+
+function labelStop(element: HTMLElement, point: Waypoint, index: number): HTMLElement {
+  element.textContent = stopBadge(point.kind, index);
+  element.setAttribute('aria-label', `${stopLabel(point.kind, index)} verschieben`);
   return element;
 }
 
@@ -31,10 +36,11 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
       }
     }
 
-    waypoints.forEach((point, index) => {
+    for (const point of waypoints) {
+      const index = routeStore.waypoints.findIndex(item => item.id === point.id);
       let marker = waypointMarkers.get(point.id);
       if (!marker) {
-        marker = new Marker({ element: markerElement('stop', index + 1), draggable: true })
+        marker = new Marker({ element: labelStop(markerElement('stop'), point, index), draggable: true })
           .setLngLat(point.coord)
           .addTo(map);
         marker.on('dragend', () => {
@@ -49,10 +55,9 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
         waypointMarkers.set(point.id, marker);
       } else {
         marker.setLngLat(point.coord);
-        marker.getElement().textContent = String(index + 1);
-        marker.getElement().setAttribute('aria-label', `Streckenpunkt ${index + 1} verschieben`);
+        labelStop(marker.getElement(), point, index);
       }
-    });
+    }
   }
 
   function createShapingMarkers(shapes: ShapePoint[]): void {

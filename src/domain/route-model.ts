@@ -75,6 +75,14 @@ export function isPlaced(point: RoutePoint): point is RoutePoint & { coord: Coor
   return point.coord !== null;
 }
 
+// Stops are named by their position among all waypoints: S, 1…n, Z on markers, as in the GPX reference.
+export function stopLabel(kind: StopKind, index: number): string {
+  return kind === 'start' ? 'Start' : kind === 'end' ? 'Ziel' : `Zwischenstopp ${index}`;
+}
+export function stopBadge(kind: StopKind, index: number): string {
+  return kind === 'start' ? 'S' : kind === 'end' ? 'Z' : String(index);
+}
+
 export function distanceMeters(from: Coord, to: Coord): number {
   const radians = Math.PI / 180;
   const lat1 = from[1] * radians;

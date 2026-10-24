@@ -1,0 +1,21 @@
+// Each icon comes from its own module; the package entry makes the dev server bundle all 6,000 icons.
+export { default as IconArrowBackUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowBackUp.mjs';
+export { default as IconArrowForwardUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowForwardUp.mjs';
+export { default as IconBike } from '@tabler/icons-vue/dist/esm/icons/IconBike.mjs';
+export { default as IconChevronDown } from '@tabler/icons-vue/dist/esm/icons/IconChevronDown.mjs';
+export { default as IconChevronUp } from '@tabler/icons-vue/dist/esm/icons/IconChevronUp.mjs';
+export { default as IconCloudCheck } from '@tabler/icons-vue/dist/esm/icons/IconCloudCheck.mjs';
+export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
+export { default as IconDownload } from '@tabler/icons-vue/dist/esm/icons/IconDownload.mjs';
+export { default as IconEraser } from '@tabler/icons-vue/dist/esm/icons/IconEraser.mjs';
+export { default as IconExternalLink } from '@tabler/icons-vue/dist/esm/icons/IconExternalLink.mjs';
+export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/IconFileImport.mjs';
+export { default as IconFocus2 } from '@tabler/icons-vue/dist/esm/icons/IconFocus2.mjs';
+export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/IconFolderOpen.mjs';
+export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
+export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';
+export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStack2.mjs';
+export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';
+export { default as IconUpload } from '@tabler/icons-vue/dist/esm/icons/IconUpload.mjs';
+export { default as IconWand } from '@tabler/icons-vue/dist/esm/icons/IconWand.mjs';
+export { default as IconX } from '@tabler/icons-vue/dist/esm/icons/IconX.mjs';
