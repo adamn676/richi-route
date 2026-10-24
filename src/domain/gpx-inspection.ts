@@ -1,18 +1,19 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type { Coord } from './route-model.ts';
-import type { GpxTrack } from './gpx-track.ts';
+import { profileColumn, profileColumns, type GpxTrack } from './gpx-track.ts';
 
 export type GpxColorMode = 'plain' | 'elevation' | 'gradient' | 'surface';
 export const unknownGpxColor = '#87939a';
 export const elevationColors = ['#3563b5', '#199b9b', '#74a840', '#db9d29', '#bd3c46'];
+// Only climbs are told apart; descents share the colour of flat ground.
 export const gradientBands = [
-  { max: -10, color: '#3156a6', label: '< −10 %' },
-  { max: -3, color: '#318ec1', label: '−10 bis −3 %' },
-  { max: 3, color: '#359a78', label: '−3 bis 3 %' },
+  { max: 3, color: '#359a78', label: '< 3 %' },
   { max: 8, color: '#d4a126', label: '3 bis 8 %' },
   { max: 15, color: '#d56b31', label: '8 bis 15 %' },
   { max: Infinity, color: '#b9364f', label: '≥ 15 %' },
 ];
+
+export const gradientColor = (gradient: number) => gradientBands.find(band => gradient < band.max)!.color;
 
 export function gpxGradients(track: GpxTrack): (number | null)[][] {
   return track.segments.map((segment, segmentIndex) => {
@@ -74,11 +75,32 @@ export type GpxFocus = ReturnType<typeof inspectGpxDistance>;
 
 function colorFor(track: GpxTrack, mode: GpxColorMode, value: number | null): string {
   if (value === null || !Number.isFinite(value)) return unknownGpxColor;
-  if (mode === 'gradient') return gradientBands.find(band => value < band.max)!.color;
+  if (mode === 'gradient') return gradientColor(value);
   const range = track.profile ? track.profile.maximum - track.profile.minimum : 0;
   const bin = range > 0 ? Math.floor((value - track.profile!.minimum) / range * elevationColors.length) : 2;
   return elevationColors[Math.max(0, Math.min(elevationColors.length - 1, bin))];
 }
+
+// Profile colour runs, each from an offset (0–1) along the distance, by the mean gradient per profile column.
+// Columns without points continue the previous run, so sparse points on straight roads stay coloured.
+export function gradientRuns(track: GpxTrack, gradients: (number | null)[][]) {
+  const sums = new Float64Array(profileColumns), counts = new Uint32Array(profileColumns);
+  track.distances.forEach((distances, s) => distances.forEach((distance, i) => {
+    const gradient = gradients[s][i];
+    if (gradient === null) return;
+    const column = profileColumn(distance, track.distanceMeters);
+    sums[column] += gradient;
+    counts[column]++;
+  }));
+  const runs: { from: number; color: string }[] = [];
+  for (let column = 0; column < profileColumns; column++) {
+    if (!counts[column]) continue;
+    const color = gradientColor(sums[column] / counts[column]);
+    if (runs.at(-1)?.color !== color) runs.push({ from: column / profileColumns, color });
+  }
+  return runs;
+}
+export type GradientRun = ReturnType<typeof gradientRuns>[number];
 
 export function colorGpxTrack(track: GpxTrack, mode: Exclude<GpxColorMode, 'surface'>, gradients: (number | null)[][]): FeatureCollection<LineString | Point> {
   if (mode === 'plain') return track.geojson;

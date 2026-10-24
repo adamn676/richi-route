@@ -1,5 +1,6 @@
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5176';
 const label = process.env.MAP_ZOOM_LABEL ?? 'baseline';
@@ -23,10 +24,10 @@ try {
     ['Graz detail', [15.398, 47.095], 'aerial'],
   ]) {
     requested = 0; cancelled = 0; degraded = 0;
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption('street');
+    await chooseBasemap(page, 'street');
     await page.evaluate(center => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center, zoom: 13 }), center);
     const started = performance.now();
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption(mode);
+    await chooseBasemap(page, mode);
     const settleMs = await page.evaluate(async () => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
       for (const zoom of [15, 17, 19]) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-import';
@@ -84,8 +85,8 @@ try {
   assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('gpx-reference-line', 'visibility')), 'none');
   await page.getByRole('button', { name: 'Track zeigen', exact: true }).click();
   assert.equal(await page.getByLabel('Track einblenden', { exact: true }).isChecked(), true);
-  await page.getByRole('combobox', { name: 'Kartenansicht', exact: true }).selectOption('aerial');
-  await page.getByRole('combobox', { name: 'Kartenansicht', exact: true }).selectOption('local');
+  await chooseBasemap(page, 'aerial');
+  await chooseBasemap(page, 'local');
   assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('gpx-reference-line', 'visibility')), 'visible');
   await upload('invalid.gpx', gpx(`<trk><trkseg>${point(181, 47)}</trkseg></trk>`));
   await page.locator('.gpx__error').waitFor();

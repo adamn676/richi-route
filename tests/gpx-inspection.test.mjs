@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildGpxTrack } from '../src/domain/gpx-track.ts';
-import { colorGpxTrack, elevationColors, gpxEndpoints, gpxGradients, gradientBands, inspectGpxDistance, unknownGpxColor } from '../src/domain/gpx-inspection.ts';
+import { colorGpxTrack, elevationColors, gpxEndpoints, gpxGradients, gradientBands, gradientColor, gradientRuns, inspectGpxDistance, unknownGpxColor } from '../src/domain/gpx-inspection.ts';
 
 const segment = (coordinates, elevations) => ({ name: '', coordinates, elevations });
 const build = (...segments) => buildGpxTrack('Inspection', 'test.gpx', segments);
@@ -18,6 +18,19 @@ test('gradient uses distance and direction, without crossing missing heights or 
   assert.deepEqual(gpxGradients(missing)[0], [null, null, null, null, null], 'Each valid run is shorter than 10 m');
   const split = build(segment(coords.slice(0, 5), [0, 0, 0, 0, 0]), segment(coords.slice(5), [1000, 1000, 1000, 1000, 1000, 1000]));
   assert.ok(gpxGradients(split).flat().every(g => g === 0));
+});
+
+test('profile colour runs follow the gradient and bridge sparse points', () => {
+  const coords = Array.from({ length: 201 }, (_, i) => [15 + i / 10000, 47]);
+  const distances = build(segment(coords, coords.map(() => 0))).distances[0];
+  const climb = build(segment(coords, distances.map(d => 100 + Math.min(d, distances[100]) * .1)));
+  const runs = gradientRuns(climb, gpxGradients(climb));
+  assert.equal(runs[0].color, gradientColor(10));
+  assert.equal(runs.at(-1).color, gradientColor(0));
+  const sparse = build(segment([[15, 47], [15.002, 47], [15.1, 47]], [0, 20, 20]));
+  assert.deepEqual(gradientRuns(sparse, gpxGradients(sparse)).map(run => run.color), [gradientColor(13), gradientColor(0)]);
+  const unknown = build(segment(coords.slice(0, 3), [0, null, 0]));
+  assert.deepEqual(gradientRuns(unknown, gpxGradients(unknown)), []);
 });
 
 test('stationary and isolated points have no fabricated gradient', () => {
@@ -71,7 +84,7 @@ test('colour modes preserve vertices and segment gaps and mark unknown sections'
   }
   const flat = build(segment([[15, 47], [16, 47]], [30, 30]));
   assert.equal(colorGpxTrack(flat, 'elevation', []).features[0].properties.color, elevationColors[2]);
-  assert.equal(colorGpxTrack(flat, 'gradient', gpxGradients(flat)).features[0].properties.color, gradientBands[2].color);
+  assert.equal(colorGpxTrack(flat, 'gradient', gpxGradients(flat)).features[0].properties.color, gradientBands[0].color);
 });
 
 test('long tracks bound colour sections without dropping geometry', () => {

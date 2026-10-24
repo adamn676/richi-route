@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/cycling';
@@ -36,7 +37,7 @@ try {
     map.once('idle', resolve); map.jumpTo({center,zoom});
   }), {center,zoom});
   await jump([15.4395,47.0707], 15);
-  await page.locator('.cycling-controls summary').click();
+  await page.locator('.cycling-controls .map-menu__trigger').click();
   for (const label of ['Trinkwasser', 'Radwege', 'Reparatur & Radläden', 'Verpflegung', 'Bahnhöfe']) {
     await page.getByRole('checkbox', { name: label, exact: false }).check();
   }
@@ -47,7 +48,7 @@ try {
   await waitWater();
   const before = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points.length);
   await page.screenshot({path:`${output}/desktop.png`});
-  await page.locator('.cycling-controls summary').click();
+  await page.locator('.cycling-controls .map-menu__trigger').click();
   const target = await page.evaluate(() => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     const bounds = map.getCanvas().getBoundingClientRect();
@@ -66,7 +67,7 @@ try {
   await page.screenshot({path:`${output}/water-details.png`});
   await page.getByRole('button',{name:'Close popup'}).click();
   for (const mode of ['cycling','terrain','aerial-fast','aerial','local','street']) {
-    await page.getByLabel('Kartenansicht',{exact:true}).selectOption(mode);
+    await chooseBasemap(page, mode);
     await waitWater();
     assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('cycling-cycleways','visibility')), 'visible');
   }
@@ -78,7 +79,7 @@ try {
     window.cyclingMapErrors = [];
     map.on('error', event => window.cyclingMapErrors.push(event.error?.message));
   });
-  await page.locator('.cycling-controls summary').click();
+  await page.locator('.cycling-controls .map-menu__trigger').click();
   assert.equal(await page.getByRole('checkbox', { checked: true }).count(), 5, 'Selections survive a reload');
   await page.getByRole('checkbox', { name: 'Trinkwasser', exact: false }).uncheck();
   await page.getByRole('checkbox', { name: 'Reparatur & Radläden', exact: false }).uncheck();
@@ -89,18 +90,18 @@ try {
   let unavailable = true;
   await page.route('**/maps/cycling.json?**', route => unavailable ? route.fulfill({status:503,body:'Unavailable'}) : route.continue());
   await page.getByRole('checkbox', { name: 'Trinkwasser', exact: false }).check();
-  await page.getByRole('alert').filter({ hasText: 'Trinkwasser' }).waitFor();
+  await page.getByRole('alert').filter({ hasText: 'Rad-Infos' }).waitFor();
   unavailable = false;
   await page.locator('.cycling-controls').getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await waitWater();
-  await page.locator('.cycling-controls summary').click();
+  await page.locator('.cycling-controls .map-menu__trigger').click();
   await page.setViewportSize({width:390,height:844});
-  await page.locator('.cycling-controls summary').click();
-  const panel = await page.locator('.cycling-controls__panel').boundingBox();
+  await page.locator('.cycling-controls .map-menu__trigger').click();
+  const panel = await page.locator('.cycling-controls .map-menu__panel').boundingBox();
   assert.ok(panel.x >= 0 && panel.x + panel.width <= 390 && panel.y + panel.height <= 844, 'Overlay controls fit on mobile');
   await page.screenshot({path:`${output}/mobile.png`});
-  await page.locator('.cycling-controls summary').press('Escape');
-  assert.equal(await page.locator('.cycling-controls').getAttribute('open'), null);
+  await page.locator('.cycling-controls .map-menu__trigger').press('Escape');
+  assert.equal(await page.locator('.cycling-controls .map-menu__trigger').getAttribute('aria-expanded'), 'false');
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   assert.deepEqual(await page.evaluate(() => window.cyclingMapErrors), []);
   await writeFile(`${output}/browser-report.json`,JSON.stringify({passed:true,points:data.features.length,pointRequests,errors,external},null,2));

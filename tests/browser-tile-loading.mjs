@@ -1,5 +1,6 @@
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { chooseBasemap } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const label = process.env.TILE_BENCH_LABEL ?? 'results';
 const aerialMode = process.env.TILE_BENCH_MODE ?? 'aerial';
@@ -28,7 +29,7 @@ try {
  ]) {
   responses=[];
   const start=performance.now();
-  await page.getByLabel('Kartenansicht',{exact:true}).selectOption(mode);
+  await chooseBasemap(page, mode);
   await page.evaluate(({center,zoom})=>{window.tileIdle=false;const map=document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
    map.once('idle',()=>window.tileIdle=true);map.jumpTo({center,zoom});},{center,zoom});
   await page.waitForFunction(()=>window.tileIdle && document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.areTilesLoaded(),{},{timeout:120000});

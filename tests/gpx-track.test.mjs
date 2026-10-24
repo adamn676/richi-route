@@ -71,6 +71,16 @@ test('GPX distance and ascent exclude jumps between track segments', () => {
   assert.strictEqual(track.segments, segments);
 });
 
+test('connected segments draw one profile, separate segments break it', () => {
+  const legs = [segment([[15, 47], [15.01, 47]], [100, 120]), segment([[15.01, 47], [15.02, 47]], [126, 110])];
+  const moves = track => [...track.profile.path.matchAll(/M/g)].length;
+  const areas = track => [...track.profile.areaPath.matchAll(/Z/g)].length;
+  const separate = buildGpxTrack('', '', legs), connected = buildGpxTrack('', '', legs, { connected: true });
+  assert.deepEqual([moves(separate), areas(separate)], [2, 2]);
+  assert.deepEqual([moves(connected), areas(connected)], [1, 1]);
+  assert.deepEqual(connected.distances, separate.distances);
+});
+
 test('missing elevations break the profile and prevent a misleading complete ascent', () => {
   const track = buildGpxTrack('Partial', 'partial.gpx', [
     segment([[15, 47], [15.01, 47], [15.02, 47], [15.03, 47]], [100, null, 300, 310]),

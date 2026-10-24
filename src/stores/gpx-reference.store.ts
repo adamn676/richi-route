@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, markRaw, ref, shallowRef, watch } from 'vue';
 import { gpxMaxBytes } from '../domain/gpx-import.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
-import { gpxGradients, inspectGpxDistance, type GpxColorMode, type GpxFocus } from '../domain/gpx-inspection.ts';
+import { gpxGradients, gradientRuns, inspectGpxDistance, type GpxColorMode, type GpxFocus } from '../domain/gpx-inspection.ts';
 import type { SurfaceSpan } from '../domain/route-model.ts';
 import { inspectGpxSurfaces } from '../domain/gpx-surfaces.ts';
 import { readGpx } from '../services/gpx-import.service.ts';
@@ -17,6 +17,7 @@ export const useGpxReferenceStore = defineStore('gpx-reference', () => {
   const colorMode = ref<GpxColorMode>('plain');
   const focus = shallowRef<GpxFocus | null>(null);
   const gradients = computed(() => track.value ? gpxGradients(track.value) : []);
+  const colorRuns = computed(() => track.value ? gradientRuns(track.value, gradients.value) : []);
   const surfaces = shallowRef<SurfaceSpan[][] | null>(null);
   const surfaceLoading = ref(false);
   const surfaceError = ref('');
@@ -94,6 +95,6 @@ export const useGpxReferenceStore = defineStore('gpx-reference', () => {
       if (controller === current) { controller = undefined; loading.value = false; }
     }
   }
-  return { track, visible, loading, error, fitRequest, colorMode, focus, gradients, focusAt, importFile, show, remove, cancel,
+  return { track, visible, loading, error, fitRequest, colorMode, focus, gradients, colorRuns, focusAt, importFile, show, remove, cancel,
     surfaces, surfaceInspection, surfaceLoading, surfaceError, surfaceProgress, loadSurfaces, cancelSurfaces };
 });

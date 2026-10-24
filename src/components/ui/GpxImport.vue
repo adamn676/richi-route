@@ -1,26 +1,30 @@
 <template>
-  <section class="gpx">
-    <div class="gpx__heading">
-      <h2 class="section-title">GPX-Referenz</h2>
-      <button type="button" class="btn" :class="{ 'btn--primary': !track }" :disabled="reference.loading" @click="fileInput?.click()">
-        <IconFileImport :size="16" aria-hidden="true" />GPX importieren
-      </button>
-      <input ref="fileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" aria-label="GPX-Datei auswählen" @change="importSelected" />
-    </div>
+  <section class="gpx" @dragover.prevent @drop.prevent="dropFile">
+    <input ref="fileInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" aria-label="GPX-Datei auswählen" hidden @change="importSelected" />
     <p v-if="reference.loading" class="gpx__loading" role="status">GPX wird eingelesen … <button type="button" class="btn btn--ghost" @click="reference.cancel()">Abbrechen</button></p>
     <p v-if="reference.error" class="notice notice--error gpx__error" role="alert">{{ reference.error }}</p>
     <template v-if="track">
-      <h3>{{ track.name }}</h3>
-      <dl class="stats">
-        <div><dt>Trackdistanz</dt><dd>{{ (track.distanceMeters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 2 }) }} km</dd></div>
-        <div><dt>Aufstieg aus GPX</dt><dd>{{ track.ascentMeters === null ? 'Unvollständige Höhendaten' : `${Math.round(track.ascentMeters)} m` }}</dd></div>
-      </dl>
-      <div class="gpx__actions">
-        <label class="gpx__toggle"><input v-model="reference.visible" type="checkbox" /> Track einblenden</label>
-        <button type="button" class="btn" aria-label="Track zeigen" @click="reference.show()"><IconFocus2 :size="16" aria-hidden="true" />Zeigen</button>
-        <button type="button" class="btn btn--ghost btn--icon" title="Track entfernen" @click="reference.remove()"><IconTrash :size="18" aria-hidden="true" /></button>
+      <div class="gpx__track">
+        <div class="gpx__title">
+          <h3>{{ track.name }}</h3>
+          <span class="muted">{{ track.fileName }} · {{ track.pointCount.toLocaleString('de-DE') }} Punkte<template v-if="track.segments.length > 1"> · {{ track.segments.length }} Abschnitte</template></span>
+        </div>
+        <div class="gpx__tools">
+          <!-- The checkbox lies invisibly over the eye icon. -->
+          <label class="btn btn--ghost btn--icon gpx__toggle" :title="reference.visible ? 'Track ausblenden' : 'Track einblenden'">
+            <input v-model="reference.visible" type="checkbox" aria-label="Track einblenden" />
+            <component :is="reference.visible ? IconEye : IconEyeOff" :size="18" aria-hidden="true" />
+          </label>
+          <button type="button" class="btn btn--ghost btn--icon" aria-label="Track zeigen" title="Track zeigen" @click="reference.show()"><IconFocus2 :size="18" aria-hidden="true" /></button>
+          <button type="button" class="btn btn--ghost btn--icon" :disabled="reference.loading" aria-label="Andere GPX-Datei öffnen" title="Andere GPX-Datei öffnen" @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></button>
+          <button type="button" class="btn btn--ghost btn--icon" aria-label="Track entfernen" title="Track entfernen" @click="reference.remove()"><IconTrash :size="18" aria-hidden="true" /></button>
+        </div>
       </div>
-      <label class="gpx__color">Trackfarbe
+      <dl class="stats">
+        <div><dt>Distanz</dt><dd>{{ (track.distanceMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km</dd></div>
+        <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : `${Math.round(track.ascentMeters).toLocaleString('de-DE')} m` }}</dd></div>
+      </dl>
+      <label class="gpx__color"><span class="label">Trackfarbe</span>
         <select v-model="reference.colorMode" class="field" aria-label="Trackfarbe">
           <option value="plain">Einfarbig</option>
           <option value="elevation" :disabled="!track.elevationCount">Höhe</option>
@@ -40,30 +44,28 @@
         <p v-if="reference.surfaceError" class="notice notice--error gpx__error" role="alert">{{ reference.surfaceError }} Noch nicht geprüfte Teile bleiben unbekannt.</p>
         <button v-if="!reference.surfaceLoading && (!reference.surfaces || reference.surfaceError)" type="button" class="btn" @click="reference.loadSurfaces()">Beläge ermitteln</button>
         <template v-if="reference.surfaces && reference.surfaceInspection">
-          <p class="muted">{{ (reference.surfaceInspection.estimatedMeters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 2 }) }} von {{ (track.distanceMeters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 2 }) }} km mit zugeordnetem Belag.</p>
+          <p class="muted">{{ (reference.surfaceInspection.estimatedMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} von {{ (track.distanceMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km mit zugeordnetem Belag.</p>
           <ul aria-label="Beläge des GPX-Tracks">
-            <li v-for="item in reference.surfaceInspection.totals" :key="item.key"><span><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</span><span>{{ (item.meters / 1000).toLocaleString('de-AT', { maximumFractionDigits: 2 }) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
+            <li v-for="item in reference.surfaceInspection.totals" :key="item.key"><span><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</span><span>{{ (item.meters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
           </ul>
         </template>
       </div>
       <GpxElevationProfile :track="track" />
-      <details class="disclosure">
-        <summary>Trackdetails und Hinweise</summary>
-        <p>{{ track.fileName }}<br />{{ track.pointCount.toLocaleString('de-AT') }} Punkte · {{ track.segments.length }} {{ track.segments.length === 1 ? 'Abschnitt' : 'Abschnitte' }}</p>
-        <p v-if="track.elevationCount < track.pointCount">Höhe für {{ track.elevationCount.toLocaleString('de-AT') }} von {{ track.pointCount.toLocaleString('de-AT') }} Punkten vorhanden. Fehlende Werte und Abschnittswechsel bleiben im Profil getrennt.</p>
-        <p v-if="reference.colorMode === 'gradient'">Steigung aus GPX-Höhen, über etwa 50 m geglättet. Bei weit auseinanderliegenden Punkten über eine längere Strecke.</p>
-        <p>S = Start, Z = Ziel je Abschnitt. S/Z kennzeichnet eine geschlossene Runde; die Pfeile zeigen die Laufrichtung.</p>
-        <p>Originaltrack als Referenz für diese Sitzung. Deine geplante Route bleibt erhalten. Nach dem Neuladen die GPX-Datei erneut importieren.</p>
-      </details>
+      <p v-if="track.elevationCount < track.pointCount" class="muted">Höhe für {{ track.elevationCount.toLocaleString('de-DE') }} von {{ track.pointCount.toLocaleString('de-DE') }} Punkten vorhanden; Lücken bleiben im Profil offen.</p>
     </template>
-    <p v-else-if="!reference.loading" class="muted">Öffne eine GPX-Datei, um einen aufgezeichneten Track als Referenz neben deiner Route auf der Karte zu prüfen. Die Datei bleibt auf diesem Gerät.</p>
+    <div v-else-if="!reference.loading" class="gpx__empty">
+      <IconFileImport :size="28" aria-hidden="true" />
+      <p><strong>Aufgezeichneten Track vergleichen</strong>Zeigt eine GPX-Datei neben deiner Route. Die Datei bleibt auf diesem Gerät.</p>
+      <button type="button" class="btn btn--primary" @click="fileInput?.click()">GPX-Datei öffnen</button>
+      <span class="muted">oder hierher ziehen</span>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { IconFileImport, IconFocus2, IconTrash } from '@/components/icons';
+import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconTrash } from '@/components/icons';
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
 import { elevationColors, gradientBands, unknownGpxColor } from '../../domain/gpx-inspection';
 import GpxElevationProfile from './GpxElevationProfile.vue';
@@ -84,6 +86,10 @@ const legend = computed(() => {
     return { color, label: `${Math.round(from)} bis ${Math.round(to)} m` };
   });
 });
+function dropFile(event: DragEvent) {
+  const file = event.dataTransfer?.files[0];
+  if (file) void reference.importFile(file);
+}
 async function importSelected(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -93,17 +99,24 @@ async function importSelected(event: Event) {
 </script>
 
 <style scoped>
-.gpx { display: grid; gap: .85rem; padding: 1rem var(--gutter) 1.5rem; }
-.gpx__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-h3 { margin: .25rem 0 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
-input[type=file] { display: none; }
+.gpx { display: grid; gap: .85rem; min-height: 100%; align-content: start; padding: 1rem var(--gutter) 1.5rem; }
+.gpx__track { display: flex; align-items: flex-start; gap: .5rem; }
+.gpx__title { display: grid; flex: 1; min-width: 0; gap: .15rem; }
+.gpx__title .muted { font-size: .75rem; overflow-wrap: anywhere; }
+h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
+.gpx__tools { display: flex; flex-shrink: 0; }
+.gpx__toggle { position: relative; cursor: pointer; }
+.gpx__toggle input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.gpx__toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
-.gpx__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
-.gpx__toggle { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.25rem; margin-right: auto; font-size: .85rem; }
-.gpx__color { display: grid; grid-template-columns: auto minmax(0, 12rem); align-items: center; justify-content: space-between; gap: .75rem; font-size: .85rem; }
+.gpx__color { display: grid; grid-template-columns: auto minmax(0, 12rem); align-items: center; justify-content: space-between; gap: .75rem; }
 .gpx__surfaces { display: grid; gap: .5rem; }
 .gpx__surfaces .btn { justify-self: start; }
 .gpx__surfaces ul { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; font-size: .8rem; }
 .gpx__surfaces li { display: flex; justify-content: space-between; gap: .5rem; font-variant-numeric: tabular-nums; }
 .gpx__surfaces li span:first-child { display: inline-flex; align-items: center; gap: .4rem; }
+.gpx__empty { display: grid; justify-items: center; gap: .6rem; padding: 1.75rem 1.25rem; border: 1.5px dashed var(--border-input);
+  border-radius: var(--radius-lg); color: var(--text-muted); text-align: center; }
+.gpx__empty p { margin: 0; font-size: .82rem; line-height: 1.5; }
+.gpx__empty strong { display: block; margin-bottom: .2rem; color: var(--text); font-size: .9rem; }
 </style>

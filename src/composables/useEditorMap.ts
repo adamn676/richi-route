@@ -16,8 +16,11 @@ export function useMap(container: string) {
   const roadColors: { id: string; original: RoadColor; cycling: RoadColor }[] = [];
   const fullVectorMap = () => ['street', 'cycling', 'terrain'].includes(basemap.value);
   let onlineMaps: ReturnType<typeof createOnlineBasemaps> | undefined;
-  let attribution = new AttributionControl();
-  let onlineAttribution = false;
+  // Credits for the visible map, shown in the sidebar footer instead of over the map. The route and
+  // its surfaces come from OpenStreetMap, so it is credited on every basemap; MapLibre drops this
+  // entry where a basemap's own credit already contains it.
+  const attribution = new AttributionControl({ compact: false,
+    customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
   let vectorReady = false, vectorFailed = false;
   let vectorRequest: AbortController | undefined;
   const absoluteUrl = (url: string) => url.startsWith('/') ? location.origin + url : url;
@@ -94,14 +97,7 @@ export function useMap(container: string) {
       ['aerial-fast', basemap.value === 'aerial-fast'],
       ['basemap-cycling-paths', basemap.value === 'cycling'], ['basemap-hillshade', basemap.value === 'terrain'],
     ] as const) if (map.value.getLayer(id)) map.value.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    const online = onlineBasemap(basemap.value);
-    if (onlineAttribution !== Boolean(online)) {
-      map.value.removeControl(attribution);
-      attribution = new AttributionControl(online ? { compact: false } : {});
-      map.value.addControl(attribution);
-      onlineAttribution = Boolean(online);
-    }
-    void onlineMaps?.show(online?.id);
+    void onlineMaps?.show(onlineBasemap(basemap.value)?.id);
     void loadVectorMap();
   }
   function retryBasemap() {
@@ -154,7 +150,7 @@ export function useMap(container: string) {
     });
     instance.addControl(new NavigationControl(), 'bottom-right');
     instance.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
-    instance.addControl(attribution);
+    document.getElementById('map-credits')?.append(attribution.onAdd(instance));
     instance.on('error', event => {
       const online = onlineBasemap(basemap.value);
       if (online) {
@@ -173,6 +169,6 @@ export function useMap(container: string) {
     instance.on('style.load', applyBasemap);
     map.value = instance;
   });
-  onBeforeUnmount(() => { vectorRequest?.abort(); vectorRequest = undefined; onlineMaps?.close(); map.value?.remove(); });
+  onBeforeUnmount(() => { vectorRequest?.abort(); vectorRequest = undefined; onlineMaps?.close(); attribution.onRemove(); map.value?.remove(); });
   return { map, basemap, mapError, retryBasemap };
 }

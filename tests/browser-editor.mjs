@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const output = 'experiments/routing/.local';
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }),
@@ -59,7 +60,7 @@ try {
   await page.screenshot({ path: `${output}/editor-desktop.png` });
   await Promise.all([
     page.waitForResponse(response => response.url().includes('/maps/imagery/') && response.status() === 200),
-    page.getByRole('combobox', { name: 'Kartenansicht' }).selectOption('aerial'),
+    chooseBasemap(page, 'aerial'),
   ]);
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.waitForFunction(() => {
@@ -141,7 +142,7 @@ try {
   assert.equal((await state()).distance, junction.distance);
   assert.deepEqual((await state()).points.map(p => p.coord), junction.points.map(p => p.coord));
   assert.ok((await state()).features > 0);
-  await page.getByRole('combobox', { name: 'Kartenansicht' }).selectOption('local');
+  await chooseBasemap(page, 'local');
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getLayoutProperty('roads', 'visibility') === 'visible');
   assert.equal(errors.length, 0, errors.join('\n'));
   const report = { initialDistance: initial.distance, initialVertices: initial.legs[0].coordinates.length,

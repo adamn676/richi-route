@@ -405,6 +405,10 @@ persisted selection and mobile attribution. Reports are in `.cache/online-maps/`
 
 ## Cycling overlays
 
+The map's tool column at the top right holds the basemap choice (layers icon),
+**Rad-Infos** (bike icon) and **Route zeigen** (focus icon); hover for their
+names. Map data credits appear in small print at the bottom of the sidebar.
+
 **Rad-Infos** independently toggles cycle paths, drinking-water sources,
 bicycle repair stations/shops, food stops and railway stations over all
 base maps. Cycle paths and food reuse the local Protomaps tiles.
@@ -639,9 +643,9 @@ A second tab pauses draft saving when another tab changes it.
 
 **Meine Routen** stores named routes in IndexedDB. The list loads only route
 metadata; geometry is read when opening, duplicating or exporting a route.
-**Route speichern** adds an entry. After opening it, **Änderungen speichern**
-updates that entry, while **Als Kopie speichern** creates a separate one. Entries
-can also be renamed, duplicated or deleted. Reloading restores the draft; open
+**Speichern** next to the name adds an entry. After opening it, the same button
+updates that entry, while the copy icon saves a separate one. Each entry's icons
+open, duplicate, rename or delete it. Reloading restores the draft; open
 its saved entry again before updating that entry.
 
 Opening another route, starting **Neue Route**, or loading an example first saves
@@ -651,9 +655,9 @@ deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
 
-**Sicherung herunterladen** exports the current editable route, including its
+**Herunterladen** under the list exports the current editable route, including its
 points, geometry, elevation, surfaces and routing revision, as `.richiroute.json`.
-**Sicherung importieren** validates that format and adds a new entry without
+**Importieren** validates that format and adds a new entry without
 replacing the current draft or existing entries. Imports are limited to 64 MB.
 This imports RichiRoute backups, not GPX files. Changed routing rules still cause
 recalculation when opening a saved route, keeping its old geometry visible.
@@ -664,19 +668,25 @@ A draft saved in localStorage by an earlier version moves there on first load.
 Named saves and backup downloads remain usable when draft autosaving fails.
 Storage is specific to the browser and site origin.
 
-**GPX herunterladen** exports the calculated track and known elevation once all
+The download button beside undo and redo exports the calculated track and known elevation once all
 points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
 turn instructions. Physical cycling-computer imports have not been tested.
 
 ## Inspect the route elevation profile
 
-The planned route and imported GPX use the same interactive chart. Move the
+The planned route and imported GPX use the same interactive chart. The route's
+profile spans the width of the map below it and can be hidden with its arrow
+button; the GPX profile stays in the **GPX** tab. Move the
 pointer or drag a finger across **Höhenprofil** to see distance, elevation and
-estimated gradient, with the corresponding position marked on the map. Focus
+estimated gradient beside the cursor, with the corresponding position marked on
+the map. The line and a light tint beneath it are coloured by climb, with the
+bands of the GPX **Steigung** track colours and a compact scale beside the
+title; descents share the colour of flat ground. Both axes use round steps on
+dotted grid lines, with more distance marks on wider screens. Focus
 the chart to use arrow keys, Home/End and Escape. No separate slider is shown.
 Changing the route or starting recalculation clears an old position. Missing
-heights stay unknown and gaps between legs are not connected in the profile.
+heights stay unknown; consecutive legs join without a break.
 Hover updates only the marker; it does not reroute, change the draft or resend
 route geometry. Long profiles retain a bounded number of drawing samples.
 
@@ -687,13 +697,12 @@ screenshots go to `.cache/profile-hover/`.
 
 ## Import a GPX reference
 
-**GPX importieren** reads GPX 1.0 and 1.1 tracks locally and displays them as a
+**GPX-Datei öffnen** (or dropping a file on the **GPX** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
 separate reference layer. Importing leaves the editable route, its undo history,
 saved routes and GPX export unchanged. It sends no routing requests. Parsing
 runs in a background worker, so large files keep the page responsive, and
-**Abbrechen** stops it. Use
-**Track zeigen** to fit the reference, **Track einblenden** to toggle it, and
-**Track entfernen** to remove it. A successful import replaces the previous
+**Abbrechen** stops it. The icons beside the track's name show or hide it, fit the map to it, open
+another file and remove it. A successful import replaces the previous
 reference; an invalid file leaves it intact.
 
 All tracks and nonempty track segments in the file are retained separately.
@@ -781,10 +790,12 @@ Reports go to `.cache/gpx-surfaces/`, `.cache/map-style/` and `.cache/imagery-re
 
 ## Inspect route surfaces
 
-After a route finishes calculating, open **Beläge prüfen** below the colour
-legend. Select a material to see its sections and distance along the route.
-Select a section to frame and highlight it on the map. **Weitere Abschnitte**
-shows ten more entries; **Markierung aufheben** removes the highlight.
+After a route finishes calculating, **Untergrund** shows each material's share
+as a bar and lists its length; the colours match the route on the map. Select a
+material to see its sections along the route, and select it again to close
+them. Select a section to frame and highlight it on the map. **Weitere
+Abschnitte** shows ten more entries; **Markierung aufheben** removes the
+highlight.
 
 The inspector distinguishes materials such as fine gravel, wood and paving
 stones. Missing surface tags stay unknown. Lengths follow the drawn coordinates

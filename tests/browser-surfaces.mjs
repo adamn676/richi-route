@@ -56,9 +56,8 @@ try {
   await ready(page);
   assert.equal(requests, 3);
   const original = await snapshot(page);
-  const details = page.getByRole('region', { name: 'Beläge der Route' });
-  await details.locator('summary').click();
-  assert.match(await details.locator('summary').textContent(), /382 m unbefestigt.*44,3 km unbekannt/);
+  const details = page.getByRole('region', { name: 'Untergrund' });
+  assert.match(await details.locator('.surfaces__totals').textContent(), /Feiner Schotter364 m.*Unbekannt44,3 km/);
   await details.getByRole('button', { name: /Feiner Schotter/ }).click();
   await checkFocus(page, 'fine_gravel');
   assert.equal(await details.locator('.surfaces__sections button').count(), 1);
@@ -99,7 +98,6 @@ try {
   await ready(page);
   assert.deepEqual((await snapshot(page)).legs, original.legs, 'Reload keeps exact material spans and geometry');
   assert.equal(requests, 3, 'Reload does not reroute');
-  await page.getByRole('region', { name: 'Beläge der Route' }).locator('summary').click();
   assert.equal(await page.getByRole('button', { name: /Feiner Schotter/ }).count(), 1);
   assert.deepEqual(errors, []);
 
@@ -113,8 +111,8 @@ try {
   legacyPage.on('pageerror', error => errors.push(error.message));
   await legacyPage.goto('http://127.0.0.1:5173/');
   await ready(legacyPage);
-  await legacyPage.getByRole('region', { name: 'Beläge der Route' }).locator('summary').click();
-  assert.equal(await legacyPage.getByText(/Für ältere Abschnitte sind nur Belagsgruppen gespeichert/).count(), 1);
+  await legacyPage.getByRole('region', { name: 'Untergrund' }).waitFor();
+  assert.equal(await legacyPage.getByText(/Ältere Abschnitte kennen nur Belagsgruppen/).count(), 1);
   assert.equal(await legacyPage.getByRole('button', { name: /Feiner Schotter/ }).count(), 0);
   assert.equal(await legacyPage.getByRole('button', { name: /Unbefestigt/ }).count(), 1);
   assert.equal(legacyRequests, 0, 'Legacy drafts load without rerouting or inventing exact materials');

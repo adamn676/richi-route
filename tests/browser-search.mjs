@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/search';
@@ -26,7 +27,7 @@ try {
   await page.goto(origin);
   const start = page.getByRole('combobox', { name: 'Start', exact: true });
   const end = page.getByRole('combobox', { name: 'Ziel', exact: true });
-  await page.getByText('Lokale Adresssuche · Europa', { exact: false }).waitFor();
+  await start.waitFor();
   await start.fill('Gr');
   await page.waitForTimeout(450);
   assert.equal(queries, 0);
@@ -49,7 +50,7 @@ try {
   assert.ok(placed.every(point => point.coord && !point.snapError));
   assert.equal(queries, 2);
   await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('street');
+  await chooseBasemap(page, 'street');
   await page.waitForFunction(() => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     const ids = map.getStyle().layers.filter(layer => layer.id.startsWith('basemap-vector-') && layer.type === 'line').map(layer => layer.id);

@@ -5,30 +5,31 @@
     <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
     <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
     <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
-    <div class="map-view__controls">
-      <label class="map-view__basemap" :title="onlineBasemap(basemap)?.description">
-        <IconStack2 :size="18" aria-hidden="true" />
-        <select v-model="basemap" class="btn" aria-label="Kartenansicht">
-          <optgroup label="Eigene Karten · Europa">
-            <option value="street">OpenStreetMap · lokal</option>
-            <option value="cycling">Rennradkarte · Europa</option>
-            <option value="terrain">Geländekarte · Europa</option>
-            <option value="aerial-fast">Luftbild · schnell</option>
-            <option value="aerial">Luftbild · Detail</option>
-            <option value="local">Straßennetz</option>
-          </optgroup>
-          <optgroup label="Online · Internet erforderlich">
-            <option v-for="item in onlineBasemaps" :key="item.id" :value="item.id">{{ item.label }}</option>
-          </optgroup>
-        </select>
-      </label>
-      <CyclingOverlays :map="map" />
-      <button v-if="route" type="button" class="btn" @click="fitRoute"><IconFocus2 :size="18" aria-hidden="true" />Route zeigen</button>
+    <div class="map-view__status">
       <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
-      <p v-if="mapError" class="notice notice--error map-view__error" role="alert">
+      <p v-if="mapError" class="notice notice--error" role="alert">
         {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
       </p>
     </div>
+    <div class="map-view__tools">
+      <MapMenu label="Kartenansicht" heading="Kartenansicht" :title="basemapTitle">
+        <template #icon><IconStack2 :size="20" aria-hidden="true" /></template>
+        <template #default="{ close }">
+          <fieldset v-for="group in basemapGroups" :key="group.label" class="map-view__basemaps">
+            <legend>{{ group.label }}</legend>
+            <!-- A pointer choice closes the menu; arrow keys only move the selection. -->
+            <label v-for="item in group.items" :key="item.id" class="option" @click="event => event.detail && close(true)">
+              <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
+            </label>
+          </fieldset>
+        </template>
+      </MapMenu>
+      <CyclingOverlays :map="map" />
+      <button v-if="route" type="button" class="btn btn--icon" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
+        <IconFocus2 :size="20" aria-hidden="true" />
+      </button>
+    </div>
+    <ElevationProfile v-show="route" class="map-view__profile" />
   </div>
 </template>
 
@@ -49,14 +50,25 @@ import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
 import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
 import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
-import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
+import ElevationProfile from '@/components/ui/ElevationProfile.vue';
+import MapMenu from '@/components/map/MapMenu.vue';
+import { onlineBasemaps } from '@/config/online-basemaps';
 
 const { map, basemap, mapError, retryBasemap } = useMap('map');
+const basemapGroups: { label: string; items: readonly { id: string; label: string }[] }[] = [
+  { label: 'Eigene Karten · Europa', items: [
+    { id: 'street', label: 'OpenStreetMap · lokal' }, { id: 'cycling', label: 'Rennradkarte' },
+    { id: 'terrain', label: 'Geländekarte' }, { id: 'aerial-fast', label: 'Luftbild · schnell' },
+    { id: 'aerial', label: 'Luftbild · Detail' }, { id: 'local', label: 'Straßennetz' },
+  ] },
+  { label: 'Online · Internet erforderlich', items: onlineBasemaps },
+];
+const basemapTitle = computed(() =>
+  `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
-const { route, pendingSnapCount, pendingLegCount, focusedSurface } = storeToRefs(useRouteStore());
+const { route, routingPending, focusedSurface } = storeToRefs(useRouteStore());
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
-const routingPending = computed(() => pendingSnapCount.value > 0 || pendingLegCount.value > 0);
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
   presentedStartId.value !== route.value.features[0].properties.fromId));
 watch([route, routingPending], ([value, pending]) => {
@@ -81,15 +93,21 @@ function fitRoute() {
 </script>
 
 <style scoped>
-.map-view { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.map-view__canvas { width: 100%; height: 100%; }
-.map-view__controls { position: absolute; top: .75rem; left: .75rem; right: .75rem; display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem; pointer-events: none; }
-.map-view__controls > * { border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
-.map-view__basemap { position: relative; display: inline-flex; align-items: center; }
-.map-view__basemap svg { position: absolute; left: .6rem; pointer-events: none; }
-.map-view__basemap select { max-width: 15rem; padding-left: 2.1rem; }
+.map-view { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+.map-view__canvas { flex: 1; min-height: 0; }
+/* Below the map rather than over it, so the map's own controls stay visible. */
+.map-view__profile { --profile-height: 11rem; padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }
+.map-view__status { position: absolute; top: .75rem; left: .75rem; right: 4.5rem; display: grid; justify-items: start; gap: .5rem; pointer-events: none; }
+.map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
 .map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }
-/* Below the controls, so it never covers them when they wrap. */
-.map-view__error { flex-basis: 100%; max-width: 30rem; }
-@media (max-width: 760px) { .map-view__controls { top: .5rem; left: .5rem; right: .5rem; } }
+.map-view__tools { position: absolute; top: .75rem; right: .75rem; display: grid; gap: .5rem; }
+.map-view__tools > .btn { width: 2.5rem; min-height: 2.5rem; box-shadow: var(--shadow); }
+.map-view__basemaps { margin: 0; padding: 0; border: 0; }
+.map-view__basemaps + .map-view__basemaps { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }
+.map-view__basemaps legend { padding: .25rem 0; color: var(--text-muted); font-size: .72rem; font-weight: 600; }
+@media (max-width: 760px) {
+  .map-view__status { top: .5rem; left: .5rem; }
+  .map-view__tools { top: .5rem; right: .5rem; }
+  .map-view__profile { --profile-height: 7.5rem; padding: .35rem .75rem .25rem; }
+}
 </style>

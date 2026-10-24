@@ -3,10 +3,15 @@
     <section class="planner__section">
       <div class="planner__heading">
         <h2 class="section-title">Streckenpunkte</h2>
-        <span v-if="routeStore.pendingLegCount || routeStore.pendingSnapCount" class="muted">Berechnung läuft …</span>
-        <span class="planner__history">
+        <span class="planner__tools">
           <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.canUndo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)" @click="routeStore.undo()"><IconArrowBackUp :size="18" aria-hidden="true" /></button>
           <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.canRedo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)" @click="routeStore.redo()"><IconArrowForwardUp :size="18" aria-hidden="true" /></button>
+          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.route" aria-label="Gesamte Route optimieren"
+            title="Gesamte Route optimieren" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></button>
+          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
+            title="Formpunkte entfernen" @click="run(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></button>
+          <button type="button" class="btn btn--ghost btn--icon" :disabled="Boolean(exportReason)" aria-label="GPX herunterladen"
+            :title="exportReason ?? 'Route als GPX herunterladen'" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></button>
         </span>
       </div>
       <ol class="planner__stops">
@@ -42,10 +47,6 @@
       <button type="button" class="btn btn--ghost planner__add" :disabled="!hasEndpoints" @click="addStop">
         <IconPlus :size="16" aria-hidden="true" />Zwischenstopp hinzufügen
       </button>
-      <p class="muted planner__caption">
-        <template v-if="usesLocalGeocoding">Lokale Adresssuche · Europa</template>
-        <template v-else>Adresssuche über den konfigurierten Suchdienst</template>
-      </p>
     </section>
 
     <div v-if="routingNotices.length || routeStore.errorMessage || airHint" class="planner__notices">
@@ -71,69 +72,30 @@
     <section v-else class="planner__section">
       <dl class="stats planner__stats" aria-label="Streckendaten" aria-live="polite">
         <div><dt>Distanz</dt><dd>{{ distanceLabel }}</dd></div>
-        <div><dt>Aufstieg</dt><dd>{{ ascentLabel }}</dd></div>
+        <div><dt>Anstiege</dt><dd>{{ ascentLabel }}</dd></div>
       </dl>
-      <ElevationProfile />
-      <ul class="legend" aria-label="Oberflächenfarben">
-        <li v-for="item in legend" :key="item.label"><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</li>
-        <li><i class="swatch swatch--dashed" :style="{ color: routeStyle.air }" />Luftlinie</li>
-      </ul>
       <SurfaceDetails />
-      <div class="planner__edit">
-        <button type="button" class="btn" :disabled="!routeStore.route" @click="run(() => routeStore.optimizeEntireRoute())">
-          <IconWand :size="16" aria-hidden="true" />Gesamte Route optimieren
-        </button>
-        <button type="button" class="btn" :disabled="!routeStore.shapingPoints.length" @click="run(() => routeStore.clearShaping())">
-          <IconEraser :size="16" aria-hidden="true" />Formpunkte entfernen
-        </button>
-      </div>
     </section>
-
-    <details class="disclosure planner__help">
-      <summary>Bedienung und Hinweise</summary>
-      <ul>
-        <li>Karte anklicken: zuerst Start, dann Ziel, danach weitere Stopps.</li>
-        <li>Auf die Linie klicken setzt einen Stopp, Ziehen an der Linie einen Formpunkt.</li>
-        <li>Nur betroffene Abschnitte werden neu berechnet.</li>
-        <li>Unbefestigte Abschnitte bleiben möglich und werden farbig markiert.</li>
-        <li>Luftbilder: Details in Österreich, der Schweiz und Frankreich, sonst Satellitenübersicht. Neue Detailbilder benötigen Internet.</li>
-      </ul>
-      <p><a href="http://127.0.0.1:5174/" target="_blank" rel="noopener">Routen vergleichen<IconExternalLink :size="14" aria-hidden="true" /></a></p>
-      <p>Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende</a></p>
-    </details>
-
-    <div class="planner__actions">
-      <button type="button" class="btn btn--primary" :disabled="Boolean(exportReason)" :title="exportReason ?? 'Berechnete Strecke als GPX-Track herunterladen'" @click="downloadGpx">
-        <IconDownload :size="16" aria-hidden="true" />GPX herunterladen
-      </button>
-      <p v-if="exportReason && hasEndpoints" class="muted">{{ exportReason }}</p>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconChevronUp, IconDownload, IconEraser, IconExternalLink, IconPlus, IconWand, IconX } from '@/components/icons';
+import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconChevronUp, IconDownload, IconEraser, IconPlus, IconWand, IconX } from '@/components/icons';
 import { westernLoop } from '@/config/route-examples';
-import { routeStyle } from '@/config/mapStyle';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import { stopBadge, stopLabel, type Coord } from '@/domain/route-model';
-import { surfaceLabel } from '@/domain/route-surfaces';
 import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
-import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
-import { usesLocalGeocoding } from '@/services/geocoding.service';
 
 const emit = defineEmits<{ newRoute: [coords?: Coord[], shapeIndices?: readonly number[]] }>();
 const routeStore = useRouteStore();
-const legend = (['asphalt', 'paved', 'rough', 'unpaved', 'unknown'] as const)
-  .map(surface => ({ label: surfaceLabel(surface), color: routeStyle[surface] }));
 const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
   .filter(leg => leg.status === 'routed' && isRoutingPolicyCurrent(leg.routingPolicy))));
-const airHint = computed(() => routeStore.hasAirLines && !routeStore.pendingSnapCount && !routeStore.pendingLegCount);
+const airHint = computed(() => routeStore.hasAirLines && !routeStore.routingPending);
 const exportReason = computed(() => gpxUnavailableReason(routeStore));
 
 function downloadGpx() {
@@ -153,14 +115,14 @@ const hasEndpoints = computed(() => {
 });
 const distanceLabel = computed(() => {
   if (!routeStore.route) return '…';
-  const value = (routeStore.distanceMeters / 1000).toLocaleString('de-AT', {
+  const value = (routeStore.distanceMeters / 1000).toLocaleString('de-DE', {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
   return `${routeStore.hasAirLines ? 'ca. ' : ''}${value} km`;
 });
-const ascentLabel = computed(() => routeStore.ascentMeters !== null ? `${Math.round(routeStore.ascentMeters)} hm`
-  : routeStore.pendingLegCount || routeStore.pendingSnapCount ? '…' : 'unbekannt');
+const ascentLabel = computed(() => routeStore.ascentMeters !== null ? `${Math.round(routeStore.ascentMeters).toLocaleString('de-DE')} m`
+  : routeStore.routingPending ? '…' : 'unbekannt');
 
 // A point placed on the map without an address shows its position in the empty field.
 function placeholderFor(point: Waypoint): string {
@@ -202,10 +164,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 </script>
 
 <style scoped>
-.planner { display: flex; flex-direction: column; min-height: 100%; }
+.planner { display: flex; flex-direction: column; }
 .planner__section { display: grid; gap: .75rem; padding: 1rem var(--gutter); border-bottom: 1px solid var(--border); }
 .planner__heading { display: flex; align-items: center; gap: .75rem; }
-.planner__history { display: flex; margin-left: auto; }
+.planner__tools { display: flex; margin-left: auto; }
 .planner__stops { display: grid; gap: .85rem; margin: 0; padding: 0; list-style: none; }
 .planner__stop { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: center; column-gap: .6rem; row-gap: .3rem; }
 .planner__badge { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .72rem; font-weight: 700; }
@@ -215,16 +177,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
 .planner__add { justify-self: start; margin-left: 1.6rem; padding-inline: .5rem; color: var(--accent); }
-.planner__caption { margin-left: 2.1rem; font-size: .75rem; }
 .planner__notices { display: grid; gap: .5rem; padding: 1rem var(--gutter) 0; }
 .planner__empty p { max-width: 34ch; }
-.planner__examples, .planner__edit { display: flex; flex-wrap: wrap; gap: .5rem; }
+.planner__examples { display: flex; flex-wrap: wrap; gap: .5rem; }
 .planner__stats dd { font-size: 1.5rem; }
-.planner__help { padding: .9rem var(--gutter); }
-.planner__help ul { margin: .6rem 0; padding-left: 1.1rem; }
-.planner__help a { display: inline-flex; align-items: center; gap: .2rem; color: var(--accent); }
-.planner__actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: .5rem; margin-top: auto; padding: .8rem var(--gutter);
-  border-top: 1px solid var(--border); background: var(--surface); }
-.planner__actions .btn--primary { flex: 1; min-height: 2.5rem; }
-.planner__actions .muted { flex-basis: 100%; font-size: .75rem; }
 </style>

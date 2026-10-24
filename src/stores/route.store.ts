@@ -177,6 +177,7 @@ export const useRouteStore = defineStore('route', {
     canUndo: (state): boolean => state.undoStack.length > 0,
     canRedo: (state): boolean => state.redoStack.length > 0,
     pendingSnapCount: (state): number => state.points.filter(point => point.snapPending).length,
+    routingPending(): boolean { return this.pendingLegCount > 0 || this.pendingSnapCount > 0; },
     hasAirLines: (state): boolean => Object.values(state.legs).some((leg) => leg.status === 'air'),
     focusedSurface: (state) => {
       const focus = state.surfaceFocus;

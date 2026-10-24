@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/map-style';
 await mkdir(output, { recursive: true });
@@ -64,7 +65,7 @@ try {
   const state = await mapState();
   assert.ok(state.layers > 50); assert.equal(state.canvasWidth, state.cssWidth * 2);
   await page.screenshot({ path: output + '/desktop.png' });
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('aerial');
+  await chooseBasemap(page, 'aerial');
   await waitAerial(page);
   await waitStreetNames(page);
   assert.equal((await mapState()).visible, false);
@@ -72,7 +73,7 @@ try {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     return ['aerial', 'roads'].map(id => map.getLayoutProperty(id, 'visibility'));
   }), ['visible', 'none']);
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('local');
+  await chooseBasemap(page, 'local');
   await waitStreetNames(page);
   assert.equal((await mapState()).visible, false);
   assert.deepEqual(await page.evaluate(() => {
@@ -89,7 +90,7 @@ try {
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
     .jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
   for (const mode of ['street', 'cycling', 'terrain', 'aerial-fast', 'aerial', 'local']) {
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption(mode);
+    await chooseBasemap(page, mode);
     await waitStreetNames(page);
     await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
       .queryRenderedFeatures({ layers: ['segments-routed'] }).length > 0);
@@ -107,7 +108,7 @@ try {
   }
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').resetRoute());
   await waitStreetNames(page);
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('terrain');
+  await chooseBasemap(page, 'terrain');
   await page.evaluate(() => new Promise(resolve => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     map.once('idle', resolve); map.jumpTo({ center: [12.458, 47.001], zoom: 11 });
@@ -115,10 +116,10 @@ try {
   await page.screenshot({ path: output + '/terrain-virgen.png' });
   await page.reload();
   await waitMap();
-  assert.equal(await page.getByLabel('Kartenansicht', { exact: true }).inputValue(), 'terrain');
+  assert.equal(await page.locator('input[name=basemap]:checked').inputValue(), 'terrain');
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707] }));
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 13 }));
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('street');
+  await chooseBasemap(page, 'street');
   await waitMap();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.mouse.move(0, 0);

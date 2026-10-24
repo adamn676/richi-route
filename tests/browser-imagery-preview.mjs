@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5176';
 const preview = process.env.IMAGERY_PREVIEW === '1';
@@ -25,7 +26,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'));
   const results = [];
   for (const [place, center] of [['Graz', [15.398, 47.095]], ['Styria', [15.60, 47.13]]]) {
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption('street');
+    await chooseBasemap(page, 'street');
     await page.evaluate(({ center, preview }) => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
       if (preview && !map.getSource('basemap-aerial-preview')) {
@@ -48,7 +49,7 @@ try {
       map.on('sourcedata', onData); map.on('render', onData);
       if (preview) map.setLayoutProperty('aerial-preview', 'visibility', 'visible');
     }, { center, preview });
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption('aerial');
+    await chooseBasemap(page, 'aerial');
     await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded() && window.previewTiming.complete['basemap-aerial'], null, { timeout: 60000 });
     const result = await page.evaluate(() => ({ ...window.previewTiming, total: Math.round(performance.now() - window.previewTiming.started) }));
     delete result.started;

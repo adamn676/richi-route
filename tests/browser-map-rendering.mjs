@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/map-rendering';
@@ -24,7 +25,7 @@ try {
   });
   const results = [];
   for (const mode of ['street', 'local', 'aerial']) {
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption(mode);
+    await chooseBasemap(page, mode);
     for (const zoom of [12, 16, 18]) {
       const result = await page.evaluate(async ({ mode, zoom }) => {
         const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;

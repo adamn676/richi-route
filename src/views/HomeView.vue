@@ -21,7 +21,7 @@ import MapView from "@/components/map/MapView.vue";
 .editor-layout__sidebar { min-height: 0; border-right: 1px solid var(--border); }
 .editor-layout__map { min-width: 0; }
 @media (max-width: 760px) {
-  .editor-layout { grid-template-columns: 1fr; grid-template-rows: 50dvh minmax(0, 1fr); }
+  .editor-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: 50dvh minmax(0, 1fr); }
   .editor-layout__map { grid-row: 1; }
   .editor-layout__sidebar { border-right: 0; border-top: 1px solid var(--border); }
   /* Typing gets the whole screen, so the keyboard does not cover the field and its suggestions. */

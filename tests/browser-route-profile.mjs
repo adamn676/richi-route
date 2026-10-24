@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/profile-hover';
 await mkdir(output, { recursive: true });
@@ -75,7 +76,7 @@ try {
   const basemaps = ['street', 'aerial', 'local'];
   for (const basemap of basemaps) {
     const selected = (await current()).focus;
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption(basemap);
+    await chooseBasemap(page, basemap);
     if (basemap === 'street') await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')
       .__vueParentComponent.props.map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-')));
     await waitDot(1);

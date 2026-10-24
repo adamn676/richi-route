@@ -18,7 +18,7 @@ context.on('page', page => page.on('pageerror', error => errors.push(error.messa
 const page = await context.newPage();
 const list = page.locator('.library__list');
 const entry = name => list.getByRole('listitem', { name, exact: true });
-const idle = () => page.waitForFunction(() => !document.querySelector('.library')?.textContent.includes('Routenspeicher wird aktualisiert'));
+const idle = () => page.waitForFunction(() => !document.querySelector('.library')?.textContent.includes('Wird aktualisiert'));
 const state = () => page.evaluate(async () => {
   const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
   const { serializeDraft } = await import('/src/domain/route-draft.ts');

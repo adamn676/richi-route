@@ -12,7 +12,6 @@ export interface Place {
 }
 
 const baseUrl = (import.meta.env?.VITE_GEOCODING_URL?.trim() || '/geocoding').replace(/\/+$/, '');
-export const usesLocalGeocoding = baseUrl === '/geocoding';
 const unavailableMessage = 'Adresssuche nicht erreichbar. Bitte später erneut versuchen oder den Punkt auf der Karte setzen.';
 
 function record(value: unknown): Record<string, unknown> | null {

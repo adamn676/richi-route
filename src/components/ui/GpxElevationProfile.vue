@@ -1,5 +1,5 @@
 <template>
-  <ElevationChart :track="track" :focus="reference.focus" :enabled="reference.visible" label="Position im GPX-Track"
+  <ElevationChart :track="track" :color-runs="reference.colorRuns" :focus="reference.focus" :enabled="reference.visible" label="Position im GPX-Track"
     chart-label="Höhenprofil des importierten GPX-Tracks" @inspect="reference.focusAt" />
 </template>
 

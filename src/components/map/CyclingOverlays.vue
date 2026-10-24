@@ -1,29 +1,25 @@
 <template>
-  <details class="cycling-controls" @keydown.esc="close">
-    <summary class="btn"><IconBike :size="18" aria-hidden="true" />Rad-Infos <span v-if="error" class="cycling-controls__alert" title="Einige Rad-Infos konnten nicht geladen werden">!</span><span v-else-if="selected.length" class="cycling-controls__count">{{ selected.length }}</span></summary>
-    <div class="cycling-controls__panel popover">
-      <fieldset>
-        <legend>Auf der Karte anzeigen</legend>
-        <label v-for="item in cyclingOverlays" :key="item.id">
-          <input v-model="selected" type="checkbox" :value="item.id" />
-          <span class="cycling-controls__swatch" :class="{ 'cycling-controls__swatch--line': item.id === 'cycleways' }" :style="{ background: item.color }" />
-          <span>{{ item.label }}<small>{{ item.hint }}</small></span>
-        </label>
-      </fieldset>
-      <p v-if="zoom < 12" class="muted">Zum Anzeigen näher heranzoomen.</p>
-      <p v-else-if="zoom < 14 && selected.includes('food')" class="muted">Verpflegung erscheint ab Zoom 14.</p>
-      <p v-if="loading" class="muted" role="status">Rad-Infos werden geladen …</p>
-      <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="loadPoints">Erneut laden</button></p>
-      <p v-else-if="truncated" class="muted">Viele Treffer. Für weitere Details näher heranzoomen.</p>
-      <p v-if="updated" class="muted">Trinkwasser, Radservice & Bahnhöfe: {{ coverage }} · {{ new Date(updated).toLocaleDateString('de-AT') }}</p>
-    </div>
-  </details>
+  <MapMenu class="cycling-controls" heading="Rad-Infos" title="Rad-Infos"
+    :label="error ? 'Rad-Infos, Fehler beim Laden' : `Rad-Infos, ${selected.length} angezeigt`">
+    <template #icon>
+      <IconBike :size="20" aria-hidden="true" />
+      <span v-if="error" class="cycling-controls__badge cycling-controls__badge--alert" aria-hidden="true">!</span>
+      <span v-else-if="selected.length" class="cycling-controls__badge" aria-hidden="true">{{ selected.length }}</span>
+    </template>
+    <label v-for="item in cyclingOverlays" :key="item.id" class="option">
+      <input v-model="selected" type="checkbox" :value="item.id" />
+      <span>{{ item.label }}</span>
+      <i class="cycling-controls__swatch" :class="{ 'cycling-controls__swatch--line': item.id === 'cycleways' }" :style="{ background: item.color }" aria-hidden="true" />
+    </label>
+    <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="loadPoints">Erneut laden</button></p>
+  </MapMenu>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Popup, type Map, type MapMouseEvent, type GeoJSONSource, type FilterSpecification } from 'maplibre-gl';
 import { IconBike } from '@/components/icons';
+import MapMenu from '@/components/map/MapMenu.vue';
 import { cyclingOverlays, cyclingPoiLayers, poiHitBox, type CyclingOverlay } from '@/config/cycling-overlays';
 
 const props = defineProps<{ map: Map | null }>();
@@ -36,8 +32,7 @@ function initial(): CyclingOverlay[] {
   return ['water', 'cycleways'];
 }
 const selected = ref<CyclingOverlay[]>(initial());
-const zoom = ref(0), loading = ref(false), error = ref(''), truncated = ref(false), updated = ref('');
-const coverage = ref('');
+const error = ref('');
 const needsPoints = computed(() => selected.value.some(id => ['water', 'repair', 'stations'].includes(id)));
 let installed = false, request: AbortController | undefined, popup: Popup | undefined;
 const empty = { type: 'FeatureCollection' as const, features: [] };
@@ -75,29 +70,27 @@ function install() {
   void loadPoints();
 }
 async function loadPoints() {
-  request?.abort(); request = undefined; loading.value = false; error.value = ''; truncated.value = false;
+  request?.abort(); request = undefined; error.value = '';
   const map = props.map;
-  if (!map) return;
-  zoom.value = map.getZoom();
-  if (!installed) return;
+  if (!map || !installed) return;
   const source = map.getSource<GeoJSONSource>('cycling-points');
-  if (!needsPoints.value || zoom.value < 12) { source?.setData(empty); return; }
+  if (!needsPoints.value || map.getZoom() < 12) { source?.setData(empty); return; }
   const bounds = map.getBounds();
   const west = bounds.getWest(), east = bounds.getEast(), south = bounds.getSouth(), north = bounds.getNorth();
   if (west < -180 || east > 180 || (east - west) * (north - south) > 4) { source?.setData(empty); return; }
-  const controller = new AbortController(); request = controller; loading.value = true;
+  const controller = new AbortController(); request = controller;
   try {
     const response = await fetch(`/maps/cycling.json?bbox=${[west, south, east, north].map(v => v.toFixed(6)).join(',')}`,
       { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (controller.signal.aborted) return;
-    source?.setData(data); truncated.value = data.truncated; updated.value = data.updated; coverage.value = data.coverage;
+    source?.setData(data);
   } catch {
     if (controller.signal.aborted) return;
     source?.setData(empty);
-    error.value = 'Trinkwasser, Radservice und Bahnhöfe konnten nicht geladen werden.';
-  } finally { if (request === controller) { loading.value = false; request = undefined; } }
+    error.value = 'Rad-Infos konnten nicht geladen werden.';
+  } finally { if (request === controller) request = undefined; }
 }
 function inspect(event: MapMouseEvent) {
   const map = props.map;
@@ -125,10 +118,6 @@ function inspect(event: MapMouseEvent) {
   popup?.remove();
   popup = new Popup({ maxWidth: '270px' }).setLngLat(event.lngLat).setDOMContent(content).addTo(map);
 }
-function close(event: KeyboardEvent) {
-  const details = event.currentTarget as HTMLDetailsElement;
-  details.open = false; details.querySelector('summary')?.focus();
-}
 watch(selected, () => {
   popup?.remove();
   for (const item of cyclingOverlays) for (const suffix of ['', '-labels', '-casing']) {
@@ -150,19 +139,10 @@ onBeforeUnmount(() => detach(props.map));
 </script>
 
 <style scoped>
-summary { list-style: none; }
-summary::-webkit-details-marker { display: none; }
-.cycling-controls__count, .cycling-controls__alert { min-width: 1.25rem; padding: 0 .3rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent-hover); font-size: .75rem; font-variant-numeric: tabular-nums; }
-.cycling-controls__alert { background: var(--danger-soft); color: var(--danger); }
-.cycling-controls__panel { position: absolute; top: calc(100% + .5rem); left: 0; z-index: 5; width: min(18rem, calc(100vw - 2rem)); max-height: min(55dvh, 26rem); overflow-y: auto; padding: .85rem; }
-fieldset { padding: 0; margin: 0; border: 0; }
-legend { margin-bottom: .4rem; font-size: .85rem; font-weight: 650; }
-label { display: flex; align-items: flex-start; gap: .55rem; padding: .5rem 0; cursor: pointer; font-size: .85rem; }
-input { margin: .15rem 0 0; width: 1rem; height: 1rem; flex-shrink: 0; }
-small { display: block; margin-top: .15rem; color: var(--text-muted); line-height: 1.4; font-size: .75rem; }
-.cycling-controls__swatch { width: .6rem; height: .6rem; margin-top: .35rem; border-radius: 50%; flex-shrink: 0; }
-.cycling-controls__swatch--line { height: 4px; margin-top: .5rem; border-radius: 2px; }
-p { margin-top: .6rem; }
-/* Stays within the map, which fills the top half on phones. */
-@media (max-width: 760px) { .cycling-controls__panel { max-height: calc(50dvh - 7rem); } }
+.cycling-controls__badge { position: absolute; top: -.35rem; right: -.35rem; min-width: 1.1rem; padding: 0 .25rem; border: 2px solid var(--surface);
+  border-radius: 999px; background: var(--accent); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1rem; font-variant-numeric: tabular-nums; }
+.cycling-controls__badge--alert { background: var(--danger); }
+.cycling-controls__swatch { width: .6rem; height: .6rem; margin-left: auto; border-radius: 50%; flex-shrink: 0; }
+.cycling-controls__swatch--line { width: .9rem; height: 4px; border-radius: 2px; }
+.notice { margin-top: .5rem; }
 </style>

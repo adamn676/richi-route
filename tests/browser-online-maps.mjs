@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { chooseBasemap } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/online-maps';
@@ -52,7 +53,7 @@ try {
   });
   const states = [];
   for (const mode of ['liberty', 'bright', 'positron', 'dark', 'osm', 'street']) {
-    await page.getByLabel('Kartenansicht', { exact: true }).selectOption(mode);
+    await chooseBasemap(page, mode);
     await page.waitForFunction(mode => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
       const layers = map.getStyle().layers;
@@ -106,7 +107,7 @@ try {
   }, null, { timeout: 60000 });
   assert.equal(await page.getByRole('alert').count(), 0);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('Kartenansicht', { exact: true }).selectOption('osm');
+  await chooseBasemap(page, 'osm');
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded());
   await page.locator('.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"]').first().waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
