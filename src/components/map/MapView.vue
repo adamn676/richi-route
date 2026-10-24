@@ -40,6 +40,7 @@ import { LngLatBounds } from 'maplibre-gl';
 import { IconFocus2, IconStack2 } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
+import { useStreetViewMenu } from '@/composables/useStreetViewMenu';
 import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
@@ -80,6 +81,7 @@ watch([route, routingPending], ([value, pending]) => {
 }, { immediate: true });
 useRouteDragging({ map });
 useMapInteractions(map);
+useStreetViewMenu(map);
 useMarkerWatches(map);
 watch(map, instance => {
   if (instance) instance.once('load', () => {

@@ -705,7 +705,10 @@ estimated gradient beside the cursor, with the corresponding position marked on
 the map. The line and a light tint beneath it are coloured by climb, with the
 bands of the GPX **Steigung** track colours and a compact scale beside the
 title; descents share the colour of flat ground. Both axes use round steps on
-dotted grid lines, with more distance marks on wider screens. Focus
+dotted grid lines, with more distance marks on wider screens. A click (or
+Enter) pins the position; the tooltip then links to Google Street View there,
+until Escape, another click or leaving the chart. A right-click on the map, or
+a long press on phones, offers Street View for any point. Focus
 the chart to use arrow keys, Home/End and Escape. No separate slider is shown.
 Changing the route or starting recalculation clears an old position. Missing
 heights stay unknown; consecutive legs join without a break.

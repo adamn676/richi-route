@@ -19,7 +19,7 @@
         aria-valuemin="0" :aria-valuemax="track.distanceMeters" :aria-valuenow="focus?.distance ?? 0" :aria-valuetext="readout"
         :aria-disabled="!enabled" aria-description="Im Profil bewegen oder berühren. Pfeiltasten wählen die Position, Pos1 und Ende springen an die Endpunkte."
         @pointermove="move" @pointerdown="press" @pointerleave="leave" @pointercancel="selectDistance(null)"
-        @keydown="key" @blur="selectDistance(null)">
+        @click="pin" @keydown="key" @focusout="leaveFocus">
         <svg viewBox="0 0 300 88" preserveAspectRatio="none" role="img" :aria-label="chartLabel">
           <defs><linearGradient :id="colorId" gradientUnits="userSpaceOnUse" x1="5" x2="295" y1="0" y2="0">
             <template v-for="(run, i) in colorRuns" :key="run.from">
@@ -35,11 +35,13 @@
         </svg>
         <span v-if="focus && focusY !== null" class="elevation-chart__position" :style="{ left: focusLeft, top: `${focusY / 88 * 100}%` }" />
         <!-- Beside the cursor, on whichever side has more room. -->
-        <div v-if="focus" class="popover elevation-chart__tooltip" :class="{ 'elevation-chart__tooltip--left': focusX > 150 }"
-          :style="{ left: focusLeft }" aria-hidden="true">
+        <div v-if="focus" class="popover elevation-chart__tooltip"
+          :class="{ 'elevation-chart__tooltip--left': focusX > 150, 'elevation-chart__tooltip--pinned': pinned }"
+          :style="{ left: focusLeft }" :aria-hidden="!pinned">
           <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
           <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText">{{ gradientText }} %</span>
+          <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer">Street View</a>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
@@ -51,9 +53,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { niceStep, type GpxTrack } from '../../domain/gpx-track';
 import { formatKm, formatMeters } from '@/utils/format';
+import { streetViewUrl } from '@/utils/street-view';
 import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
 const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string }>(), { enabled: true });
@@ -125,19 +128,27 @@ const readout = computed(() => {
   const height = f.elevation === null ? 'Höhe unbekannt' : `${formatMeters(f.elevation)} Höhe`;
   return `${formatKm(f.distance)} km, ${height}, ${gradientLabel.value}, Abschnitt ${f.segmentIndex + 1}`;
 });
+// A click or Enter pins the position, so the tooltip stays and links to Street View. Hovering no longer moves it;
+// another click or a drag does, and Escape, a route change or leaving the chart releases it.
+const pinned = ref(false);
+watch(focus, value => { if (!value) pinned.value = false; });
+const fromTooltip = (event: Event) => event.target instanceof Element && event.target.closest('.elevation-chart__tooltip') !== null;
+function pin(event: MouseEvent) { if (props.enabled && focus.value && !fromTooltip(event)) pinned.value = true; }
+function leaveFocus(event: FocusEvent) { if (!chart.value?.contains(event.relatedTarget as Node | null)) selectDistance(null); }
 function move(event: PointerEvent) {
-  if (!props.enabled || (event.pointerType === 'touch' && !event.buttons)) return;
+  if (!props.enabled || fromTooltip(event) || ((pinned.value || event.pointerType === 'touch') && !event.buttons)) return;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   selectDistance(((event.clientX - rect.left) / rect.width * 300 - 5) / 290 * props.track.distanceMeters);
 }
 function press(event: PointerEvent) {
-  if (!props.enabled) return;
+  if (!props.enabled || fromTooltip(event)) return;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   move(event);
 }
-function leave(event: PointerEvent) { if (event.pointerType === 'mouse') selectDistance(null); }
+function leave(event: PointerEvent) { if (event.pointerType === 'mouse' && !pinned.value) selectDistance(null); }
 function key(event: KeyboardEvent) {
   if (!props.enabled) return;
+  if (event.key === 'Enter' && focus.value) { pinned.value = true; return; }
   const distance = focus.value?.distance ?? 0, step = props.track.distanceMeters / 1000;
   const positions: Record<string, number | null> = { ArrowRight: distance + step, ArrowLeft: distance - step,
     ArrowUp: distance + step, ArrowDown: distance - step, PageUp: distance + step * 100, PageDown: distance - step * 100,
@@ -161,6 +172,8 @@ function key(event: KeyboardEvent) {
 .elevation-chart__tooltip { position: absolute; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; width: max-content;
   max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); white-space: nowrap; font-size: .7rem; pointer-events: none; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
+.elevation-chart__tooltip--pinned { pointer-events: auto; }
+.elevation-chart__street-view { color: var(--accent); font-weight: 600; }
 .elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto; }
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
 .elevation-chart__altitudes span { position: absolute; right: .5rem; transform: translateY(-50%); white-space: nowrap; }
