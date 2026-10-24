@@ -2,17 +2,15 @@ import type { LayerSpecification, LineLayerSpecification, RasterSourceSpecificat
 import { onlineBasemap, type OnlineBasemap } from './online-basemaps';
 
 export type Basemap = 'street' | 'aerial' | 'local';
-export type EditorBasemap = Basemap | 'cycling' | 'terrain' | 'aerial-fast' | OnlineBasemap;
+export type EditorBasemap = Basemap | 'cycling' | 'terrain' | OnlineBasemap;
 export const vectorBasemapUrl = '/maps/style.json';
 export const imagerySource: RasterSourceSpecification = { type: 'raster', url: '/maps/imagery.json', tileSize: 256 };
-export const fastImagerySource: RasterSourceSpecification = { type: 'raster', url: '/maps/imagery-fast.json', tileSize: 256 };
 export const imageryOverviewSource: RasterSourceSpecification = {
   type: 'raster', url: '/maps/imagery-overview.json', tileSize: 256,
 };
-export const basemapOptions: { id: Basemap; label: string }[] = [
-  { id: 'street', label: 'Street map' },
-  { id: 'aerial', label: 'Aerial + labels' },
-  { id: 'local', label: 'Road network' },
+export const localBasemaps: { id: Exclude<EditorBasemap, OnlineBasemap>; label: string }[] = [
+  { id: 'street', label: 'OpenStreetMap · lokal' }, { id: 'cycling', label: 'Rennradkarte' },
+  { id: 'terrain', label: 'Geländekarte' }, { id: 'aerial', label: 'Satellit' }, { id: 'local', label: 'Straßennetz' },
 ];
 
 // WMTS templates verified against basemap.at's EPSG:3857 capabilities.
@@ -93,6 +91,7 @@ export function initialBasemap(): EditorBasemap {
     const value = localStorage.getItem('richiroute.review-basemap');
     const online = value && onlineBasemap(value);
     if (online) return online.id;
-    return value === 'local' || value === 'aerial' || value === 'aerial-fast' || value === 'cycling' || value === 'terrain' ? value : 'street';
+    // The former separate fast satellite view is now part of Satellit.
+    return localBasemaps.find(item => item.id === (value === 'aerial-fast' ? 'aerial' : value))?.id ?? 'street';
   } catch { return 'street'; }
 }

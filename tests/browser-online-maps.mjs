@@ -109,6 +109,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await chooseBasemap(page, 'osm');
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded());
+  await page.locator('.sidebar__credits > summary').click();
   await page.locator('.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"]').first().waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: `${output}/mobile.png` });

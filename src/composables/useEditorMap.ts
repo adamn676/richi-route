@@ -1,15 +1,15 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { AttributionControl, Map, NavigationControl, ScaleControl, setMaxParallelImageRequests, type LineLayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
-import { aerialVectorLayers, cyclingMapLayer, cyclingRoadPaint, fastImagerySource, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
+import { aerialVectorLayers, cyclingMapLayer, cyclingRoadPaint, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap } from '@/config/online-basemaps';
 import { createOnlineBasemaps } from './onlineBasemaps';
 
-export function useMap(container: string) {
+export function useMap(container: string, creditsContainer: string) {
   const map = shallowRef<Map | null>(null);
   const basemap = ref(initialBasemap());
   const mapError = ref('');
-  const aerialMap = () => basemap.value === 'aerial' || basemap.value === 'aerial-fast';
+  const aerialMap = () => basemap.value === 'aerial';
   const vectorLayers: { id: string; visibility: 'visible' | 'none'; localContext: boolean }[] = [];
   const aerialLayers: string[] = [];
   type RoadColor = NonNullable<LineLayerSpecification['paint']>['line-color'];
@@ -18,9 +18,10 @@ export function useMap(container: string) {
   let onlineMaps: ReturnType<typeof createOnlineBasemaps> | undefined;
   // Credits for the visible map, shown in the sidebar footer instead of over the map. The route and
   // its surfaces come from OpenStreetMap, so it is credited on every basemap; MapLibre drops this
-  // entry where a basemap's own credit already contains it.
+  // entry where a basemap's credit contains the same text (OpenFreeMap words its own, so it shows twice there).
   const attribution = new AttributionControl({ compact: false,
     customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  let creditsOutside = false;
   let vectorReady = false, vectorFailed = false;
   let vectorRequest: AbortController | undefined;
   const absoluteUrl = (url: string) => url.startsWith('/') ? location.origin + url : url;
@@ -94,7 +95,6 @@ export function useMap(container: string) {
     for (const id of aerialLayers) map.value.setLayoutProperty(id, 'visibility', aerialMap() && vectorReady ? 'visible' : 'none');
     for (const [id, visible] of [
       ['imagery-overview', aerialMap()], ['aerial', basemap.value === 'aerial'], ['roads', basemap.value === 'local'],
-      ['aerial-fast', basemap.value === 'aerial-fast'],
       ['basemap-cycling-paths', basemap.value === 'cycling'], ['basemap-hillshade', basemap.value === 'terrain'],
     ] as const) if (map.value.getLayer(id)) map.value.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     void onlineMaps?.show(onlineBasemap(basemap.value)?.id);
@@ -106,7 +106,7 @@ export function useMap(container: string) {
     if (vectorReady) map.value?.refreshTiles('basemap-vector-europe');
     else void loadVectorMap();
     if (aerialMap()) {
-      for (const [id, source] of [['basemap-aerial', imagerySource], ['basemap-aerial-fast', fastImagerySource], ['basemap-imagery-overview', imageryOverviewSource]] as const) {
+      for (const [id, source] of [['basemap-aerial', imagerySource], ['basemap-imagery-overview', imageryOverviewSource]] as const) {
         if (source.url) map.value?.getSource<RasterTileSource>(id)?.setUrl(source.url);
       }
     }
@@ -129,19 +129,16 @@ export function useMap(container: string) {
           'basemap-imagery-overview': imageryOverviewSource,
           // Tile size is in CSS pixels; retain image detail on dense screens.
           'basemap-aerial': { ...imagerySource, tileSize: 256 / Math.min(2, Math.max(1, window.devicePixelRatio)) },
-          'basemap-aerial-fast': { ...fastImagerySource, tileSize: 256 / Math.min(2, Math.max(1, window.devicePixelRatio)) },
         },
         layers: [
           { id: 'background', type: 'background', paint: { 'background-color': '#f3f4f1' } },
           { id: 'imagery-overview', type: 'raster', source: 'basemap-imagery-overview',
             layout: { visibility: aerialMap() ? 'visible' : 'none' } },
+          // Detail starts where the local overview gets too coarse to stretch, so long routes stay sharp.
           { id: 'aerial', type: 'raster', source: 'basemap-aerial',
-            minzoom: 9,
+            minzoom: 7,
             paint: { 'raster-fade-duration': 100 },
             layout: { visibility: basemap.value === 'aerial' ? 'visible' : 'none' } },
-          { id: 'aerial-fast', type: 'raster', source: 'basemap-aerial-fast', minzoom: 9,
-            paint: { 'raster-fade-duration': 100 },
-            layout: { visibility: basemap.value === 'aerial-fast' ? 'visible' : 'none' } },
           { id: 'basemap-overlay-anchor', type: 'background', paint: { 'background-opacity': 0 } },
           { id: MAP_LABELS_ANCHOR, type: 'background', paint: { 'background-opacity': 0 } },
           { id: 'map-labels-top', type: 'background', paint: { 'background-opacity': 0 } },
@@ -150,7 +147,10 @@ export function useMap(container: string) {
     });
     instance.addControl(new NavigationControl(), 'bottom-right');
     instance.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
-    document.getElementById('map-credits')?.append(attribution.onAdd(instance));
+    const credits = document.getElementById(creditsContainer);
+    if (credits) credits.append(attribution.onAdd(instance));
+    else instance.addControl(attribution);
+    creditsOutside = Boolean(credits);
     instance.on('error', event => {
       const online = onlineBasemap(basemap.value);
       if (online) {
@@ -162,13 +162,17 @@ export function useMap(container: string) {
         return;
       }
       mapError.value = aerialMap()
-        ? 'Luftbild oder Beschriftungen nicht erreichbar. Die Straßenkarte ist lokal verfügbar.'
+        ? 'Satellitenbild oder Beschriftungen nicht erreichbar. Die Straßenkarte ist lokal verfügbar.'
         : 'Lokale Straßenkarte nicht erreichbar. Kartendienst prüfen.';
     });
     onlineMaps = createOnlineBasemaps(instance, message => { mapError.value = message; });
     instance.on('style.load', applyBasemap);
     map.value = instance;
   });
-  onBeforeUnmount(() => { vectorRequest?.abort(); vectorRequest = undefined; onlineMaps?.close(); attribution.onRemove(); map.value?.remove(); });
+  onBeforeUnmount(() => {
+    vectorRequest?.abort(); vectorRequest = undefined; onlineMaps?.close();
+    if (creditsOutside) attribution.onRemove();
+    map.value?.remove();
+  });
   return { map, basemap, mapError, retryBasemap };
 }

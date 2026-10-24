@@ -314,12 +314,11 @@ measurements. [Mapterhorn and its data sources](https://mapterhorn.com/attributi
 are credited on the map. Setup keeps 15 GiB free and skips an existing archive.
 Missing terrain produces an error with retry, while other map views still work.
 
-**Luftbild · schnell** uses national tile services, avoiding the dynamic Graz
-and Styria exports. **Luftbild · Detail** retains those finer regional photos.
-The speed option uses Austria's 30 cm product; it does not provide Graz's finer
-regional detail. Both retain vector street names, dense-screen imagery and
-saved offline areas. Outside regions with a separate detail source they use
-the same providers. Uncached imagery still requires an internet connection.
+**Satellit** uses national tile services, such as Austria's 30 cm product, and
+adds the finer Graz and Styria photos only from tile zoom 19, where they show
+more detail. Their dynamic exports are slow, so everyday views stay on the fast
+national tiles. It keeps vector street names, dense-screen imagery and saved
+offline areas. Uncached imagery still requires an internet connection.
 
 For national JPEG tiles fully inside Austria or France at tile zooms 10–19,
 the fast mode can deliver the original bytes without Python decoding and
@@ -407,7 +406,8 @@ persisted selection and mobile attribution. Reports are in `.cache/online-maps/`
 
 The map's tool column at the top right holds the basemap choice (layers icon),
 **Rad-Infos** (bike icon) and **Route zeigen** (focus icon); hover for their
-names. Map data credits appear in small print at the bottom of the sidebar.
+names. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
+all map and imagery sources.
 
 **Rad-Infos** independently toggles cycle paths, drinking-water sources,
 bicycle repair stations/shops, food stops and railway stations over all
@@ -470,7 +470,7 @@ mobile controls. Screenshots and reports go to `.cache/cycling/`.
 
 ## European imagery
 
-**Luftbild · Europa** combines a locally stored European overview with detail
+The **Satellit** views combine a locally stored European overview with detail
 imagery fetched by the local map service. Street and place names come from the
 local vector map and remain above route lines in all three map modes.
 No account, API key or paid imagery service is used. On dense screens, the
@@ -519,6 +519,26 @@ credits. Adaptations of the Austrian boundary remain under CC BY-SA 2.0.
 Imagery licenses remain those of each provider.
 
 The local overview draws immediately from prebuilt tiles while detail loads.
+It holds about 400–550 m per pixel; the map switches to detail tiles from
+zoom 7, and live Sentinel reads start at tile zoom 10.
+
+Zoomed-out views otherwise mix the coarse overview, aerial photos from
+different flights and seasons, and slow live Sentinel tiles, which looks patchy
+and blurry on long routes. An optional regional mosaic fixes this for one area:
+
+```sh
+npm run imagery:region                                  # Austria and its borders
+npm run imagery:region -- --bbox 5.9,45.8,17.2,49.1     # another area: west,south,east,north
+```
+
+It builds `.cache/imagery/region.tif` once from Sentinel's 80 m images
+(about 76 × 78 m per pixel, roughly two minutes and 10 MB for Austria; the
+per-cell downloads stay in `.cache/imagery/region-cells/` for rebuilds). Inside
+that area, tiles at tile zooms 8–10 come only from this local file: one even
+colour, rendered without network requests, also offline. Aerial photos take
+over from tile zoom 11. Building another area replaces the previous one.
+Restart the map service afterwards; this also replaces cached tiles.
+
 The map service uses eight detail render workers, one offline fallback worker
 and a bounded request queue. It reads only image windows needed for the current
 view, selecting the appropriate Sentinel overview and loading the three colour
@@ -529,8 +549,10 @@ needs them. A local SQLite cache holds
 up to 2 GiB of tile data, plus database overhead, evicting the least recently
 used tiles. Cached tiles refresh after seven days when online; changes to
 swisstopo's advertised cache timestamp invalidate affected cache entries.
-Renderer-only code changes preserve cached imagery; source-registry changes
-invalidate it and version browser tile URLs.
+Source-registry changes, and changes to `rendererVersion` in
+`scripts/imagery/service.mjs`, invalidate cached imagery and version browser
+tile URLs; bump that version when the renderer's output changes. Other renderer
+code changes preserve the cache.
 When an XYZ photo tile returns 404, the renderer tries up to two parent zooms
 and crops the matching area before falling back to another source. This keeps
 available aerial detail in places such as Virgen, where basemap.at's zoom 20
@@ -960,9 +982,7 @@ and a preview with `MAPS_PORT=8089 npm run dev -- --port 5176`.
 Use a new cache filename for each run and restart the map service between modes:
 
 ```sh
-ROUTE_TEST_ORIGIN=http://127.0.0.1:5176 TILE_BENCH_LABEL=detail node tests/browser-tile-loading.mjs
-# Restart the benchmark map service with another empty cache, then:
-ROUTE_TEST_ORIGIN=http://127.0.0.1:5176 TILE_BENCH_LABEL=fast TILE_BENCH_MODE=aerial-fast node tests/browser-tile-loading.mjs
+ROUTE_TEST_ORIGIN=http://127.0.0.1:5176 TILE_BENCH_LABEL=satellite node tests/browser-tile-loading.mjs
 ```
 
 The script waits for map idle and loaded tiles after each move. It records
@@ -979,7 +999,9 @@ all detail requests in these four views were misses, with no degraded responses.
 | Virgen | 1.82 s | 1.72 s |
 
 These timings include network variation. The Graz/Styria improvement comes from
-choosing national tiled imagery instead of finer regional exports. Virgen uses
+choosing national tiled imagery instead of finer regional exports. They come from
+the former separate Detail and Fast views; **Satellit** now uses the fast path
+below tile zoom 19. Virgen uses
 the same provider in both modes. This is a separate browser measurement, not
 a measurement of VS Code's embedded browser. The discarded larger-export
 experiments were slower and are not part of the implementation.

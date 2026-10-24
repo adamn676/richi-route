@@ -88,7 +88,8 @@ async function download() {
   }
 }
 try {
-  await Promise.all([download(), download()]);
+  // Six downloads keep the map service's render workers busy without crowding out the browser.
+  await Promise.all(Array.from({ length: 6 }, download));
   if (failure) throw failure;
   const info = await fetch(`${origin}/imagery.json`).then(response => response.json());
   for (const [key, value] of Object.entries({ name: values.name, format: 'jpg', type: 'baselayer', version: '1.3',

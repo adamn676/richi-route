@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { PMTiles } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
-import { createImagery, validTile } from './imagery/service.mjs';
+import { createImagery, imageryRevision, validTile } from './imagery/service.mjs';
 import imageryConfig from './imagery.json' with { type: 'json' };
 import { openCyclingPoints } from './cycling/points.mjs';
 
@@ -25,10 +25,11 @@ catch (error) {
   if (error.code !== 'ENOENT') throw error;
   console.warn('European imagery is not installed. Run npm run imagery:setup.');
 }
-const imageryRevision = createHash('sha256').update(JSON.stringify(imageryConfig)).digest('hex').slice(0, 16);
+// Versioned tile URLs, so browsers drop cached tiles when the imagery or its regional mosaic changes.
+const tileVersion = (imagery?.revision ?? imageryRevision).slice(0, 16);
 const imageryMetadata = Buffer.from(JSON.stringify({
   tilejson: '3.0.0', name: 'European imagery', format: 'jpg',
-  tiles: [`/maps/imagery/{z}/{x}/{y}.jpg?v=${imageryRevision}`], minzoom: 0, maxzoom: 20,
+  tiles: [`/maps/imagery/{z}/{x}/{y}.jpg?v=${tileVersion}`], minzoom: 0, maxzoom: 20,
   bounds: imageryConfig.bounds,
   attribution: [imageryConfig.sentinel.attribution, ...[...imageryConfig.countries, ...(imageryConfig.regions ?? [])].map(country => country.attribution),
     '<a href="https://www.geoboundaries.org/">Country masks: geoBoundaries</a>',
@@ -41,7 +42,7 @@ const overviewMetadata = Buffer.from(JSON.stringify({
   bounds: imageryConfig.bounds, attribution: imageryConfig.sentinel.attribution,
 }));
 const fastImageryMetadata = Buffer.from(JSON.stringify({ ...JSON.parse(imageryMetadata), name: 'European imagery, national tiles',
-  tiles: [`/maps/imagery-fast/{z}/{x}/{y}.jpg?v=${imageryRevision}`],
+  tiles: [`/maps/imagery-fast/{z}/{x}/{y}.jpg?v=${tileVersion}`],
 }));
 const directory = path.join(root, '.cache/maps');
 const archivePath = process.env.RICHIROUTE_MAP_FILE ?? path.join(directory, 'europe.pmtiles');

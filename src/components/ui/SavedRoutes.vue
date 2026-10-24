@@ -3,7 +3,7 @@
     <form class="library__save" @submit.prevent="save()">
       <p class="label">{{ active ? `„${active.name}“ speichern` : 'Aktuelle Route speichern' }}</p>
       <div class="library__save-row">
-        <input id="route-name" v-model="name" class="field" maxlength="120" placeholder="Name, z. B. Feierabendrunde" required
+        <input v-model="name" class="field" maxlength="120" placeholder="Name, z. B. Feierabendrunde" required
           aria-label="Routenname" />
         <button type="submit" class="btn btn--primary" :disabled="busy || !hasDraft || !name.trim()"
           :aria-label="active ? 'Änderungen speichern' : 'Route speichern'">
@@ -27,7 +27,7 @@
           <div class="library__entry">
             <div class="library__title">
               <strong>{{ entry.name }}</strong>
-              <span class="muted">{{ (entry.distanceMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 }) }} km · {{ dateLabel(entry.updatedAt) }}<template v-if="active?.id === entry.id"> · <span class="library__current">geöffnet</span></template></span>
+              <span class="muted">{{ formatKm(entry.distanceMeters, 1) }} km · {{ dateLabel(entry.updatedAt) }}<template v-if="active?.id === entry.id"> · <span class="library__current">geöffnet</span></template></span>
             </div>
             <div v-if="renaming?.id !== entry.id && deleting?.id !== entry.id" class="library__tools">
               <button type="button" class="btn btn--ghost btn--icon btn--sm" :disabled="busy" aria-label="Öffnen" title="Öffnen" @click="open(entry)"><IconFolderOpen :size="17" aria-hidden="true" /></button>
@@ -66,6 +66,7 @@ import { nextTick, ref, shallowRef } from 'vue';
 import { IconCopy, IconDeviceFloppy, IconDownload, IconFolderOpen, IconPencil, IconRefresh, IconTrash, IconUpload } from '@/components/icons';
 import type { useRouteLibrary } from '../../composables/useRouteLibrary';
 import type { SavedRouteSummary } from '../../domain/saved-route';
+import { formatKm } from '@/utils/format';
 
 const props = defineProps<{ library: ReturnType<typeof useRouteLibrary> }>();
 const { entries, active, name, busy, error, hasDraft, save, open, rename, duplicate, remove,

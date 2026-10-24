@@ -16,16 +16,15 @@
         <template #icon><IconStack2 :size="20" aria-hidden="true" /></template>
         <template #default="{ close }">
           <fieldset v-for="group in basemapGroups" :key="group.label" class="map-view__basemaps">
-            <legend>{{ group.label }}</legend>
-            <!-- A pointer choice closes the menu; arrow keys only move the selection. -->
-            <label v-for="item in group.items" :key="item.id" class="option" @click="event => event.detail && close(true)">
+            <legend class="label">{{ group.label }}</legend>
+            <label v-for="item in group.items" :key="item.id" class="option" @click="event => pick(event, item.id, close)">
               <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
             </label>
           </fieldset>
         </template>
       </MapMenu>
       <CyclingOverlays :map="map" />
-      <button v-if="route" type="button" class="btn btn--icon" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
+      <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
         <IconFocus2 :size="20" aria-hidden="true" />
       </button>
     </div>
@@ -53,16 +52,21 @@ import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import MapMenu from '@/components/map/MapMenu.vue';
 import { onlineBasemaps } from '@/config/online-basemaps';
+import { localBasemaps, type EditorBasemap } from '@/config/basemaps';
 
-const { map, basemap, mapError, retryBasemap } = useMap('map');
-const basemapGroups: { label: string; items: readonly { id: string; label: string }[] }[] = [
-  { label: 'Eigene Karten · Europa', items: [
-    { id: 'street', label: 'OpenStreetMap · lokal' }, { id: 'cycling', label: 'Rennradkarte' },
-    { id: 'terrain', label: 'Geländekarte' }, { id: 'aerial-fast', label: 'Luftbild · schnell' },
-    { id: 'aerial', label: 'Luftbild · Detail' }, { id: 'local', label: 'Straßennetz' },
-  ] },
+const { map, basemap, mapError, retryBasemap } = useMap('map', 'map-credits');
+const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label: string }[] }[] = [
+  { label: 'Eigene Karten · Europa', items: localBasemaps },
   { label: 'Online · Internet erforderlich', items: onlineBasemaps },
 ];
+// A pointer choice applies the map and closes the menu; arrow keys (clicks with detail 0) only move the selection.
+// A click on the label text skips the label's default action, which would pull focus into the closing panel.
+function pick(event: MouseEvent, id: EditorBasemap, close: (refocus?: boolean) => void) {
+  if (!event.detail) return;
+  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+  basemap.value = id;
+  close(true);
+}
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
@@ -101,10 +105,9 @@ function fitRoute() {
 .map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
 .map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }
 .map-view__tools { position: absolute; top: .75rem; right: .75rem; display: grid; gap: .5rem; }
-.map-view__tools > .btn { width: 2.5rem; min-height: 2.5rem; box-shadow: var(--shadow); }
 .map-view__basemaps { margin: 0; padding: 0; border: 0; }
 .map-view__basemaps + .map-view__basemaps { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }
-.map-view__basemaps legend { padding: .25rem 0; color: var(--text-muted); font-size: .72rem; font-weight: 600; }
+.map-view__basemaps legend { padding: .25rem 0; }
 @media (max-width: 760px) {
   .map-view__status { top: .5rem; left: .5rem; }
   .map-view__tools { top: .5rem; right: .5rem; }

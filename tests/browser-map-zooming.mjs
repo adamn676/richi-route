@@ -19,8 +19,8 @@ try {
   page.on('requestfailed', request => { if (/\/maps\/imagery(?:-fast)?\//.test(request.url())) cancelled++; });
   page.on('response', response => { if (response.headers()['x-imagery-degraded'] === '1') degraded++; });
   for (const [place, center, mode] of [
-    ['Graz', [15.398, 47.095], 'aerial-fast'],
-    ['Virgen', [12.453, 47.002], 'aerial-fast'],
+    ['Graz', [15.398, 47.095], 'aerial'],
+    ['Virgen', [12.453, 47.002], 'aerial'],
     ['Graz detail', [15.398, 47.095], 'aerial'],
   ]) {
     requested = 0; cancelled = 0; degraded = 0;

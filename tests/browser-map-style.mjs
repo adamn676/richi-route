@@ -89,7 +89,7 @@ try {
   }, {}, { timeout: 60000 });
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
     .jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
-  for (const mode of ['street', 'cycling', 'terrain', 'aerial-fast', 'aerial', 'local']) {
+  for (const mode of ['street', 'cycling', 'terrain', 'aerial', 'local']) {
     await chooseBasemap(page, mode);
     await waitStreetNames(page);
     await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
@@ -108,7 +108,11 @@ try {
   }
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').resetRoute());
   await waitStreetNames(page);
-  await chooseBasemap(page, 'terrain');
+  // A pointer choice applies the map and closes the menu.
+  const basemapMenu = page.getByRole('button', { name: 'Kartenansicht', exact: true });
+  await basemapMenu.click();
+  await page.getByText('Geländekarte', { exact: true }).click();
+  assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'false');
   await page.evaluate(() => new Promise(resolve => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     map.once('idle', resolve); map.jumpTo({ center: [12.458, 47.001], zoom: 11 });

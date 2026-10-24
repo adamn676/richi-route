@@ -22,6 +22,8 @@ from rasterio.warp import transform_bounds, transform_geom
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = json.loads((ROOT / 'scripts/imagery.json').read_text())
+# From this tile zoom Sentinel is read live; below it the local overview or a regional mosaic is used.
+SENTINEL_MINZOOM = 10
 DIRECTORY = ROOT / '.cache/imagery'
 SIZE = 256
 EXTENT = math.pi * 6378137
@@ -40,10 +42,22 @@ for country in CONFIG['countries'] + CONFIG.get('regions', []):
                   for shape in shapes]
     COUNTRIES.append({**country, 'shapes': shapes, 'boundaries': boundaries, 'bounds': [geometry_bounds(shape) for shape in shapes]})
 INDEX = json.loads((DIRECTORY / 'index.json').read_text()) if (DIRECTORY / 'index.json').exists() else []
+# An optional sharper Sentinel mosaic for one region (mosaic.py); zoomed-out tiles inside it come only from there.
+REGION = json.loads((DIRECTORY / 'region.json').read_text()) if (DIRECTORY / 'region.tif').exists() else None
 
 
 def intersects(a, b):
     return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
+
+def contains(outer, inner):
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def encode(image):
+    output = BytesIO()
+    image.save(output, format='JPEG', quality=90)
+    return base64.b64encode(output.getvalue()).decode()
 
 
 def tile_bounds(z, x, y):
@@ -157,6 +171,9 @@ def render(z, x, y, offline=False, regional=True):
     bounds = tile_bounds(z, x, y)
     transform = from_bounds(*bounds, SIZE, SIZE)
     geographic = transform_bounds(3857, 4326, *bounds)
+    if REGION and REGION['minzoom'] <= z <= REGION['maxzoom'] and contains(REGION['bounds'], geographic):
+        base = read_tile(dataset(str(DIRECTORY / 'region.tif')), transform).filled(0)
+        return {'data': encode(Image.fromarray(np.moveaxis(base, 0, -1))), 'sources': ['sentinel-region'], 'errors': []}
     overlays, sources, errors = [], [], []
     coverage = np.zeros((SIZE, SIZE), dtype='uint8')
     if z >= 9 and not offline:
@@ -183,7 +200,7 @@ def render(z, x, y, offline=False, regional=True):
     else:
         base = read_tile(dataset(str(DIRECTORY / 'overview.tif')), transform).filled(0)
         sources.append('sentinel-overview')
-        if z >= 10 and not offline:
+        if z >= SENTINEL_MINZOOM and not offline:
             resolution = transform.a * math.cos(math.radians(geographic[3]))
             overview = sentinel_overview(resolution)
             for cell in INDEX:
@@ -205,9 +222,7 @@ def render(z, x, y, offline=False, regional=True):
     for overlay in reversed(overlays):
         image = Image.fromarray(overlay)
         result.paste(image, mask=image.getchannel('A'))
-    output = BytesIO()
-    result.save(output, format='JPEG', quality=90)
-    return {'data': base64.b64encode(output.getvalue()).decode(), 'sources': sources, 'errors': errors}
+    return {'data': encode(result), 'sources': sources, 'errors': errors}
 
 
 def main():

@@ -23,6 +23,11 @@ export interface SurfaceSection {
   surface: Surface;
 }
 
+// Totals grouped like the map's colours, longest material first within each group.
+const surfaceRank: Record<Surface, number> = { asphalt: 0, paved: 1, rough: 2, unpaved: 3, unknown: 4 };
+export const bySurfaceThenLength = (a: { surface: Surface; meters: number }, b: { surface: Surface; meters: number }) =>
+  surfaceRank[a.surface] - surfaceRank[b.surface] || b.meters - a.meters;
+
 export function surfaceLabel(key: string) { return labels[key] ?? `Belag: ${key}`; }
 
 export function inspectSurfaces(points: RoutePoint[], legs: Record<string, RouteLeg>) {
@@ -66,5 +71,5 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     total.count++;
     totals.set(section.key, total);
   }
-  return { sections, distanceMeters: offset, totals: [...totals.values()].sort((a, b) => b.meters - a.meters) };
+  return { sections, distanceMeters: offset, totals: [...totals.values()].sort(bySurfaceThenLength) };
 }

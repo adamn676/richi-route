@@ -1,6 +1,6 @@
 <template>
   <section v-if="totals.length" class="surfaces" aria-labelledby="surfaces-title">
-    <h3 id="surfaces-title" class="surfaces__title">Untergrund</h3>
+    <h3 id="surfaces-title" class="label">Untergrund</h3>
     <div class="surfaces__bar" aria-hidden="true">
       <i v-for="total in totals" :key="total.key" :style="{ flexGrow: total.meters, background: routeStyle[total.surface] }" />
     </div>
@@ -17,7 +17,7 @@
       <ol class="surfaces__sections">
         <li v-for="section in matching.slice(0, visibleCount)" :key="section.id">
           <button type="button" :aria-pressed="isFocused(section)" @click="focus(section)">
-            <span>km {{ positionLabel(section.fromMeters) }} bis {{ positionLabel(section.toMeters) }}</span>
+            <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}</span>
             <strong>{{ lengthLabel(section.toMeters - section.fromMeters) }}</strong>
           </button>
         </li>
@@ -32,15 +32,12 @@
 import { computed, ref, watch } from 'vue';
 import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, type SurfaceSection } from '@/domain/route-surfaces';
-import type { Surface } from '@/domain/route-model';
+import { formatKm } from '@/utils/format';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();
 const inspection = computed(() => store.routingPending ? null : inspectSurfaces(store.points, store.legs));
-// Grouped like the map's colours, longest material first within each group.
-const surfaceRank: Record<Surface, number> = { asphalt: 0, paved: 1, rough: 2, unpaved: 3, unknown: 4 };
-const totals = computed(() => [...inspection.value?.totals ?? []]
-  .sort((a, b) => surfaceRank[a.surface] - surfaceRank[b.surface] || b.meters - a.meters));
+const totals = computed(() => inspection.value?.totals ?? []);
 const selectedKey = ref<string | null>(null);
 const visibleCount = ref(10);
 const matching = computed(() => inspection.value?.sections.filter(section => section.key === selectedKey.value) ?? []);
@@ -48,10 +45,7 @@ const selectedLabel = computed(() => totals.value.find(total => total.key === se
 const hasLegacyDetails = computed(() => Object.values(store.legs).some(leg => leg.surfaces.some(span => span.surface !== 'unknown' && span.surfaceTag === undefined)));
 
 function lengthLabel(meters: number) {
-  return meters < 1000 ? `${meters < 1 ? '< 1' : Math.round(meters)} m` : `${(meters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km`;
-}
-function positionLabel(meters: number) {
-  return (meters / 1000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return meters < 1000 ? `${meters < 1 ? '< 1' : Math.round(meters)} m` : `${formatKm(meters, 1)} km`;
 }
 function focus(section: SurfaceSection) {
   store.inspectSurface(section.legId, section.fromIndex, section.toIndex);
@@ -80,7 +74,7 @@ watch(inspection, value => {
 
 <style scoped>
 .surfaces { display: grid; gap: .5rem; }
-.surfaces__title { margin: 0; font-size: .78rem; font-weight: 600; color: var(--text-muted); }
+.surfaces .label { margin: 0; }
 .surfaces__bar { display: flex; gap: 2px; height: 8px; overflow: hidden; border-radius: 4px; }
 .surfaces__bar i { min-width: 2px; }
 .surfaces__totals, .surfaces__sections { display: grid; gap: .1rem; margin: 0 -.5rem; padding: 0; list-style: none; }

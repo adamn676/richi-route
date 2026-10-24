@@ -66,7 +66,7 @@ try {
     'Inspecting a drinking-water point does not add a waypoint');
   await page.screenshot({path:`${output}/water-details.png`});
   await page.getByRole('button',{name:'Close popup'}).click();
-  for (const mode of ['cycling','terrain','aerial-fast','aerial','local','street']) {
+  for (const mode of ['cycling','terrain','aerial','local','street']) {
     await chooseBasemap(page, mode);
     await waitWater();
     assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('cycling-cycleways','visibility')), 'visible');

@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { distanceMeters, type Coord, type LegGeometry, type SurfaceSpan } from './route-model.ts';
+import { distanceMeters, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
 import type { GpxTrack } from './gpx-track.ts';
-import { surfaceLabel } from './route-surfaces.ts';
+import { bySurfaceThenLength, surfaceLabel } from './route-surfaces.ts';
 import { routeStyle } from '../config/mapStyle.ts';
 
 export interface GpxPortion { segment: number; from: number; to: number; points: Coord[] }
@@ -88,7 +88,7 @@ export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate
 
 export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
   const features: Feature<LineString | Point>[] = [];
-  const totals = new Map<string, { key: string; label: string; color: string; meters: number }>();
+  const totals = new Map<string, { key: string; label: string; surface: Surface; color: string; meters: number }>();
   let estimatedMeters = 0;
   track.geojson.features.forEach((feature, s) => {
     if (feature.geometry.type === 'Point') {
@@ -98,9 +98,9 @@ export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
     const coordinates = feature.geometry.coordinates;
     function add(from: number, to: number, span?: SurfaceSpan) {
       if (to <= from) return;
-      const key = span?.surfaceTag ?? 'unknown', color = routeStyle[span?.surface ?? 'unknown'];
+      const key = span?.surfaceTag ?? 'unknown', surface = span?.surface ?? 'unknown', color = routeStyle[surface];
       const meters = track.distances[s][to] - track.distances[s][from];
-      const total = totals.get(key) ?? { key, label: surfaceLabel(key), color, meters: 0 };
+      const total = totals.get(key) ?? { key, label: surfaceLabel(key), surface, color, meters: 0 };
       total.meters += meters; totals.set(key, total);
       if (key !== 'unknown') estimatedMeters += meters;
       const previous = features.at(-1);
@@ -113,5 +113,5 @@ export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
     add(cursor, coordinates.length - 1);
   });
   return { geojson: { type: 'FeatureCollection', features } as FeatureCollection<LineString | Point>, estimatedMeters,
-    totals: [...totals.values()].sort((a, b) => b.meters - a.meters) };
+    totals: [...totals.values()].sort(bySurfaceThenLength) };
 }

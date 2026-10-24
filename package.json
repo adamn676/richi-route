@@ -22,6 +22,7 @@
     "cycling:setup": "node scripts/setup-cycling.mjs",
     "imagery:setup": "node scripts/setup-imagery.mjs",
     "imagery:save": "node scripts/save-imagery.mjs",
+    "imagery:region": "node scripts/imagery-region.mjs",
     "bench:brouter:performance": "node experiments/routing/brouter-patch/build-performance.mjs",
     "bench:brouter:patch": "node experiments/routing/brouter-patch/build.mjs",
     "dev": "vite",

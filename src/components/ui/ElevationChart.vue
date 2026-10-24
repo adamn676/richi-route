@@ -13,7 +13,7 @@
     </div>
     <div class="elevation-chart__plot">
       <div class="elevation-chart__altitudes" aria-hidden="true">
-        <span v-for="tick in altitudeTicks" :key="tick.value" :style="{ top: `${tick.y / 88 * 100}%` }">{{ tick.value.toLocaleString('de-DE') }} m</span>
+        <span v-for="tick in altitudeTicks" :key="tick.value" :style="{ top: `${tick.y / 88 * 100}%` }">{{ formatMeters(tick.value) }}</span>
       </div>
       <div ref="chart" class="elevation-chart__chart" role="slider" :tabindex="enabled ? 0 : -1" :aria-label="label"
         aria-valuemin="0" :aria-valuemax="track.distanceMeters" :aria-valuenow="focus?.distance ?? 0" :aria-valuetext="readout"
@@ -37,8 +37,8 @@
         <!-- Beside the cursor, on whichever side has more room. -->
         <div v-if="focus" class="popover elevation-chart__tooltip" :class="{ 'elevation-chart__tooltip--left': focusX > 150 }"
           :style="{ left: focusLeft }" aria-hidden="true">
-          <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : `${Math.round(focus.elevation)} m` }}</strong>
-          <span>{{ formatDistance(focus.distance) }} km</span>
+          <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
+          <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText">{{ gradientText }} %</span>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { niceStep, type GpxTrack } from '../../domain/gpx-track';
+import { formatKm, formatMeters } from '@/utils/format';
 import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
 const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string }>(), { enabled: true });
@@ -63,7 +64,6 @@ const focus = computed(() => props.focus);
 function selectDistance(distance: number | null) { emit('inspect', distance); }
 // A position chosen here must not outlive the chart, or its map marker would stay.
 onBeforeUnmount(() => selectDistance(null));
-const formatDistance = (meters: number, digits = 2) => (meters / 1000).toLocaleString('de-DE', { maximumFractionDigits: digits });
 // Plot coordinates in viewBox units for a distance along the track and an elevation on its axis.
 const xAt = (meters: number) => 5 + (props.track.distanceMeters ? meters / props.track.distanceMeters * 290 : 0);
 const yAt = (elevation: number) => {
@@ -82,7 +82,7 @@ const distanceTicks = computed(() => {
   const step = niceStep(Math.max(total / Math.max(2, Math.floor(width / 70)), 10));
   return Array.from({ length: Math.floor(total / step) + 1 }, (_, i) => {
     const x = xAt(i * step);
-    return { x, label: `${formatDistance(i * step, 3)} km`, end: (300 - x) / 300 * width < 22 };
+    return { x, label: `${formatKm(i * step, 3)} km`, end: (300 - x) / 300 * width < 22 };
   });
 });
 // Elevation axis that starts and ends on a round step: at most five steps, marks at least 11 px apart,
@@ -122,8 +122,8 @@ const gradientLabel = computed(() => gradientText.value ? `${gradientText.value}
 const readout = computed(() => {
   if (!focus.value) return 'Noch keine Position gewählt';
   const f = focus.value;
-  const height = f.elevation === null ? 'Höhe unbekannt' : `${Math.round(f.elevation)} m Höhe`;
-  return `${formatDistance(f.distance)} km, ${height}, ${gradientLabel.value}, Abschnitt ${f.segmentIndex + 1}`;
+  const height = f.elevation === null ? 'Höhe unbekannt' : `${formatMeters(f.elevation)} Höhe`;
+  return `${formatKm(f.distance)} km, ${height}, ${gradientLabel.value}, Abschnitt ${f.segmentIndex + 1}`;
 });
 function move(event: PointerEvent) {
   if (!props.enabled || (event.pointerType === 'touch' && !event.buttons)) return;

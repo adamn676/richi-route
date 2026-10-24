@@ -1,5 +1,5 @@
 <template>
-  <MapMenu class="cycling-controls" heading="Rad-Infos" title="Rad-Infos"
+  <MapMenu class="cycling-controls" heading="Rad-Infos"
     :label="error ? 'Rad-Infos, Fehler beim Laden' : `Rad-Infos, ${selected.length} angezeigt`">
     <template #icon>
       <IconBike :size="20" aria-hidden="true" />
@@ -9,7 +9,7 @@
     <label v-for="item in cyclingOverlays" :key="item.id" class="option">
       <input v-model="selected" type="checkbox" :value="item.id" />
       <span>{{ item.label }}</span>
-      <i class="cycling-controls__swatch" :class="{ 'cycling-controls__swatch--line': item.id === 'cycleways' }" :style="{ background: item.color }" aria-hidden="true" />
+      <i :class="item.id === 'cycleways' ? 'swatch' : 'cycling-controls__dot'" :style="{ background: item.color }" aria-hidden="true" />
     </label>
     <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="loadPoints">Erneut laden</button></p>
   </MapMenu>
@@ -142,7 +142,7 @@ onBeforeUnmount(() => detach(props.map));
 .cycling-controls__badge { position: absolute; top: -.35rem; right: -.35rem; min-width: 1.1rem; padding: 0 .25rem; border: 2px solid var(--surface);
   border-radius: 999px; background: var(--accent); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1rem; font-variant-numeric: tabular-nums; }
 .cycling-controls__badge--alert { background: var(--danger); }
-.cycling-controls__swatch { width: .6rem; height: .6rem; margin-left: auto; border-radius: 50%; flex-shrink: 0; }
-.cycling-controls__swatch--line { width: .9rem; height: 4px; border-radius: 2px; }
+.option > i { margin-left: auto; }
+.cycling-controls__dot { width: .6rem; height: .6rem; border-radius: 50%; flex-shrink: 0; }
 .notice { margin-top: .5rem; }
 </style>

@@ -90,6 +90,7 @@ import AddressSearchInput from '@/components/common/AddressSearchInput.vue';
 import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
+import { formatKm, formatMeters } from '@/utils/format';
 
 const emit = defineEmits<{ newRoute: [coords?: Coord[], shapeIndices?: readonly number[]] }>();
 const routeStore = useRouteStore();
@@ -115,13 +116,9 @@ const hasEndpoints = computed(() => {
 });
 const distanceLabel = computed(() => {
   if (!routeStore.route) return '…';
-  const value = (routeStore.distanceMeters / 1000).toLocaleString('de-DE', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
-  return `${routeStore.hasAirLines ? 'ca. ' : ''}${value} km`;
+  return `${routeStore.hasAirLines ? 'ca. ' : ''}${formatKm(routeStore.distanceMeters, 1, true)} km`;
 });
-const ascentLabel = computed(() => routeStore.ascentMeters !== null ? `${Math.round(routeStore.ascentMeters).toLocaleString('de-DE')} m`
+const ascentLabel = computed(() => routeStore.ascentMeters !== null ? formatMeters(routeStore.ascentMeters)
   : routeStore.routingPending ? '…' : 'unbekannt');
 
 // A point placed on the map without an address shows its position in the empty field.

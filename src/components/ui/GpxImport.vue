@@ -10,19 +10,18 @@
           <span class="muted">{{ track.fileName }} · {{ track.pointCount.toLocaleString('de-DE') }} Punkte<template v-if="track.segments.length > 1"> · {{ track.segments.length }} Abschnitte</template></span>
         </div>
         <div class="gpx__tools">
-          <!-- The checkbox lies invisibly over the eye icon. -->
-          <label class="btn btn--ghost btn--icon gpx__toggle" :title="reference.visible ? 'Track ausblenden' : 'Track einblenden'">
-            <input v-model="reference.visible" type="checkbox" aria-label="Track einblenden" />
+          <button type="button" role="switch" class="btn btn--ghost btn--icon" :aria-checked="reference.visible" aria-label="Track einblenden"
+            :title="reference.visible ? 'Track ausblenden' : 'Track einblenden'" @click="reference.visible = !reference.visible">
             <component :is="reference.visible ? IconEye : IconEyeOff" :size="18" aria-hidden="true" />
-          </label>
+          </button>
           <button type="button" class="btn btn--ghost btn--icon" aria-label="Track zeigen" title="Track zeigen" @click="reference.show()"><IconFocus2 :size="18" aria-hidden="true" /></button>
           <button type="button" class="btn btn--ghost btn--icon" :disabled="reference.loading" aria-label="Andere GPX-Datei öffnen" title="Andere GPX-Datei öffnen" @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></button>
           <button type="button" class="btn btn--ghost btn--icon" aria-label="Track entfernen" title="Track entfernen" @click="reference.remove()"><IconTrash :size="18" aria-hidden="true" /></button>
         </div>
       </div>
       <dl class="stats">
-        <div><dt>Distanz</dt><dd>{{ (track.distanceMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km</dd></div>
-        <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : `${Math.round(track.ascentMeters).toLocaleString('de-DE')} m` }}</dd></div>
+        <div><dt>Distanz</dt><dd>{{ formatKm(track.distanceMeters) }} km</dd></div>
+        <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : formatMeters(track.ascentMeters) }}</dd></div>
       </dl>
       <label class="gpx__color"><span class="label">Trackfarbe</span>
         <select v-model="reference.colorMode" class="field" aria-label="Trackfarbe">
@@ -44,9 +43,9 @@
         <p v-if="reference.surfaceError" class="notice notice--error gpx__error" role="alert">{{ reference.surfaceError }} Noch nicht geprüfte Teile bleiben unbekannt.</p>
         <button v-if="!reference.surfaceLoading && (!reference.surfaces || reference.surfaceError)" type="button" class="btn" @click="reference.loadSurfaces()">Beläge ermitteln</button>
         <template v-if="reference.surfaces && reference.surfaceInspection">
-          <p class="muted">{{ (reference.surfaceInspection.estimatedMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} von {{ (track.distanceMeters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km mit zugeordnetem Belag.</p>
+          <p class="muted">{{ formatKm(reference.surfaceInspection.estimatedMeters) }} von {{ formatKm(track.distanceMeters) }} km mit zugeordnetem Belag.</p>
           <ul aria-label="Beläge des GPX-Tracks">
-            <li v-for="item in reference.surfaceInspection.totals" :key="item.key"><span><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</span><span>{{ (item.meters / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
+            <li v-for="item in reference.surfaceInspection.totals" :key="item.key"><span><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</span><span>{{ formatKm(item.meters) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
           </ul>
         </template>
       </div>
@@ -69,6 +68,7 @@ import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconTrash } from '@/co
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
 import { elevationColors, gradientBands, unknownGpxColor } from '../../domain/gpx-inspection';
 import GpxElevationProfile from './GpxElevationProfile.vue';
+import { formatKm, formatMeters } from '@/utils/format';
 import { surfaceLegend } from '../../domain/gpx-surfaces';
 
 const reference = useGpxReferenceStore();
@@ -105,9 +105,6 @@ async function importSelected(event: Event) {
 .gpx__title .muted { font-size: .75rem; overflow-wrap: anywhere; }
 h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__tools { display: flex; flex-shrink: 0; }
-.gpx__toggle { position: relative; cursor: pointer; }
-.gpx__toggle input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-.gpx__toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
 .gpx__color { display: grid; grid-template-columns: auto minmax(0, 12rem); align-items: center; justify-content: space-between; gap: .75rem; }
 .gpx__surfaces { display: grid; gap: .5rem; }

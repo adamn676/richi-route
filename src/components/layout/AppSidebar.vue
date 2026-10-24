@@ -30,8 +30,11 @@
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" />
     </div>
-    <!-- The map places its data credits here. -->
-    <footer id="map-credits" class="sidebar__credits" />
+    <!-- Only the OpenStreetMap credit stays in view; MapView places the full list of sources here (useMap's credits container). -->
+    <details class="sidebar__credits">
+      <summary>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · <span>Quellen</span></summary>
+      <div id="map-credits" />
+    </details>
   </aside>
 </template>
 
@@ -86,6 +89,10 @@ async function moveFocus(event: KeyboardEvent) {
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
 .sidebar__body { flex: 1; min-height: 0; overflow-y: auto; }
 .sidebar__credits { padding: .35rem var(--gutter); border-top: 1px solid var(--border); color: var(--text-muted); font-size: .68rem; line-height: 1.4; }
+.sidebar__credits summary { list-style: none; cursor: pointer; }
+.sidebar__credits summary::-webkit-details-marker { display: none; }
+.sidebar__credits summary span { text-decoration: underline; }
+.sidebar__credits[open] summary { margin-bottom: .25rem; }
 .sidebar__credits :deep(.maplibregl-ctrl-attrib) { margin: 0; padding: 0; background: none; }
 .sidebar__credits :deep(a) { color: inherit; }
 </style>

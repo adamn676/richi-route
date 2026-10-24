@@ -1,10 +1,10 @@
 <template>
-  <div ref="root" class="map-menu" @keydown.esc="close(true)">
-    <button ref="trigger" type="button" class="btn btn--icon map-menu__trigger" :aria-label="label" :title="title ?? label"
+  <div ref="root" class="map-menu" @keydown.esc="close(true)" @focusout="leave">
+    <button ref="trigger" type="button" class="btn btn--icon btn--map map-menu__trigger" :aria-label="label" :title="title ?? heading"
       :aria-expanded="open" :aria-controls="panelId" aria-haspopup="dialog" @click="toggle">
       <slot name="icon" />
     </button>
-    <div v-show="open" :id="panelId" ref="panel" class="map-menu__panel popover" role="dialog" :aria-labelledby="`${panelId}-title`">
+    <div v-show="open" :id="panelId" ref="panel" class="map-menu__panel popover" role="dialog" tabindex="-1" :aria-labelledby="`${panelId}-title`">
       <header class="map-menu__header">
         <h2 :id="`${panelId}-title`">{{ heading }}</h2>
         <button type="button" class="btn btn--ghost btn--icon btn--sm" aria-label="Schließen" title="Schließen" @click="close(true)">
@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { nextTick, ref, useId } from 'vue';
 import { IconX } from '@/components/icons';
 
 defineProps<{ label: string; heading: string; title?: string }>();
@@ -37,18 +37,21 @@ function close(refocus = false) {
   open.value = false;
   if (refocus) trigger.value?.focus();
 }
-// Like any menu, it closes when something else is pressed.
-function dismiss(event: PointerEvent) {
-  if (!root.value?.contains(event.target as Node)) close();
+// Focus moves into the panel on opening, so leaving it (Tab, another menu, a press elsewhere) closes it.
+// The panel itself takes focus on presses inside it that hit no control.
+function leave(event: FocusEvent) {
+  if (root.value?.contains(event.relatedTarget as Node | null)) return;
+  // Removing the focused control (a retry button that succeeded) also reports focus leaving; only a real move closes.
+  const target = event.target as Node;
+  queueMicrotask(() => { if (target.isConnected) close(); else panel.value?.focus(); });
 }
-onMounted(() => document.addEventListener('pointerdown', dismiss));
-onBeforeUnmount(() => document.removeEventListener('pointerdown', dismiss));
 </script>
 
 <style scoped>
-.map-menu__trigger { position: relative; width: 2.5rem; min-height: 2.5rem; box-shadow: var(--shadow); }
+.map-menu__trigger { position: relative; }
 .map-menu__trigger[aria-expanded=true] { border-color: var(--accent); color: var(--accent); }
 /* Opens to the left of the map's tool column. */
+.map-menu__panel:focus { outline: none; }
 .map-menu__panel { position: absolute; top: 0; right: calc(100% + .5rem); z-index: 5; width: min(18rem, calc(100vw - 5rem));
   max-height: min(60dvh, 28rem); overflow-y: auto; padding: .35rem .85rem .85rem; }
 .map-menu__header { position: sticky; top: -.35rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
