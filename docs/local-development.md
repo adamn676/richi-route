@@ -708,7 +708,19 @@ title; descents share the colour of flat ground. Both axes use round steps on
 dotted grid lines, with more distance marks on wider screens. A click (or
 Enter) pins the position; the tooltip then links to Google Street View there,
 until Escape, another click or leaving the chart. A right-click on the map, or
-a long press on phones, offers Street View for any point. Focus
+a long press on phones, offers Street View for any point. Without a key these
+links open Google Maps in a new tab; with a Google Maps Embed API key, Street
+View appears in place of the map and closes with ✕ or Escape:
+
+1. In the Google Cloud console, enable the **Maps Embed API** and create an API
+   key. Google asks for a billing account; Maps Embed API use is free and
+   unlimited.
+2. Restrict the key to the Maps Embed API and the website
+   `http://127.0.0.1:5173/*`.
+3. Add `VITE_GOOGLE_MAPS_EMBED_KEY=your-key` to `app/.env.local` (ignored by
+   git) and restart the planner.
+
+Focus
 the chart to use arrow keys, Home/End and Escape. No separate slider is shown.
 Changing the route or starting recalculation clears an old position. Missing
 heights stay unknown; consecutive legs join without a break.

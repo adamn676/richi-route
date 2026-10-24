@@ -1,32 +1,35 @@
 <template>
   <div class="map-view">
-    <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
-    <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
-    <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
-    <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
-    <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
-    <div class="map-view__status">
-      <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
-      <p v-if="mapError" class="notice notice--error" role="alert">
-        {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
-      </p>
-    </div>
-    <div class="map-view__tools">
-      <MapMenu label="Kartenansicht" heading="Kartenansicht" :title="basemapTitle">
-        <template #icon><IconStack2 :size="20" aria-hidden="true" /></template>
-        <template #default="{ close }">
-          <fieldset v-for="group in basemapGroups" :key="group.label" class="map-view__basemaps">
-            <legend class="label">{{ group.label }}</legend>
-            <label v-for="item in group.items" :key="item.id" class="option" @click="event => pick(event, item.id, close)">
-              <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
-            </label>
-          </fieldset>
-        </template>
-      </MapMenu>
-      <CyclingOverlays :map="map" />
-      <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
-        <IconFocus2 :size="20" aria-hidden="true" />
-      </button>
+    <div class="map-view__stage">
+      <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
+      <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
+      <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
+      <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
+      <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
+      <div class="map-view__status">
+        <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
+        <p v-if="mapError" class="notice notice--error" role="alert">
+          {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
+        </p>
+      </div>
+      <div class="map-view__tools">
+        <MapMenu label="Kartenansicht" heading="Kartenansicht" :title="basemapTitle">
+          <template #icon><IconStack2 :size="20" aria-hidden="true" /></template>
+          <template #default="{ close }">
+            <fieldset v-for="group in basemapGroups" :key="group.label" class="map-view__basemaps">
+              <legend class="label">{{ group.label }}</legend>
+              <label v-for="item in group.items" :key="item.id" class="option" @click="event => pick(event, item.id, close)">
+                <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
+              </label>
+            </fieldset>
+          </template>
+        </MapMenu>
+        <CyclingOverlays :map="map" />
+        <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
+          <IconFocus2 :size="20" aria-hidden="true" />
+        </button>
+      </div>
+      <StreetViewPanel v-if="streetView.location" />
     </div>
     <ElevationProfile v-show="route" class="map-view__profile" />
   </div>
@@ -52,6 +55,8 @@ import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
 import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import MapMenu from '@/components/map/MapMenu.vue';
+import StreetViewPanel from '@/components/map/StreetViewPanel.vue';
+import { useStreetViewStore } from '@/stores/street-view.store';
 import { onlineBasemaps } from '@/config/online-basemaps';
 import { localBasemaps, type EditorBasemap } from '@/config/basemaps';
 
@@ -82,6 +87,7 @@ watch([route, routingPending], ([value, pending]) => {
 useRouteDragging({ map });
 useMapInteractions(map);
 useStreetViewMenu(map);
+const streetView = useStreetViewStore();
 useMarkerWatches(map);
 watch(map, instance => {
   if (instance) instance.once('load', () => {
@@ -100,7 +106,8 @@ function fitRoute() {
 
 <style scoped>
 .map-view { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
-.map-view__canvas { flex: 1; min-height: 0; }
+.map-view__stage { position: relative; flex: 1; min-height: 0; }
+.map-view__canvas { position: absolute; inset: 0; }
 /* Below the map rather than over it, so the map's own controls stay visible. */
 .map-view__profile { --profile-height: 11rem; padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }
 .map-view__status { position: absolute; top: .75rem; left: .75rem; right: 4.5rem; display: grid; justify-items: start; gap: .5rem; pointer-events: none; }

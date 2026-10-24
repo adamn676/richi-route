@@ -41,7 +41,8 @@
           <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
           <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText">{{ gradientText }} %</span>
-          <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer">Street View</a>
+          <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
+            @click="event => streetView.open(event, focus!.coordinate)">Street View</a>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
@@ -57,10 +58,12 @@ import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { niceStep, type GpxTrack } from '../../domain/gpx-track';
 import { formatKm, formatMeters } from '@/utils/format';
 import { streetViewUrl } from '@/utils/street-view';
+import { useStreetViewStore } from '@/stores/street-view.store';
 import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
 const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string }>(), { enabled: true });
 const emit = defineEmits<{ inspect: [distance: number | null] }>();
+const streetView = useStreetViewStore();
 const colorId = `elevation-colors-${useId()}`, clipId = `elevation-clip-${useId()}`;
 const paint = computed(() => props.colorRuns.length ? `url(#${colorId})` : unknownGpxColor);
 const focus = computed(() => props.focus);
