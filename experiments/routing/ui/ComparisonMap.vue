@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, Map, RasterTileSource, VectorTileSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Position } from 'geojson';
 import type { Result, RoutePoint } from './types';
-import { basemapOptions, basemapSources, initialBasemap } from '../../../src/config/basemaps';
+import { basemapSources, initialBasemap, type Basemap } from '../../../src/config/basemaps';
 import { surfaceColor, surfaceLabel, type RouteInspection } from './route-inspection';
 import { compareRouteGeometry } from '../route-comparison.mjs';
 
@@ -13,6 +13,9 @@ const emit = defineEmits<{ section: [index: number] }>();
 const container = ref<HTMLDivElement>();
 const mapError = ref('');
 const roadError = ref('');
+const basemapOptions: { id: Basemap; label: string }[] = [
+  { id: 'street', label: 'Street map' }, { id: 'aerial', label: 'Aerial + labels' }, { id: 'local', label: 'Road network' },
+];
 const basemap = ref(initialBasemap());
 const imageryError = ref('');
 const imageryLoading = ref(basemap.value !== 'local');
