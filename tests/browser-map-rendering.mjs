@@ -15,7 +15,7 @@ try {
   await page.goto(origin);
   await page.waitForFunction(() => {
     const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
-    return map?.getLayer('roads') && map.areTilesLoaded();
+    return map?.getSource('basemap-vector-europe') && map.areTilesLoaded();
   }, {}, { timeout: 90000 });
   const hardware = await page.evaluate(() => {
     const gl = document.querySelector('.maplibregl-canvas').getContext('webgl2');
@@ -24,7 +24,7 @@ try {
       cores: navigator.hardwareConcurrency, pixelRatio: devicePixelRatio };
   });
   const results = [];
-  for (const mode of ['street', 'local', 'aerial']) {
+  for (const mode of ['street', 'aerial']) {
     await chooseBasemap(page, mode);
     for (const zoom of [12, 16, 18]) {
       const result = await page.evaluate(async ({ mode, zoom }) => {

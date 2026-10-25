@@ -7,7 +7,7 @@
       <div class="gpx__track">
         <div class="gpx__title">
           <h3>{{ track.name }}</h3>
-          <span class="muted">{{ track.fileName }} · {{ track.pointCount.toLocaleString('de-DE') }} Punkte<template v-if="track.segments.length > 1"> · {{ track.segments.length }} Abschnitte</template></span>
+          <span class="muted">{{ track.fileName }}<template v-if="track.segments.length > 1"> · {{ track.segments.length }} Abschnitte</template></span>
         </div>
         <div class="gpx__tools">
           <button type="button" role="switch" class="btn btn--ghost btn--icon" :aria-checked="reference.visible" aria-label="Track einblenden"
@@ -23,6 +23,8 @@
         <div><dt>Distanz</dt><dd>{{ formatKm(track.distanceMeters) }} km</dd></div>
         <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : formatMeters(track.ascentMeters) }}</dd></div>
       </dl>
+      <button type="button" class="btn btn--primary gpx__open" title="Ersetzt die aktuelle Route; diese bleibt in „Meine Routen“"
+        @click="emit('open-route')"><IconRoute :size="18" aria-hidden="true" />Als Route öffnen</button>
       <label class="gpx__color"><span class="label">Trackfarbe</span>
         <select v-model="reference.colorMode" class="field" aria-label="Trackfarbe">
           <option value="plain">Einfarbig</option>
@@ -36,7 +38,6 @@
         <li v-if="reference.colorMode !== 'surface'"><i class="swatch" :style="{ backgroundColor: unknownGpxColor }" />Unbekannt</li>
       </ul>
       <div v-if="reference.colorMode === 'surface'" class="gpx__surfaces">
-        <p class="muted">Schätzung aus lokalen OSM-Daten. Eng benachbarte Wege können verwechselt werden.</p>
         <p v-if="reference.surfaceLoading" class="muted" role="status">Beläge werden geprüft: {{ reference.surfaceProgress.completed }} / {{ reference.surfaceProgress.total }} Teilstrecken
           <button type="button" class="btn btn--ghost" @click="reference.cancelSurfaces()">Belagprüfung abbrechen</button>
         </p>
@@ -50,11 +51,9 @@
         </template>
       </div>
       <GpxElevationProfile :track="track" />
-      <p v-if="track.elevationCount < track.pointCount" class="muted">Höhe für {{ track.elevationCount.toLocaleString('de-DE') }} von {{ track.pointCount.toLocaleString('de-DE') }} Punkten vorhanden; Lücken bleiben im Profil offen.</p>
     </template>
     <div v-else-if="!reference.loading" class="gpx__empty">
       <IconFileImport :size="28" aria-hidden="true" />
-      <p><strong>Aufgezeichneten Track vergleichen</strong>Zeigt eine GPX-Datei neben deiner Route. Die Datei bleibt auf diesem Gerät.</p>
       <button type="button" class="btn btn--primary" @click="fileInput?.click()">GPX-Datei öffnen</button>
       <span class="muted">oder hierher ziehen</span>
     </div>
@@ -64,13 +63,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconTrash } from '@/components/icons';
+import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconRoute, IconTrash } from '@/components/icons';
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
 import { elevationColors, gradientBands, unknownGpxColor } from '../../domain/gpx-inspection';
 import GpxElevationProfile from './GpxElevationProfile.vue';
 import { formatKm, formatMeters } from '@/utils/format';
 import { surfaceLegend } from '../../domain/gpx-surfaces';
 
+const emit = defineEmits<{ 'open-route': [] }>();
 const reference = useGpxReferenceStore();
 const { track } = storeToRefs(reference);
 const fileInput = ref<HTMLInputElement>();
@@ -106,6 +106,7 @@ async function importSelected(event: Event) {
 h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__tools { display: flex; flex-shrink: 0; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
+.gpx__open { justify-self: stretch; }
 .gpx__color { display: grid; grid-template-columns: auto minmax(0, 12rem); align-items: center; justify-content: space-between; gap: .75rem; }
 .gpx__surfaces { display: grid; gap: .5rem; }
 .gpx__surfaces .btn { justify-self: start; }
@@ -114,6 +115,4 @@ h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__surfaces li span:first-child { display: inline-flex; align-items: center; gap: .4rem; }
 .gpx__empty { display: grid; justify-items: center; gap: .6rem; padding: 1.75rem 1.25rem; border: 1.5px dashed var(--border-input);
   border-radius: var(--radius-lg); color: var(--text-muted); text-align: center; }
-.gpx__empty p { margin: 0; font-size: .82rem; line-height: 1.5; }
-.gpx__empty strong { display: block; margin-bottom: .2rem; color: var(--text); font-size: .9rem; }
 </style>

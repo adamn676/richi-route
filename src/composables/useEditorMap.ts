@@ -1,24 +1,24 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { AttributionControl, Map, NavigationControl, ScaleControl, setMaxParallelImageRequests, type LineLayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
-import { aerialVectorLayers, cyclingMapLayer, cyclingRoadPaint, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
+import { AttributionControl, Map, NavigationControl, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
+import { aerialVectorLayers, cyclingRoadPaint, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
-import { onlineBasemap } from '@/config/online-basemaps';
-import { createOnlineBasemaps } from './onlineBasemaps';
+import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
+
+const hillshadeKey = 'richiroute.hillshade';
 
 export function useMap(container: string, creditsContainer: string) {
   const map = shallowRef<Map | null>(null);
   const basemap = ref(initialBasemap());
+  // Terrain shading from the local terrain data; satellite photos have real shadows, so it stays off there.
+  const hillshade = ref((() => { try { return localStorage.getItem(hillshadeKey) === '1'; } catch { return false; } })());
   const mapError = ref('');
   const aerialMap = () => basemap.value === 'aerial';
-  const vectorLayers: { id: string; visibility: 'visible' | 'none'; localContext: boolean }[] = [];
+  const vectorMap = () => basemap.value === 'street';
+  const vectorLayers: { id: string; visibility: 'visible' | 'none' }[] = [];
   const aerialLayers: string[] = [];
-  type RoadColor = NonNullable<LineLayerSpecification['paint']>['line-color'];
-  const roadColors: { id: string; original: RoadColor; cycling: RoadColor }[] = [];
-  const fullVectorMap = () => ['street', 'cycling', 'terrain'].includes(basemap.value);
-  let onlineMaps: ReturnType<typeof createOnlineBasemaps> | undefined;
   // Credits for the visible map, shown in the sidebar footer instead of over the map. The route and
   // its surfaces come from OpenStreetMap, so it is credited on every basemap; MapLibre drops this
-  // entry where a basemap's credit contains the same text (OpenFreeMap words its own, so it shows twice there).
+  // entry where a basemap's credit contains the same text.
   const attribution = new AttributionControl({ compact: false,
     customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
   let creditsOutside = false;
@@ -35,7 +35,8 @@ export function useMap(container: string, creditsContainer: string) {
       if (!response.ok) throw new Error(`Map style: HTTP ${response.status}`);
       const style: StyleSpecification = await response.json();
       request.signal.throwIfAborted();
-      onlineMaps?.setLocalStyle(style);
+      if (style.glyphs) instance.setGlyphs(absoluteUrl(style.glyphs));
+      if (typeof style.sprite === 'string') instance.setSprite(absoluteUrl(style.sprite));
       for (const [id, source] of Object.entries(style.sources)) {
         instance.addSource(`basemap-vector-${id}`, source.type === 'vector'
           ? { ...source, tiles: source.tiles?.map(absoluteUrl) } : source);
@@ -43,30 +44,17 @@ export function useMap(container: string, creditsContainer: string) {
       for (const layer of style.layers) {
         const id = `basemap-vector-${layer.id}`;
         const visibility = layer.layout?.visibility === 'none' ? 'none' : 'visible';
-        const roadLabel = layer.id.startsWith('roads_labels_');
-        const localContext = roadLabel || ('source-layer' in layer && layer['source-layer'] === 'places') || ['water', 'water_river'].includes(layer.id);
-        const visible = fullVectorMap() || basemap.value === 'local' && localContext;
         instance.addLayer({ ...layer, id, ...('source' in layer ? { source: `basemap-vector-${layer.source}` } : {}),
-          layout: { ...layer.layout, visibility: visible ? visibility : 'none' } }, roadLabel ? 'map-labels-top' : 'aerial');
-        vectorLayers.push({ id, visibility, localContext });
-        if (layer.type === 'line') {
-          const paint = cyclingRoadPaint(layer);
-          if (paint) roadColors.push({ id, original: layer.paint?.['line-color'], cycling: paint['line-color'] });
-        }
+          layout: { ...layer.layout, visibility: vectorMap() ? visibility : 'none' } }, layer.id.startsWith('roads_labels_') ? 'map-labels-top' : 'aerial');
+        vectorLayers.push({ id, visibility });
+        const paint = layer.type === 'line' && cyclingRoadPaint(layer);
+        if (paint) instance.setPaintProperty(id, 'line-color', paint['line-color']);
       }
-      instance.addLayer({ ...cyclingMapLayer, layout: { ...cyclingMapLayer.layout, visibility: 'none' } }, 'basemap-overlay-anchor');
       for (const layer of aerialVectorLayers(style)) {
         instance.addLayer({ ...layer, layout: { ...layer.layout, visibility: aerialMap() ? 'visible' : 'none' } },
           layer.type === 'symbol' ? 'map-labels-top' : 'basemap-overlay-anchor');
         aerialLayers.push(layer.id);
       }
-      instance.addLayer({ id: 'roads', type: 'line', source: 'basemap-vector-europe', 'source-layer': 'roads',
-        layout: { visibility: basemap.value === 'local' ? 'visible' : 'none' },
-        paint: {
-          'line-color': ['match', ['get', 'kind'], 'highway', '#b08e56', 'major_road', '#77887c',
-            'minor_road', '#9ba89b', '#c0c7bb'],
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, .6, 12, 1, 16, 2, 20, 3],
-        } }, 'basemap-overlay-anchor');
       vectorReady = true;
     } catch {
       if (request.signal.aborted) return;
@@ -77,27 +65,26 @@ export function useMap(container: string, creditsContainer: string) {
     }
   }
   function applyBasemap() {
-    if (!map.value?.getLayer('aerial')) return;
+    const instance = map.value;
+    if (!instance?.getLayer('aerial')) return;
     // Slow regional exports must not fill the browser queue ahead of local labels.
-    setMaxParallelImageRequests(basemap.value === 'aerial' ? 8 : 32);
-    for (const layer of vectorLayers) {
-      const visible = fullVectorMap() || basemap.value === 'local' && layer.localContext;
-      map.value.setLayoutProperty(layer.id, 'visibility', visible && vectorReady ? layer.visibility : 'none');
+    setMaxParallelImageRequests(aerialMap() ? 8 : 32);
+    for (const layer of vectorLayers) instance.setLayoutProperty(layer.id, 'visibility', vectorMap() && vectorReady ? layer.visibility : 'none');
+    for (const id of aerialLayers) instance.setLayoutProperty(id, 'visibility', aerialMap() && vectorReady ? 'visible' : 'none');
+    if (hillshade.value && !instance.getSource('basemap-terrain')) {
+      instance.addSource('basemap-terrain', { type: 'raster-dem', url: '/maps/terrain.json', tileSize: 512, encoding: 'terrarium' });
+      instance.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain',
+        paint: { 'hillshade-exaggeration': .3, 'hillshade-shadow-color': '#445648',
+          'hillshade-highlight-color': '#fffcec', 'hillshade-accent-color': '#68765b' } }, 'basemap-overlay-anchor');
     }
-    for (const road of roadColors) map.value.setPaintProperty(road.id, 'line-color', basemap.value === 'cycling' ? road.cycling : road.original);
-    if (basemap.value === 'terrain' && vectorReady && !map.value.getSource('basemap-terrain')) {
-      map.value.addSource('basemap-terrain', { type: 'raster-dem', url: '/maps/terrain.json', tileSize: 512, encoding: 'terrarium' });
-      const roads = vectorLayers.find(layer => layer.id.startsWith('basemap-vector-roads_tunnels_'));
-      map.value.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain',
-        paint: { 'hillshade-exaggeration': .45, 'hillshade-shadow-color': '#445648',
-          'hillshade-highlight-color': '#fffcec', 'hillshade-accent-color': '#68765b' } }, roads?.id ?? 'aerial');
+    // On Karte the shading lies beneath the roads; on online maps it lies over them.
+    if (instance.getLayer('basemap-hillshade')) {
+      const roads = vectorMap() && vectorLayers.find(layer => layer.id.startsWith('basemap-vector-roads_tunnels_'));
+      instance.moveLayer('basemap-hillshade', roads ? roads.id : 'basemap-overlay-anchor');
     }
-    for (const id of aerialLayers) map.value.setLayoutProperty(id, 'visibility', aerialMap() && vectorReady ? 'visible' : 'none');
-    for (const [id, visible] of [
-      ['imagery-overview', aerialMap()], ['aerial', basemap.value === 'aerial'], ['roads', basemap.value === 'local'],
-      ['basemap-cycling-paths', basemap.value === 'cycling'], ['basemap-hillshade', basemap.value === 'terrain'],
-    ] as const) if (map.value.getLayer(id)) map.value.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    void onlineMaps?.show(onlineBasemap(basemap.value)?.id);
+    const visibility: [string, boolean][] = [['imagery-overview', aerialMap()], ['aerial', aerialMap()], ['basemap-hillshade', hillshade.value && !aerialMap()],
+      ...onlineBasemaps.map(item => [`online-${item.id}`, basemap.value === item.id] as [string, boolean])];
+    for (const [id, visible] of visibility) if (instance.getLayer(id)) instance.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     void loadVectorMap();
   }
   function retryBasemap() {
@@ -110,9 +97,9 @@ export function useMap(container: string, creditsContainer: string) {
         if (source.url) map.value?.getSource<RasterTileSource>(id)?.setUrl(source.url);
       }
     }
-    if (basemap.value === 'terrain') map.value?.getSource<RasterTileSource>('basemap-terrain')?.setUrl('/maps/terrain.json');
+    if (hillshade.value) map.value?.getSource<RasterTileSource>('basemap-terrain')?.setUrl('/maps/terrain.json');
     const online = onlineBasemap(basemap.value);
-    if (online) void onlineMaps?.show(online.id, true);
+    if (online) map.value?.refreshTiles(`online-${online.id}`);
   }
   watch(basemap, () => {
     mapError.value = '';
@@ -120,12 +107,17 @@ export function useMap(container: string, creditsContainer: string) {
     applyBasemap();
     try { localStorage.setItem('richiroute.review-basemap', basemap.value); } catch { /* Storage may be disabled. */ }
   });
+  watch(hillshade, () => {
+    applyBasemap();
+    try { localStorage.setItem(hillshadeKey, hillshade.value ? '1' : '0'); } catch { /* Storage may be disabled. */ }
+  });
   onMounted(() => {
     const instance = new Map({
       container, center: [15.4395, 47.0707], zoom: 13, maxZoom: 21, fadeDuration: 100, attributionControl: false,
       style: {
         version: 8,
         sources: {
+          ...Object.fromEntries(onlineBasemaps.map(item => [`online-${item.id}`, item.source])),
           'basemap-imagery-overview': imageryOverviewSource,
           // Tile size is in CSS pixels; retain image detail on dense screens.
           'basemap-aerial': { ...imagerySource, tileSize: 256 / Math.min(2, Math.max(1, window.devicePixelRatio)) },
@@ -134,6 +126,8 @@ export function useMap(container: string, creditsContainer: string) {
           { id: 'background', type: 'background', paint: { 'background-color': '#f3f4f1' } },
           { id: 'imagery-overview', type: 'raster', source: 'basemap-imagery-overview',
             layout: { visibility: aerialMap() ? 'visible' : 'none' } },
+          ...onlineBasemaps.map((item): LayerSpecification => ({ id: `online-${item.id}`, type: 'raster', source: `online-${item.id}`,
+            layout: { visibility: basemap.value === item.id ? 'visible' : 'none' }, paint: { 'raster-fade-duration': 100 } })),
           // Detail starts where the local overview gets too coarse to stretch, so long routes stay sharp.
           { id: 'aerial', type: 'raster', source: 'basemap-aerial',
             minzoom: 7,
@@ -151,28 +145,38 @@ export function useMap(container: string, creditsContainer: string) {
     if (credits) credits.append(attribution.onAdd(instance));
     else instance.addControl(attribution);
     creditsOutside = Boolean(credits);
+    // Online providers require a visible credit, so the full list opens while one of their layers shows.
+    const details = credits?.closest('details');
+    const onlineLayers = [...onlineBasemaps.map(item => `online-${item.id}`), 'cycling-routes'];
+    let onlineShown = false;
+    if (details) instance.on('styledata', () => {
+      const shown = onlineLayers.some(id => instance.getLayer(id) && instance.getLayoutProperty(id, 'visibility') !== 'none');
+      if (shown !== onlineShown) details.open = onlineShown = shown;
+    });
     instance.on('error', event => {
+      const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : '';
+      // Rad-Infos reports problems with its own sources.
+      if (sourceId.startsWith('cycling-')) return;
+      if (sourceId === 'basemap-terrain') {
+        mapError.value = 'Geländedaten nicht erreichbar. Geländedaten installieren und Kartendienst neu starten.';
+        return;
+      }
       const online = onlineBasemap(basemap.value);
       if (online) {
         mapError.value = `${online.label} ist nicht erreichbar. Erneut laden oder eine lokale Karte wählen.`;
-        return;
-      }
-      if ('sourceId' in event && event.sourceId === 'basemap-terrain') {
-        mapError.value = 'Geländedaten nicht erreichbar. Geländedaten installieren und Kartendienst neu starten.';
         return;
       }
       mapError.value = aerialMap()
         ? 'Satellitenbild oder Beschriftungen nicht erreichbar. Die Straßenkarte ist lokal verfügbar.'
         : 'Lokale Straßenkarte nicht erreichbar. Kartendienst prüfen.';
     });
-    onlineMaps = createOnlineBasemaps(instance, message => { mapError.value = message; });
     instance.on('style.load', applyBasemap);
     map.value = instance;
   });
   onBeforeUnmount(() => {
-    vectorRequest?.abort(); vectorRequest = undefined; onlineMaps?.close();
+    vectorRequest?.abort(); vectorRequest = undefined;
     if (creditsOutside) attribution.onRemove();
     map.value?.remove();
   });
-  return { map, basemap, mapError, retryBasemap };
+  return { map, basemap, hillshade, mapError, retryBasemap };
 }

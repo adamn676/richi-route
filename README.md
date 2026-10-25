@@ -19,7 +19,7 @@ Austria. The planner currently has a German interface.
 - Switch on cycle paths, drinking-water sources, bicycle services, food stops and railway stations over any map.
 - Save, reopen, rename and duplicate routes in a local route collection.
 - Back up editable routes as RichiRoute files and download calculated tracks as GPX.
-- Import GPX tracks with direction arrows, a linked elevation profile, and height or gradient colours.
+- Import GPX tracks to compare, with direction arrows, a linked elevation profile, and height or gradient colours, or open them as an editable route.
 - Estimate GPX surface materials on demand, with unknown sections kept separate.
 
 Routing uses a local BRouter engine with a road-cycling profile. It prefers paved
@@ -72,10 +72,11 @@ from Graz and Styria. Dense screens request finer imagery where available.
 New detail imagery needs internet; cached tiles and explicitly saved areas work offline. See
 [imagery and offline areas](docs/local-development.md#european-imagery).
 European map coverage does not extend BRouter's installed routing coverage.
-The map selector also offers **OpenStreetMap Standard** and **OpenFreeMap
-Liberty, Bright, Positron and Dark**. These optional online maps need no account
-or API key. They contact their providers only when selected; the local maps
-remain the default. See [map choices](docs/local-development.md#online-map-choices).
+The map selector also offers **OpenTopoMap** (contour lines) online, local
+**Schummerung** (shaded relief) as a layer, and signed cycle routes from
+Waymarked Trails under **Rad-Infos**. The online sources need no account or API
+key and are contacted only when selected; the local maps remain the default. See
+[map choices](docs/local-development.md#online-map-choices).
 Water, bicycle-service and railway-station overlays use a separate local OSM extract. Their
 installed coverage and data date appear under **Rad-Infos**; the initial extract
 covers Austria. See [cycling overlays](docs/local-development.md#cycling-overlays)

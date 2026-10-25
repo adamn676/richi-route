@@ -12,20 +12,29 @@ try {
   const errors = [], external = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (!request.url().startsWith(origin) && request.url().startsWith('http')) external.push(request.url()); });
-  // Public OSM tiles prohibit automated pan/zoom tests; validate the integration with a fixture.
+  // The volunteer tile servers prohibit automated pan/zoom tests; validate the integration with fixtures.
   const fixture = Buffer.from(await page.evaluate(() => {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#e8eadc'; ctx.fillRect(0, 0, 256, 256);
     return canvas.toDataURL('image/png').split(',')[1];
   }), 'base64');
-  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: fixture }));
+  const tiles = { opentopomap: 0, waymarkedtrails: 0 };
+  const failing = new Set();
+  for (const [name, pattern] of [['opentopomap', 'https://*.tile.opentopomap.org/**'],
+    ['waymarkedtrails', 'https://tile.waymarkedtrails.org/**']]) {
+    await page.route(pattern, route => {
+      if (failing.has(name)) return route.abort();
+      tiles[name]++;
+      return route.fulfill({ contentType: 'image/png', body: fixture });
+    });
+  }
   await page.addInitScript(() => {
     if (!localStorage.getItem('richiroute.review-basemap')) localStorage.setItem('richiroute.review-basemap', 'street');
   });
   await page.goto(origin);
   await page.waitForFunction(() => {
     const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
-    return map?.getLayer('roads') && map.loaded();
+    return map?.getSource('basemap-vector-europe') && map.loaded();
   });
   assert.deepEqual(external, [], 'Local maps do not contact online providers');
   await page.evaluate(async () => {
@@ -52,82 +61,95 @@ try {
       .on('error', event => window.onlineMapErrors.push(event.error?.message));
   });
   const states = [];
-  for (const mode of ['liberty', 'bright', 'positron', 'dark', 'osm', 'street']) {
+  const mapIs = (page, check, arg) => page.waitForFunction(check, arg, { timeout: 60000 });
+  for (const mode of ['opentopomap', 'street']) {
     await chooseBasemap(page, mode);
-    await page.waitForFunction(mode => {
+    await mapIs(page, mode => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-      const layers = map.getStyle().layers;
-      const labels = layers.filter(layer => layer.type === 'symbol' && layer.id.startsWith(`online-${mode}-`));
-      return map.loaded() && (mode === 'street' ? !layers.some(layer => layer.id.startsWith('online-'))
-        : mode === 'osm' ? layers.some(layer => layer.id.startsWith('online-osm-'))
-          : labels.length && map.queryRenderedFeatures({ layers: labels.map(layer => layer.id) }).length > 0);
-    }, mode, { timeout: 60000 });
+      const online = map.getStyle().layers.filter(layer => layer.id.startsWith('online-') && layer.layout?.visibility === 'visible');
+      return map.loaded() && map.areTilesLoaded() && (mode === 'street' ? !online.length : online.length === 1 && online[0].id === `online-${mode}`);
+    }, mode);
     assert.equal(await page.getByRole('alert').count(), 0, `${mode}: ${JSON.stringify(await page.evaluate(() => window.onlineMapErrors))}`);
+    if (mode !== 'street') assert.ok(tiles[mode] > 0, `${mode} loads its tiles`);
     const state = await page.evaluate(mode => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-      const layers = map.getStyle().layers;
-      const labels = layers.filter(layer => layer.type === 'symbol' && layer.id.startsWith(`online-${mode}-`));
-      return { mode, sourceIds: Object.keys(map.getStyle().sources).filter(id => id.startsWith('online-')),
-        labels: labels.length ? map.queryRenderedFeatures({ layers: labels.map(layer => layer.id) }).length : 0,
-        waterVisible: map.getLayoutProperty('cycling-water', 'visibility'),
-        localGlyphs: map.getGlyphs()?.includes('/maps/fonts/') };
+      return { mode, waterVisible: map.getLayoutProperty('cycling-water', 'visibility'), localGlyphs: map.getGlyphs()?.includes('/maps/fonts/'),
+        vectorVisible: map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-') && layer.layout?.visibility !== 'none') };
     }, mode);
-    if (!['osm', 'street'].includes(mode)) assert.ok(state.labels > 0, `${mode} renders real street/place labels`);
     assert.equal(state.waterVisible, 'visible');
+    assert.equal(state.vectorVisible, mode === 'street', `${mode}: the local map shows only on Karte`);
+    assert.equal(state.localGlyphs, true, 'Overlay labels keep the local fonts');
     assert.equal(await page.evaluate(async () => JSON.stringify(await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('segments-source').getData())), geometry);
     assert.ok(await page.evaluate(() => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
       const layers = map.getStyle().layers.filter(layer => 'source' in layer && layer.source === 'segments-source' && layer.type === 'line');
       return map.queryRenderedFeatures({ layers: layers.map(layer => layer.id) }).length;
     }), `${mode}: route remains visible`);
-    if (mode === 'street') assert.equal(state.localGlyphs, true, 'Local font source is restored');
+    // The provider's credit is in view while its map shows.
+    assert.equal(await page.locator('.sidebar__credits').evaluate(details => details.open), mode !== 'street');
     states.push(state);
     await page.screenshot({ path: `${output}/${mode}.png` });
   }
-  await page.route('https://tiles.openfreemap.org/styles/liberty', route => route.abort());
-  await page.evaluate(() => localStorage.setItem('richiroute.review-basemap', 'liberty'));
+
+  // A failed online map says so and recovers with "Erneut laden".
+  failing.add('opentopomap');
+  await page.evaluate(() => localStorage.setItem('richiroute.review-basemap', 'opentopomap'));
   await page.reload();
-  await page.getByRole('alert').filter({ hasText: 'OpenFreeMap Liberty' }).waitFor();
-  await page.unroute('https://tiles.openfreemap.org/styles/liberty');
+  await page.getByRole('alert').filter({ hasText: 'OpenTopoMap' }).waitFor();
+  failing.delete('opentopomap');
   await page.getByRole('button', { name: 'Erneut laden', exact: true }).click();
-  await page.waitForFunction(() => {
+  await mapIs(page, () => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return map?.loaded() && map.getStyle().layers.some(layer => layer.id.startsWith('online-liberty-'));
-  }, null, { timeout: 60000 });
+    return map.loaded() && map.isSourceLoaded('online-opentopomap') && map.areTilesLoaded();
+  });
+  await chooseBasemap(page, 'street');
   assert.equal(await page.getByRole('alert').count(), 0);
-  await page.route('https://tiles.openfreemap.org/planet', route => route.abort());
-  await page.reload();
-  await page.getByRole('alert').filter({ hasText: 'OpenFreeMap Liberty' }).waitFor();
-  await page.unroute('https://tiles.openfreemap.org/planet');
-  await page.getByRole('button', { name: 'Erneut laden', exact: true }).click();
-  await page.waitForFunction(() => {
+
+  // Radrouten: an online overlay in Rad-Infos that reports and retries its own failures.
+  failing.add('waymarkedtrails');
+  const cycling = page.getByRole('button', { name: /^Rad-Infos/ });
+  await cycling.click();
+  await page.getByLabel('Radrouten').check();
+  await page.getByText('Radrouten konnten nicht geladen werden.').waitFor();
+  failing.delete('waymarkedtrails');
+  await page.locator('.cycling-controls').getByRole('button', { name: 'Erneut laden', exact: true }).click();
+  await mapIs(page, () => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    const labels = map.getStyle().layers.filter(layer => layer.type === 'symbol' && layer.id.startsWith('online-liberty-'));
-    return map.loaded() && labels.length && map.queryRenderedFeatures({ layers: labels.map(layer => layer.id) }).length;
-  }, null, { timeout: 60000 });
-  assert.equal(await page.getByRole('alert').count(), 0);
+    return map.getLayoutProperty('cycling-routes', 'visibility') === 'visible' && map.isSourceLoaded('cycling-routes') && map.areTilesLoaded();
+  });
+  assert.equal(await page.getByText('Radrouten konnten nicht geladen werden.').count(), 0);
+  assert.ok(tiles.waymarkedtrails > 0, 'Radrouten loads its tiles');
+  await page.keyboard.press('Escape');
+  await page.locator('.maplibregl-ctrl-attrib a[href="https://cycling.waymarkedtrails.org"]').first().waitFor({ state: 'visible' });
+  await page.locator('.cycling-controls .map-menu__trigger').click();
+  await page.getByLabel('Radrouten').uncheck();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.sidebar__credits').open);
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await chooseBasemap(page, 'osm');
+  await chooseBasemap(page, 'opentopomap');
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded());
-  await page.locator('.sidebar__credits > summary').click();
+  await page.locator('.maplibregl-ctrl-attrib a[href="https://opentopomap.org"]').first().waitFor({ state: 'visible' });
   await page.locator('.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"]').first().waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: `${output}/mobile.png` });
+
+  // Without the local style, online maps still work; the local map returns after a retry.
   await page.route('**/maps/style.json', route => route.fulfill({ status: 503, body: 'Unavailable' }));
   await page.reload();
   await page.getByRole('alert').filter({ hasText: 'Lokale Straßenkarte' }).waitFor();
-  await page.waitForFunction(() => {
+  await mapIs(page, () => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return map.loaded() && map.getStyle().layers.some(layer => layer.id.startsWith('online-osm-'));
-  }, null, { timeout: 60000 });
+    return map.loaded() && map.getLayoutProperty('online-opentopomap', 'visibility') === 'visible' && map.areTilesLoaded();
+  });
   await page.unroute('**/maps/style.json');
   await page.getByRole('button', { name: 'Erneut laden', exact: true }).click();
-  await page.waitForFunction(() => {
+  await mapIs(page, () => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return map.loaded() && map.getLayer('roads') && map.getGlyphs()?.includes('/maps/fonts/');
-  }, null, { timeout: 60000 });
+    return map.loaded() && map.getSource('basemap-vector-europe') && map.getGlyphs()?.includes('/maps/fonts/');
+  });
   assert.equal(await page.getByRole('alert').count(), 0);
   assert.deepEqual(errors, []);
   await writeFile(`${output}/report.json`, JSON.stringify({ states, errors }, null, 2));
-  console.log('Online maps: real OpenFreeMap styles, fixture-tested OSM, route preservation, overlays, retry, persistence and mobile attribution passed.');
+  console.log('Online maps: fixture-tested OpenTopoMap and Radrouten, visible provider credits, route preservation, overlays, retry, persistence and mobile attribution passed.');
 } finally { await browser.close(); }

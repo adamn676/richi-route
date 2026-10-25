@@ -1,6 +1,6 @@
 <template>
   <div class="map-view">
-    <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking }">
+    <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking, 'map-view__stage--overview': overview }">
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
@@ -8,6 +8,8 @@
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
+        <span v-if="surfaceEstimate" class="map-view__progress" role="status">
+          Beläge werden ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
           {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
         <p v-if="mapError" class="notice notice--error" role="alert">
@@ -22,6 +24,12 @@
               <legend class="label">{{ group.label }}</legend>
               <label v-for="item in group.items" :key="item.id" class="option" @click="event => pick(event, item.id, close)">
                 <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
+              </label>
+            </fieldset>
+            <fieldset class="map-view__basemaps">
+              <legend class="label">Ebenen</legend>
+              <label class="option" :title="basemap === 'aerial' ? 'Das Satellitenbild zeigt das Gelände schon selbst' : undefined">
+                <input v-model="hillshade" type="checkbox" :disabled="basemap === 'aerial'" />Schummerung
               </label>
             </fieldset>
           </template>
@@ -66,7 +74,7 @@ import { useStreetViewStore } from '@/stores/street-view.store';
 import { onlineBasemaps } from '@/config/online-basemaps';
 import { localBasemaps, type EditorBasemap } from '@/config/basemaps';
 
-const { map, basemap, mapError, retryBasemap } = useMap('map', 'map-credits');
+const { map, basemap, hillshade, mapError, retryBasemap } = useMap('map', 'map-credits');
 const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label: string }[] }[] = [
   { label: 'Eigene Karten · Europa', items: localBasemaps },
   { label: 'Online · Internet erforderlich', items: onlineBasemaps },
@@ -82,7 +90,7 @@ function pick(event: MouseEvent, id: EditorBasemap, close: (refocus?: boolean) =
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
-const { route, routingPending, focusedSurface } = storeToRefs(useRouteStore());
+const { route, routingPending, focusedSurface, surfaceEstimate } = storeToRefs(useRouteStore());
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
@@ -100,6 +108,9 @@ watch(() => streetView.picking, picking => {
   else window.removeEventListener('keydown', cancelPicking);
 });
 useMarkerWatches(map);
+// Zoomed far out, shaping points (every 5 km on an imported track) would merge into a chain; they show from zoom 11.
+const overview = ref(false);
+watch(map, instance => instance?.on('zoom', () => { overview.value = instance.getZoom() < 11; }));
 watch(map, instance => {
   if (instance) instance.once('load', () => {
     if (gpxTrack.value && gpxVisible.value) instance.fitBounds(gpxTrack.value.bounds, { padding: 50, maxZoom: 16, duration: 0 });
@@ -121,9 +132,11 @@ function fitRoute() {
 /* Street View mode: a crosshair everywhere, also over the route, which otherwise shows its drag hand. */
 .map-view__stage--picking :deep(.maplibregl-canvas) { cursor: crosshair !important; }
 .map-view__street-view[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+.map-view__stage--overview :deep(.route-marker--shape) { display: none; }
 .map-view__canvas { position: absolute; inset: 0; }
 /* Below the map rather than over it, so the map's own controls stay visible. */
-.map-view__profile { --profile-height: 11rem; padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }
+/* Grows with the window, so climbs on long routes stay readable; phones keep a compact profile for the map's sake. */
+.map-view__profile { --profile-height: clamp(11rem, 28vh, 18rem); padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }
 .map-view__status { position: absolute; top: .75rem; left: .75rem; right: 4.5rem; display: grid; justify-items: start; gap: .5rem; pointer-events: none; }
 .map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
 .map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }

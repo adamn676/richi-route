@@ -148,3 +148,31 @@ export function gpxEndpoints(track: GpxTrack): FeatureCollection<Point> {
   });
   return { type: 'FeatureCollection', features };
 }
+
+// Distance along the track of its nearest point within `radius` metres of a coordinate, or null.
+export function nearestTrackDistance(track: GpxTrack, coord: Coord, radius: number): number | null {
+  const metresX = 111320 * Math.cos(coord[1] * Math.PI / 180), metresY = 110540;
+  let best: { offset: number; distance: number } | undefined;
+  track.segments.forEach((segment, s) => {
+    const points = segment.coordinates.map(([lng, lat]) => [(lng - coord[0]) * metresX, (lat - coord[1]) * metresY]);
+    const distances = track.distances[s];
+    for (let i = 0; i < points.length; i++) {
+      const [ax, ay] = points[i], [bx, by] = points[Math.min(i + 1, points.length - 1)];
+      const length = (bx - ax) ** 2 + (by - ay) ** 2;
+      const t = length ? Math.max(0, Math.min(1, -(ax * (bx - ax) + ay * (by - ay)) / length)) : 0;
+      const offset = Math.hypot(ax + t * (bx - ax), ay + t * (by - ay));
+      if (offset <= radius && (!best || offset < best.offset)) {
+        best = { offset, distance: distances[i] + t * (distances[Math.min(i + 1, points.length - 1)] - distances[i]) };
+      }
+    }
+  });
+  return best?.distance ?? null;
+}
+
+// Compass bearing from one coordinate to another, in degrees clockwise from north.
+export function bearing([lng1, lat1]: Coord, [lng2, lat2]: Coord): number {
+  const rad = Math.PI / 180, dLng = (lng2 - lng1) * rad;
+  const y = Math.sin(dLng) * Math.cos(lat2 * rad);
+  const x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) - Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(dLng);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}

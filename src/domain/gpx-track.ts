@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { distanceMeters, type Coord } from './route-model.ts';
+import { cumulativeAscent, distanceMeters, type Coord } from './route-model.ts';
 
 export interface GpxSegment {
   name: string;
@@ -48,8 +48,6 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
         minimum = Math.min(minimum, elevation);
         maximum = Math.max(maximum, elevation);
         samples.push({ distance, height: elevation, index: pointCount, run });
-        const previous = segment.elevations[i - 1];
-        if (i > 0 && previous !== null) ascent += Math.max(0, elevation - previous);
       }
       // Shift whole worlds for display only; keep the imported coordinates unchanged.
       const longitude = coord[0] + 360 * Math.round((previousLongitude - coord[0]) / 360);
@@ -59,6 +57,7 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
       south = Math.min(south, coord[1]); north = Math.max(north, coord[1]);
     }
     distances.push(segmentDistances);
+    ascent += cumulativeAscent(segment.elevations).at(-1) ?? 0;
     if (displayCoordinates.length) features.push({
       type: 'Feature', properties: { name: segment.name },
       geometry: displayCoordinates.length === 1

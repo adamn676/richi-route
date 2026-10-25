@@ -9,15 +9,15 @@
     <label v-for="item in cyclingOverlays" :key="item.id" class="option">
       <input v-model="selected" type="checkbox" :value="item.id" />
       <span>{{ item.label }}</span>
-      <i :class="item.id === 'cycleways' ? 'swatch' : 'cycling-controls__dot'" :style="{ background: item.color }" aria-hidden="true" />
+      <i :class="item.id === 'cycleways' || item.id === 'routes' ? 'swatch' : 'cycling-controls__dot'" :style="{ background: item.color }" aria-hidden="true" />
     </label>
-    <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="loadPoints">Erneut laden</button></p>
+    <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="retry">Erneut laden</button></p>
   </MapMenu>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { Popup, type Map, type MapMouseEvent, type GeoJSONSource, type FilterSpecification } from 'maplibre-gl';
+import { Popup, type ErrorEvent, type Map, type MapMouseEvent, type GeoJSONSource, type FilterSpecification } from 'maplibre-gl';
 import { IconBike } from '@/components/icons';
 import MapMenu from '@/components/map/MapMenu.vue';
 import { useStreetViewStore } from '@/stores/street-view.store';
@@ -40,7 +40,7 @@ const empty = { type: 'FeatureCollection' as const, features: [] };
 
 function install() {
   const map = props.map;
-  if (installed || !map?.getLayer('roads')) return;
+  if (installed || !map?.getSource('basemap-vector-europe')) return;
   installed = true;
   map.addSource('cycling-points', { type: 'geojson', data: empty });
   for (const item of cyclingOverlays) {
@@ -53,6 +53,12 @@ function install() {
         paint: { 'line-color': casing ? '#ffffff' : item.color,
           'line-width': ['interpolate', ['linear'], ['zoom'], 12, casing ? 3 : 1.5, 17, casing ? 6 : 3.5] },
       }, 'basemap-overlay-anchor');
+      continue;
+    }
+    if (item.id === 'routes') {
+      map.addSource('cycling-routes', { type: 'raster', tiles: ['https://tile.waymarkedtrails.org/cycling/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 18,
+        attribution: 'Radrouten: <a href="https://cycling.waymarkedtrails.org">Waymarked Trails</a> (CC BY-SA)' });
+      map.addLayer({ id, type: 'raster', source: 'cycling-routes', layout, paint: { 'raster-fade-duration': 100 } }, 'basemap-overlay-anchor');
       continue;
     }
     const local = item.id !== 'food';
@@ -69,6 +75,14 @@ function install() {
       paint: { 'text-color': '#243b32', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } }, 'map-labels-top');
   }
   void loadPoints();
+}
+// Radrouten come from an online server; its tiles reload with the points.
+function retry() {
+  if (props.map?.getSource('cycling-routes')) props.map.refreshTiles('cycling-routes');
+  void loadPoints();
+}
+function tileError(event: ErrorEvent & { sourceId?: string }) {
+  if (event.sourceId === 'cycling-routes' && selected.value.includes('routes')) error.value = 'Radrouten konnten nicht geladen werden.';
 }
 async function loadPoints() {
   request?.abort(); request = undefined; error.value = '';
@@ -130,12 +144,12 @@ watch(selected, () => {
   void loadPoints();
 });
 function detach(map: Map | null | undefined) {
-  map?.off('styledata', install); map?.off('moveend', loadPoints); map?.off('click', inspect);
+  map?.off('styledata', install); map?.off('moveend', loadPoints); map?.off('click', inspect); map?.off('error', tileError);
   request?.abort(); popup?.remove();
 }
 watch(() => props.map, (map, previous) => {
   detach(previous); installed = false;
-  map?.on('styledata', install); map?.on('moveend', loadPoints); map?.on('click', inspect); install();
+  map?.on('styledata', install); map?.on('moveend', loadPoints); map?.on('click', inspect); map?.on('error', tileError); install();
 }, { immediate: true });
 onBeforeUnmount(() => detach(props.map));
 </script>

@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, Map, RasterTileSource, VectorTileSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Position } from 'geojson';
 import type { Result, RoutePoint } from './types';
-import { basemapSources, initialBasemap, type Basemap } from '../../../src/config/basemaps';
+import { basemapSources } from '../../../src/config/basemaps';
 import { surfaceColor, surfaceLabel, type RouteInspection } from './route-inspection';
 import { compareRouteGeometry } from '../route-comparison.mjs';
 
@@ -13,10 +13,14 @@ const emit = defineEmits<{ section: [index: number] }>();
 const container = ref<HTMLDivElement>();
 const mapError = ref('');
 const roadError = ref('');
+type Basemap = 'street' | 'aerial' | 'local';
 const basemapOptions: { id: Basemap; label: string }[] = [
   { id: 'street', label: 'Street map' }, { id: 'aerial', label: 'Aerial + labels' }, { id: 'local', label: 'Road network' },
 ];
-const basemap = ref(initialBasemap());
+// Shares the editor's stored choice where both offer it.
+const basemap = ref<Basemap>((() => {
+  try { return basemapOptions.find(option => option.id === localStorage.getItem('richiroute.review-basemap'))?.id ?? 'street'; } catch { return 'street'; }
+})());
 const imageryError = ref('');
 const imageryLoading = ref(basemap.value !== 'local');
 const routeOpacity = ref(1);

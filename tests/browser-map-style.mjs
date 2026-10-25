@@ -69,18 +69,18 @@ try {
   await waitAerial(page);
   await waitStreetNames(page);
   assert.equal((await mapState()).visible, false);
-  assert.deepEqual(await page.evaluate(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return ['aerial', 'roads'].map(id => map.getLayoutProperty(id, 'visibility'));
-  }), ['visible', 'none']);
-  await chooseBasemap(page, 'local');
+  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    .getLayoutProperty('aerial', 'visibility')), 'visible');
+  await chooseBasemap(page, 'street');
   await waitStreetNames(page);
-  assert.equal((await mapState()).visible, false);
+  assert.equal((await mapState()).visible, true);
   assert.deepEqual(await page.evaluate(() => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return ['aerial', 'roads'].map(id => map.getLayoutProperty(id, 'visibility'));
-  }), ['none', 'visible']);
-  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('basemap-hybrid-road', 'visibility')), 'none');
+    return ['aerial', 'basemap-hybrid-road'].map(id => map.getLayoutProperty(id, 'visibility'));
+  }), ['none', 'none']);
+  // Karte uses the cycling road colours.
+  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    .getPaintProperty('basemap-vector-roads_minor_casing', 'line-color')), '#738f81');
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .resetRoute([[15.438, 47.068], [15.444, 47.074]]));
   await page.waitForFunction(() => {
@@ -89,38 +89,39 @@ try {
   }, {}, { timeout: 60000 });
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
     .jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
-  for (const mode of ['street', 'cycling', 'terrain', 'aerial', 'local']) {
+  for (const mode of ['street', 'aerial']) {
     await chooseBasemap(page, mode);
     await waitStreetNames(page);
     await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
       .queryRenderedFeatures({ layers: ['segments-routed'] }).length > 0);
     await page.screenshot({ path: `${output}/street-names-route-${mode}.png` });
-    if (mode === 'cycling') {
-      assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
-        .getPaintProperty('basemap-vector-roads_minor_casing', 'line-color')), '#738f81');
-    }
-    if (mode === 'terrain') {
-      assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
-        .getLayoutProperty('basemap-hillshade', 'visibility')), 'visible');
-      assert.match(await page.locator('.maplibregl-ctrl-attrib').textContent(), /Mapterhorn/);
-      assert.ok(terrainTiles.length, 'Terrain uses locally served DEM tiles');
-    }
   }
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').resetRoute());
   await waitStreetNames(page);
   // A pointer choice applies the map and closes the menu.
   const basemapMenu = page.getByRole('button', { name: 'Kartenansicht', exact: true });
   await basemapMenu.click();
-  await page.getByText('Geländekarte', { exact: true }).click();
+  await page.getByText('Satellit', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'false');
+  await chooseBasemap(page, 'street');
+  // Schummerung is a checkbox, so the menu stays open for further choices.
+  await basemapMenu.click();
+  await page.getByText('Schummerung', { exact: true }).click();
+  assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    .getLayoutProperty('basemap-hillshade', 'visibility') === 'visible');
   await page.evaluate(() => new Promise(resolve => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     map.once('idle', resolve); map.jumpTo({ center: [12.458, 47.001], zoom: 11 });
   }));
   await page.screenshot({ path: output + '/terrain-virgen.png' });
+  assert.match(await page.locator('.maplibregl-ctrl-attrib').textContent(), /Mapterhorn/);
+  assert.ok(terrainTiles.length, 'Terrain uses locally served DEM tiles');
   await page.reload();
   await waitMap();
-  assert.equal(await page.locator('input[name=basemap]:checked').inputValue(), 'terrain');
+  assert.equal(await page.locator('input[name=basemap]:checked').inputValue(), 'street');
+  assert.equal(await page.evaluate(() => localStorage.getItem('richiroute.hillshade')), '1');
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707] }));
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 13 }));
   await chooseBasemap(page, 'street');
@@ -182,7 +183,7 @@ try {
   await fallback.getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await fallback.waitForFunction(() => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-    return map.getLayer('roads') && map.areTilesLoaded() && map.queryRenderedFeatures().length > 30;
+    return map.getSource('basemap-vector-europe') && map.areTilesLoaded() && map.queryRenderedFeatures().length > 30;
   });
   assert.equal(await fallback.getByRole('alert').count(), 0);
   await fallback.close();
@@ -200,7 +201,7 @@ try {
   await imageryFailure.close();
   const terrainFailure = await browser.newPage();
   let terrainUnavailable = true;
-  await terrainFailure.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'terrain'));
+  await terrainFailure.addInitScript(() => localStorage.setItem('richiroute.hillshade', '1'));
   await terrainFailure.route('**/maps/terrain.json', route => terrainUnavailable
     ? route.fulfill({ status: 503, body: 'Unavailable' }) : route.continue());
   await terrainFailure.goto(origin);

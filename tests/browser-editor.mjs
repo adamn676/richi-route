@@ -142,8 +142,9 @@ try {
   assert.equal((await state()).distance, junction.distance);
   assert.deepEqual((await state()).points.map(p => p.coord), junction.points.map(p => p.coord));
   assert.ok((await state()).features > 0);
-  await chooseBasemap(page, 'local');
-  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getLayoutProperty('roads', 'visibility') === 'visible');
+  await chooseBasemap(page, 'street');
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getStyle().layers
+    .some(layer => layer.id.startsWith('basemap-vector-roads') && layer.layout?.visibility !== 'none'));
   assert.equal(errors.length, 0, errors.join('\n'));
   const report = { initialDistance: initial.distance, initialVertices: initial.legs[0].coordinates.length,
     westernDistance: western.distance, westernLegs: western.legs.length, junctionDistance: junction.distance, tiles, errors,

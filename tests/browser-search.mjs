@@ -8,7 +8,7 @@ const output = '.cache/search';
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, hasTouch: true });
-await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
 const externalRequests = [];
 await context.route('**/*', route => {
   const url = new URL(route.request().url());

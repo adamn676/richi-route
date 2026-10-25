@@ -1,25 +1,13 @@
-import type { StyleSpecification } from 'maplibre-gl';
+import type { RasterSourceSpecification } from 'maplibre-gl';
 
-export const onlineBasemaps = [
-  { id: 'osm', label: 'OpenStreetMap Standard', provider: 'osm' },
-  { id: 'liberty', label: 'OpenFreeMap Liberty', provider: 'openfreemap',
-    style: 'https://tiles.openfreemap.org/styles/liberty' },
-  { id: 'bright', label: 'OpenFreeMap Bright', provider: 'openfreemap',
-    style: 'https://tiles.openfreemap.org/styles/bright' },
-  { id: 'positron', label: 'OpenFreeMap Positron', provider: 'openfreemap',
-    style: 'https://tiles.openfreemap.org/styles/positron' },
-  { id: 'dark', label: 'OpenFreeMap Dark', provider: 'openfreemap',
-    style: 'https://tiles.openfreemap.org/styles/dark' },
-] as const;
-
-export type OnlineBasemap = typeof onlineBasemaps[number]['id'];
-export const onlineBasemap = (id: string) => onlineBasemaps.find(item => item.id === id);
-
-export const osmStandardStyle: StyleSpecification = {
-  version: 8,
-  sources: { standard: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-    tileSize: 256, maxzoom: 19,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+// OpenTopoMap adds what the local map lacks: contour lines, peaks and field tracks. Its volunteer server allows
+// moderate use with a clearly visible credit. CyclOSM is left out: its host serves only public non-profit sites.
+export type OnlineBasemap = 'opentopomap';
+export const onlineBasemaps: { id: OnlineBasemap; label: string; source: RasterSourceSpecification }[] = [
+  { id: 'opentopomap', label: 'OpenTopoMap · Gelände', source: {
+    type: 'raster', tiles: ['a', 'b', 'c'].map(server => `https://${server}.tile.opentopomap.org/{z}/{x}/{y}.png`),
+    tileSize: 256, maxzoom: 17,
+    attribution: 'Kartendarstellung: © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) · SRTM',
   } },
-  layers: [{ id: 'standard', type: 'raster', source: 'standard', paint: { 'raster-fade-duration': 100 } }],
-};
+];
+export const onlineBasemap = (id: string) => onlineBasemaps.find(item => item.id === id);

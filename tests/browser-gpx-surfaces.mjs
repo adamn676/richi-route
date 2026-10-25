@@ -8,7 +8,7 @@ const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = []; page.on('pageerror', e => errors.push(e.message));
 let requests = 0, mode = 'success', release, active = 0, peak = 0;
-await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
 await page.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
 await page.route('**/routing/**', async route => {
   requests++; peak = Math.max(peak, ++active);
@@ -25,7 +25,7 @@ await page.route('**/routing/**', async route => {
 });
 const upload = async (name, count = 501) => {
   const xml = '<gpx version="1.1"><trk><name>' + name + '</name><trkseg>' + Array.from({ length: count }, (_, i) => `<trkpt lon="${15.4 + i / 10000}" lat="47.1"><ele>${300 + i / 20}</ele></trkpt>`).join('') + '</trkseg></trk></gpx>';
-  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
+  await page.getByRole('tab', { name: 'Import', exact: true }).click();
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name: name + '.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(xml) });
   await page.getByRole('heading', { name, exact: true }).waitFor();
 };

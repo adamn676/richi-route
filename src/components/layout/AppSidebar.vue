@@ -28,9 +28,10 @@
       <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route"
         @new-route="(coords, shapeIndices) => library.newRoute(coords, shapeIndices)" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
-      <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" />
+      <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
-    <!-- Only the OpenStreetMap credit stays in view; MapView places the full list of sources here (useMap's credits container). -->
+    <!-- Only the OpenStreetMap credit stays in view; MapView places the full list of sources here (useMap's credits container)
+         and opens it while an online map or overlay shows. -->
     <details class="sidebar__credits">
       <summary>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · <span>Quellen</span></summary>
       <div id="map-credits" />
@@ -46,13 +47,23 @@ import SavedRoutes from '@/components/ui/SavedRoutes.vue';
 import GpxImport from '@/components/ui/GpxImport.vue';
 import { useRouteLibrary } from '@/composables/useRouteLibrary';
 import { useRouteStore } from '@/stores/route.store';
+import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { saveDraftNow } from '@/services/draft.service';
 
 const routeStore = useRouteStore();
 const library = useRouteLibrary();
 const { hasDraft, error, message } = library;
-const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'GPX' }] as const;
+const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'Import' }] as const;
 const tab = ref<typeof tabs[number]['id']>('route');
+// An imported track opened as the route no longer needs its comparison line.
+const reference = useGpxReferenceStore();
+async function openTrack() {
+  if (!reference.track) return;
+  await library.openTrack(reference.track);
+  if (error.value) return;
+  reference.remove();
+  tab.value = 'route';
+}
 const draft = computed(() => ({
   idle: { icon: IconCloud, label: 'Die aktuelle Route wird automatisch in diesem Browser gespeichert' },
   saving: { icon: IconCloudUpload, label: 'Wird gespeichert …' },

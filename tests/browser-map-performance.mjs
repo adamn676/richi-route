@@ -36,7 +36,7 @@ try {
     await page.goto(origin);
     await page.waitForFunction(() => {
       const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
-      return map?.getLayer('roads') && map.areTilesLoaded();
+      return map?.getSource('basemap-vector-europe') && map.areTilesLoaded();
     });
     const hardware = await page.evaluate(() => {
       const gl = document.querySelector('.maplibregl-canvas').getContext('webgl2');

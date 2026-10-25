@@ -284,27 +284,23 @@ uses the separately installed BRouter data, currently a regional Austrian setup.
 
 Tiles, font glyphs, symbols and the generated German street style are served
 from `.cache/maps/` by `npm run maps:start`. The planner requests them through
-Vite's same-origin `/maps` proxy. No public map service is used for the street
-or **Straßennetz** views, and a failed local service never triggers an online
-fallback. All map choices preserve the route and profile overlays. The full
-street map and the simplified road view share the same vector source. The
-street style keeps buildings opaque and uses distinct road, water and vegetation
-colours. Straßennetz retains place names and water for orientation, with road
-classes shown in different colours. Labels remain above route geometry.
+Vite's same-origin `/maps` proxy. No public map service is used for **Karte**,
+and a failed local service never triggers an online fallback. All map choices
+preserve the route and profile overlays. Karte keeps buildings opaque and uses
+distinct road, water and vegetation colours. As suits cycling, minor roads get
+stronger outlines and motorways recede; these are road classes, not traffic
+measurements or a guarantee of paved surfaces. Labels remain above route geometry.
 Map labels fade over 100 ms. MapLibre allows eight outstanding image requests
 in detailed aerial mode and 32 in the other modes. The shorter queue prevents
 slow regional exports from delaying local labels on HTTP/1.1; the browser's
 connection limit still applies. The local overview is requested before detail.
 The imagery service keeps its bounded worker and queue limits.
-Street names remain visible in all six modes with or without a route. They
+Street names remain visible on Karte and Satellit with or without a route. They
 render above route lines and surface highlights, while route markers stay on top.
 
-**Rennradkarte** gives minor roads stronger outlines, reduces motorway prominence
-and marks separately mapped cycleways in blue. These are road classes, not
-traffic measurements or a guarantee of paved surfaces. It reuses the street
-tiles, so changing between the vector maps does not reload their data.
-
-**Geländekarte** adds shaded relief beneath roads and labels. Run
+**Schummerung** (a checkbox under **Ebenen** in the map menu) adds shaded relief:
+beneath roads and labels on Karte, over OpenTopoMap. It stays off on Satellit,
+whose photos already show real shadows. Run
 `npm run terrain:setup` after `maps:setup`, then restart `maps:start`.
 The setup extracts Europe from [Mapterhorn](https://mapterhorn.com/data-access/)
 into `.cache/maps/terrain.pmtiles`, about 2.3 GB. The local map service serves
@@ -358,49 +354,36 @@ Start Vite with the same `MAPS_PORT`; the normal launcher uses 8088.
 
 ## Online map choices
 
-The selector has six existing map modes and five optional online choices:
+The map menu offers two local maps (**Karte**, **Satellit**) and one online map,
+**OpenTopoMap · Gelände**, with contour lines, peaks and field tracks for gravel
+and mountain planning. Its raster tiles load only after selection; changing a
+basemap keeps route geometry, profile inspection and cycling overlays. The
+selection persists, failed tiles show a retry button, and the online map also
+loads when the local map service is unavailable. Its labels are baked into the
+images, so they cannot move above route lines as vector labels can.
 
-| Map | Purpose | Source |
-| --- | --- | --- |
-| OpenStreetMap Standard | Familiar, detailed reference map | OSM raster tiles |
-| OpenFreeMap Liberty | Detailed street and place context | OpenMapTiles vector tiles |
-| OpenFreeMap Bright | Stronger road contrast | Same OpenFreeMap vector source |
-| OpenFreeMap Positron | Quiet background for route inspection | Same OpenFreeMap vector source |
-| OpenFreeMap Dark | Dark background for evening planning | Same OpenFreeMap vector source |
+[OpenTopoMap](https://opentopomap.org/about) is CC-BY-SA and may be embedded as
+long as its volunteer server is not overloaded, for example by bulk downloads;
+it asks for a clearly visible credit and gives no availability guarantee. Its
+[raster service is marked deprecated](https://github.com/der-stefan/OpenTopoMap)
+in favour of vector tiles, so it may change or disappear. While an online map
+or overlay shows, the source list at the bottom of the sidebar opens so their
+credits stay in view. Tiles are requested directly by the browser, without bulk
+downloads, offline saving or prefetching. The imagery-saving command applies
+only to our registered aerial sources.
 
-Online styles and tiles load only after selection. The four OpenFreeMap styles
-share sources and reuse loaded tiles when switching. Changing a basemap keeps
-route geometry, profile inspection and cycling overlays. Selection persists;
-failed style or source downloads show a retry button. Online maps also load
-when the local map service is unavailable. Attribution stays expanded
-for online maps, including on mobile. OpenStreetMap Standard is raster, so its
-baked-in labels cannot be moved above route lines as vector labels can.
+CyclOSM would add cycling detail, but its OSM France host
+[serves only public, non-profit sites](https://www.openstreetmap.fr/usage/),
+not a private local installation, so it is not included. OpenStreetMap
+Standard and the OpenFreeMap styles were dropped: they show the same
+OpenStreetMap data as Karte in other colours. A different map style does not
+extend routing data or make missing road-surface data available.
 
-[OpenFreeMap](https://openfreemap.org/) offers its public instance without API
-keys or request limits and publishes the software for self-hosting. It has no
-service-level guarantee. These choices use its public instance; installing a
-second European vector archive is unnecessary for the existing local styles.
-The local maps remain the default and never switch providers automatically.
-
-The [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/)
-requires visible attribution, normal browser caching and a valid Referer.
-Standard tiles are requested directly by the browser, without bulk downloads,
-offline saving or prefetching. Automated tests intercept that endpoint with
-fixture images; they must not pan or zoom against the public OSM tile server.
-The imagery-saving command applies only to our registered aerial sources.
-
-CyclOSM is useful for cycling, but its public OSM France host has
-[usage conditions](https://www.openstreetmap.fr/usage/) that do not make it a
-general-purpose backend for a private local installation. OpenTopoMap's
-[raster service is deprecated](https://github.com/der-stefan/OpenTopoMap).
-Neither endpoint is silently included. Adding either properly requires a
-suitable hosting arrangement and, for the new OpenTopoMap, its vector style
-and contour dependencies. A different map style does not extend routing data
-or make missing road-surface data available.
-
-`node tests/browser-online-maps.mjs` checks real OpenFreeMap labels, shared
-sources, route preservation, local font restoration, failure recovery,
-persisted selection and mobile attribution. Reports are in `.cache/online-maps/`.
+`node tests/browser-online-maps.mjs` checks OpenTopoMap and Radrouten with
+fixture tiles (automated tests must not pan or zoom against the volunteer
+servers), route preservation, local font restoration, failure recovery, visible
+provider credits, persisted selection and mobile layout. Reports are in
+`.cache/online-maps/`.
 
 ## Cycling overlays
 
@@ -410,13 +393,19 @@ The map's tool column at the top right holds the basemap choice (layers icon),
 pointer and snaps onto the route within 16 px, the route pauses its editing, and
 a click opens Street View at the nearest panorama; the figure turns grey where
 Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
-all map and imagery sources.
+all map and imagery sources. The sidebar is 352–416 px wide, depending on the
+screen; the arrow on its edge folds it away for a full-width map, and the app
+remembers that choice. Below 760 px the sidebar sits under the map instead.
 
-**Rad-Infos** independently toggles cycle paths, drinking-water sources,
-bicycle repair stations/shops, food stops and railway stations over all
-base maps. Cycle paths and food reuse the local Protomaps tiles.
+**Rad-Infos** independently toggles cycle paths, signed cycle routes,
+drinking-water sources, bicycle repair stations/shops, food stops and railway
+stations over all base maps. Cycle paths and food reuse the local Protomaps tiles.
 The cycle-path layer highlights `highway=cycleway`; it does not contain every
-roadside cycle lane or signed cycling route. Food coverage follows
+roadside cycle lane. **Radrouten** is online: the
+[Waymarked Trails](https://cycling.waymarkedtrails.org) overlay of signed routes
+with their numbers, international in red, national in blue, regional in orange
+and local in purple. Its volunteer server allows moderate use with a credit
+(CC BY-SA); failures show in Rad-Infos with a retry button. Food coverage follows
 the selected basemap extract and its zoom-dependent feature selection.
 
 Water, bicycle services and railway stations use `.cache/cycling/points.sqlite`, queried by
@@ -702,7 +691,7 @@ turn instructions. Physical cycling-computer imports have not been tested.
 
 The planned route and imported GPX use the same interactive chart. The route's
 profile spans the width of the map below it and can be hidden with its arrow
-button; the GPX profile stays in the **GPX** tab. Move the
+button; the GPX profile stays in the **Import** tab. Move the
 pointer or drag a finger across **Höhenprofil** to see distance, elevation and
 estimated gradient beside the cursor, with the corresponding position marked on
 the map. The line and a light tint beneath it are coloured by climb, with the
@@ -713,7 +702,11 @@ Enter) pins the position; the tooltip then links to Google Street View there,
 until Escape, another click or leaving the chart. A right-click on the map, or
 a long press on phones, offers Street View for any point. Without a key these
 links open Google Maps in a new tab; with a Google Maps Embed API key, Street
-View appears in place of the map and closes with ✕ or Escape:
+View appears in place of the map and closes with ✕ or Escape. Opened on the
+route, it looks in the direction of travel and the elevation profile keeps
+marking that spot (pointing elsewhere on the profile returns to it). Google's
+frame does not report walking or turning inside Street View, so the mark stays
+where Street View was opened:
 
 1. In the Google Cloud console, enable the **Maps Embed API** and create an API
    key. Google asks for a billing account; Maps Embed API use is free and
@@ -739,11 +732,22 @@ including mouse, touch, keyboard, out-and-back legs, missing heights and stale
 positions. It also checks the marker across all three map modes. Reports and
 screenshots go to `.cache/profile-hover/`.
 
-## Import a GPX reference
+## Import a GPX track
 
-**GPX-Datei öffnen** (or dropping a file on the **GPX** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
-separate reference layer. Importing leaves the editable route, its undo history,
-saved routes and GPX export unchanged. It sends no routing requests. Parsing
+**GPX-Datei öffnen** (or dropping a file on the **Import** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
+separate reference layer for comparison. Importing leaves the editable route, its undo history,
+saved routes and GPX export unchanged. It sends no routing requests.
+
+**Als Route öffnen** then makes the track the editable route, with the usual
+map line, profile, distance, ascent and surfaces. An unsaved current route is
+saved to **Meine Routen** first, the reference line is removed, and
+**Rückgängig** returns to the previous route. The route keeps the track's exact
+coordinates and heights, cut into sections of about 5 km (none shorter than
+2.5 km) at shaping points, so an edit re-plans only the section it touches.
+Shaping points show from zoom 11, so long routes are not covered in dots. Gaps
+between track segments are routed. Surfaces are then looked up in the
+background, as with **Belag (geschätzt)**, with progress shown on the map;
+sections edited meanwhile keep their own. Saving suggests the track's name. Parsing
 runs in a background worker, so large files keep the page responsive, and
 **Abbrechen** stops it. The icons beside the track's name show or hide it, fit the map to it, open
 another file and remove it. A successful import replaces the previous
@@ -752,8 +756,13 @@ reference; an invalid file leaves it intact.
 All tracks and nonempty track segments in the file are retained separately.
 Single-point segments appear as dots. Distance is calculated along each segment,
 without adding connections across gaps. Missing elevation remains unknown;
-ascent is shown only when all elevations are present and is summed without
-smoothing. The small elevation chart reduces display samples for long tracks,
+ascent is shown only when all elevations are present. A rise counts once it
+climbs more than 2 m above the last low, and then in full, so small wobbles are
+ignored but no climb is cut short. Planned routes filter the router's heights
+the same way with 5 m, since its terrain grid steps by whole metres; BRouter's
+own filtered ascent runs about a tenth low. On a 98 km ride with 1,673 m by the
+Garmin's barometer, the file gives 1,663 m and the same path routed 1,685 m
+(BRouter: 1,490 m). The small elevation chart reduces display samples for long tracks,
 while stored coordinates, elevations and the map source retain every point.
 Date-line crossings shift display longitudes by whole worlds without changing
 the imported coordinates.
@@ -801,8 +810,8 @@ come from BRouter's OSM tags, not the online basemap. The multi-point request
 format is documented in [BRouter's server handler](https://github.com/abrensch/brouter/blob/master/brouter-server/src/main/java/btools/server/request/ServerHandler.java).
 
 The reference lasts for the current page session and is not included in saved
-routes or RichiRoute backups. Reimport the original GPX after reloading. Editable
-conversion is not implemented. Files containing only route points or waypoints
+routes or RichiRoute backups. Reimport the original GPX after reloading, or open
+it as a route to keep it. Files containing only route points or waypoints
 are rejected with an explanation because they do not supply a track geometry.
 Time, extension and waypoint fields are not displayed. Limits are 32 MB and
 250,000 trackpoints per file. Malformed XML, invalid coordinates or elevations,
@@ -810,8 +819,9 @@ unsupported versions and document-type declarations are rejected.
 
 `npm test` covers XML validation, versions and namespaces. Run
 `node tests/browser-gpx-import.mjs` against the frontend to check worker parsing,
-long tracks, partial elevation, segment boundaries, cancellation and unchanged
-editor data. It uses synthetic GPX data and does not need a routing engine;
+long tracks, partial elevation, segment boundaries, cancellation, unchanged
+editor data and opening as a route (exact geometry, sections, saved previous
+route, undo). It uses synthetic GPX data and does not need a routing engine;
 `ROUTE_TEST_ORIGIN` selects a different frontend port. Screenshots and a report
 go to `.cache/gpx-import/`.
 

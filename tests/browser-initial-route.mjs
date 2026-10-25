@@ -3,7 +3,7 @@ import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/i
 
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));

@@ -95,6 +95,32 @@ export function distanceMeters(from: Coord, to: Coord): number {
   return 2 * 6371008.8 * Math.asin(Math.sqrt(Math.min(1, a)));
 }
 
+// A rise counts once it climbs past the threshold above the last low, and then in full, so wobbles are ignored
+// but no climb is cut short. File heights (barometer, smoothed terrain data) are fine-grained; the router's
+// terrain grid steps by whole metres. On a 98 km ride with 1,673 m by Garmin's barometer, this gives 1,663 m
+// from the file and 1,685 m along the same path routed (BRouter's own filtered ascent: 1,490 m).
+export const fileClimbThreshold = 2;
+export const routerClimbThreshold = 5;
+
+// Ascent so far at each point; each run between missing heights is filtered on its own.
+export function cumulativeAscent(elevations: readonly (number | null)[], threshold = fileClimbThreshold): number[] {
+  const ascent = [0];
+  // The lowest height since the last climb, and the top of the climb under way.
+  let low = elevations[0] ?? null, high: number | null = null;
+  for (let i = 1; i < elevations.length; i++) {
+    const elevation = elevations[i];
+    let climbed = 0;
+    if (elevation === null) low = high = null;
+    else if (high !== null) {
+      if (elevation > high) { climbed = elevation - high; high = elevation; }
+      else if (elevation < high - threshold) { high = null; low = elevation; }
+    } else if (low === null || elevation < low) low = elevation;
+    else if (elevation > low + threshold) { climbed = elevation - low; high = elevation; }
+    ascent.push(ascent[i - 1] + climbed);
+  }
+  return ascent;
+}
+
 export function airLeg(request: LegRequest, error?: string): RouteLeg {
   return {
     ...request,

@@ -10,7 +10,7 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1000
 const errors = [];
 let requests = 0;
 await context.addInitScript(origin => {
-  if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'local');
+  if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street');
 }, origin);
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
 await context.route('**/routing/**', route => { requests++; return route.abort(); });

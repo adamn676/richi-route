@@ -23,7 +23,7 @@ try {
     localStorage.setItem('richiroute.cycling-overlays', '[]');
   });
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'));
+  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
   const results = [];
   for (const [place, center] of [['Graz', [15.398, 47.095]], ['Styria', [15.60, 47.13]]]) {
     await chooseBasemap(page, 'street');

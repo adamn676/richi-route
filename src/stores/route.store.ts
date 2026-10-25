@@ -22,6 +22,9 @@ import { routingEngine } from '../services/route.service.ts';
 import { forwardGeocode, type Place } from '../services/geocoding.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
 import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
+import type { GpxTrack } from '../domain/gpx-track.ts';
+import { gpxSections, sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
+import { lookupGpxSurfaces } from '../services/gpx-surfaces.service.ts';
 
 export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
 
@@ -51,6 +54,7 @@ interface PendingOperations {
   scheduler: LegScheduler;
   snaps: Map<string, AbortController>;
   geocodes: Map<string, AbortController>;
+  surfaces?: AbortController;
 }
 
 const pending = new WeakMap<object, PendingOperations>();
@@ -156,6 +160,9 @@ function cancelRequests(store: RouteStore): void {
   operations.snaps.clear();
   operations.geocodes.clear();
   operations.scheduler.cancelAll();
+  operations.surfaces?.abort();
+  operations.surfaces = undefined;
+  store.surfaceEstimate = null;
 }
 
 export const useRouteStore = defineStore('route', {
@@ -169,6 +176,8 @@ export const useRouteStore = defineStore('route', {
     draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
     draftError: null as string | null,
     surfaceFocus: null as SurfaceFocus | null,
+    // Progress of looking up the surfaces of an imported GPX track.
+    surfaceEstimate: null as { completed: number; total: number } | null,
   }),
 
   getters: {
@@ -258,6 +267,60 @@ export const useRouteStore = defineStore('route', {
       for (const point of this.points) if (point.coord) this._snapPoint(point.id, point.coord);
       this._reconcile();
     },
+    // Replaces the route with a GPX track, as one undoable step: start and end stops with shaping points between
+    // its sections. Gaps between track segments get routed. Surfaces are looked up afterwards.
+    importTrack(track: GpxTrack) {
+      const sections = gpxSections(track);
+      if (!sections.length) throw new Error('Die GPX-Datei enthält keinen Streckenverlauf.');
+      this._remember();
+      cancelRequests(this);
+      const stops: { coord: Coord; section?: GpxSection }[] = [];
+      for (const segment of sections) {
+        const start = segment[0].coordinates[0];
+        if (!stops.length || !sameCoord(stops[stops.length - 1].coord, start)) stops.push({ coord: start });
+        for (const section of segment) stops.push({ coord: section.coordinates[section.coordinates.length - 1], section });
+      }
+      this.points = stops.map((stop, i): RoutePoint => i === 0 ? waypoint('start', [...stop.coord])
+        : i === stops.length - 1 ? waypoint('end', [...stop.coord]) : { id: newId('shape'), type: 'shape', coord: [...stop.coord] });
+      const legs: Record<string, RouteLeg> = {};
+      const imported: { leg: RouteLeg; section: GpxSection }[] = [];
+      stops.forEach((stop, i) => {
+        if (!stop.section) return;
+        const from = this.points[i - 1] as RoutePoint & { coord: Coord }, to = this.points[i] as RoutePoint & { coord: Coord };
+        const { segment: _segment, from: _from, ...geometry } = stop.section;
+        const leg = markRaw<RouteLeg>({ ...geometry, id: legId(from.id, to.id), fromId: from.id, toId: to.id,
+          fromCoord: from.coord, toCoord: to.coord, status: 'routed' });
+        legs[leg.id] = leg;
+        imported.push({ leg, section: stop.section });
+      });
+      this.legs = legs;
+      this.errorMessage = null;
+      this._reconcile();
+      void this._lookupSurfaces(track, imported);
+    },
+    async _lookupSurfaces(track: GpxTrack, imported: { leg: RouteLeg; section: GpxSection }[]) {
+      const operations = operationsFor(this);
+      const controller = new AbortController();
+      operations.surfaces = controller;
+      this.surfaceEstimate = { completed: 0, total: 0 };
+      try {
+        const { surfaces } = await lookupGpxSurfaces(track, controller.signal, (completed, total) => {
+          if (operations.surfaces === controller) this.surfaceEstimate = { completed, total };
+        });
+        // Legs edited in the meantime keep their own surfaces.
+        const legs = { ...this.legs };
+        let found = false;
+        for (const { leg, section } of imported) {
+          const spans = sectionSurfaces(section, surfaces[section.segment]);
+          if (spans.length && legs[leg.id] === leg) { legs[leg.id] = markRaw({ ...leg, surfaces: spans }); found = true; }
+        }
+        if (found) this.legs = legs;
+      } catch { /* Cancelled by a route change; surfaces stay unknown. */ }
+      finally {
+        if (operations.surfaces === controller) { operations.surfaces = undefined; this.surfaceEstimate = null; }
+      }
+    },
+
     _remember() {
       this.surfaceFocus = null;
       this.undoStack = [...this.undoStack.slice(-49), snapshot(this)];

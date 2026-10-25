@@ -63,7 +63,7 @@ test('GPX distance and ascent exclude jumps between track segments', () => {
   ];
   const track = buildGpxTrack('Two tracks', 'two.gpx', segments);
   assert.equal(track.distanceMeters, distanceMeters(...segments[0].coordinates) + distanceMeters(...segments[1].coordinates));
-  assert.equal(track.ascentMeters, 25);
+  assert.equal(track.ascentMeters, 25, 'The jump between segments does not count as a climb');
   assert.equal(track.geojson.features.length, 2);
   assert.equal(track.pointCount, 4);
   assert.equal(track.profile.path.match(/M/g).length, 2);

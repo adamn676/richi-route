@@ -15,7 +15,7 @@ try {
  });
  await page.addInitScript(() => {localStorage.setItem('richiroute.review-basemap','street');localStorage.setItem('richiroute.cycling-overlays','[]');});
  await page.goto(origin);
- await page.waitForFunction(()=>document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'));
+ await page.waitForFunction(()=>document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
  const results=[];
  let responses=[];
  page.on('response',r=>{if(/\/maps\/imagery(?:-fast)?\//.test(r.url()) && r.status()===200)responses.push({url:r.url(),...r.headers()});});

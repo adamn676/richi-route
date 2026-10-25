@@ -2,6 +2,7 @@ import { computed, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import type { Coord } from '@/domain/route-model';
 import { streetViewUrl } from '@/utils/street-view';
+import { useRouteProfileStore } from './route-profile.store';
 
 // With a Google Maps Embed API key, Street View shows inside the app in place of the map;
 // without one, Street View links open Google Maps in a new tab.
@@ -12,11 +13,16 @@ const embedKey = import.meta.env?.VITE_GOOGLE_MAPS_EMBED_KEY?.trim() ?? '';
 type Imagery = Coord | null | undefined;
 
 export const useStreetViewStore = defineStore('street-view', () => {
+  const profile = useRouteProfileStore();
   const location = shallowRef<Coord | null>(null);
+  // Where on the route Street View was opened, if on it; it then looks along the route.
+  const routeDistance = ref<number | null>(null);
+  const heading = ref<number | null>(null);
   // While picking, the next map click shows Street View there instead of placing a waypoint.
   const picking = ref(false);
   const src = computed(() => location.value && 'https://www.google.com/maps/embed/v1/streetview?key='
-    + `${encodeURIComponent(embedKey)}&location=${location.value[1].toFixed(6)},${location.value[0].toFixed(6)}&language=de&region=AT`);
+    + `${encodeURIComponent(embedKey)}&location=${location.value[1].toFixed(6)},${location.value[0].toFixed(6)}&language=de&region=AT`
+    + (heading.value === null ? '' : `&heading=${Math.round(heading.value)}&pitch=0`));
 
   const lookups = new Map<string, Promise<Imagery>>();
   let lookupsAllowed = Boolean(embedKey);
@@ -58,13 +64,13 @@ export const useStreetViewStore = defineStore('street-view', () => {
   watch(picking, value => { if (!value) spot.value = null; });
 
   // Street View links call this: with embedding set up, the panel replaces following the link.
-  function open(event: MouseEvent, coord: Coord) {
+  function open(event: MouseEvent, coord: Coord, distance?: number) {
     if (!embedKey) return;
     event.preventDefault();
-    show(coord);
+    show(coord, distance);
   }
   // Opens at the nearest panorama; where there is none, nothing opens and picking goes on.
-  async function show(coord: Coord) {
+  async function show(coord: Coord, distance = profile.distanceNear(coord)) {
     if (!embedKey) {
       picking.value = false;
       window.open(streetViewUrl(coord), '_blank', 'noopener');
@@ -74,8 +80,13 @@ export const useStreetViewStore = defineStore('street-view', () => {
     // A tap has no hover, so the spot it missed shows as such.
     if (panorama === null) { if (picking.value) spot.value = coord; return; }
     picking.value = false;
+    routeDistance.value = distance;
+    heading.value = distance === null ? null : profile.headingAt(distance);
     location.value = panorama ?? coord;
   }
-  return { location, picking, spot, missing: computed(() => imagery.value === null), src, imageryNear, open, show,
-    close: () => { location.value = null; } };
+  function close() {
+    location.value = null;
+    routeDistance.value = heading.value = null;
+  }
+  return { location, routeDistance, picking, spot, missing: computed(() => imagery.value === null), src, imageryNear, open, show, close };
 });

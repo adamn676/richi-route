@@ -1,16 +1,14 @@
 import type { LayerSpecification, LineLayerSpecification, RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
 import { onlineBasemap, type OnlineBasemap } from './online-basemaps';
 
-export type Basemap = 'street' | 'aerial' | 'local';
-export type EditorBasemap = Basemap | 'cycling' | 'terrain' | OnlineBasemap;
+export type EditorBasemap = 'street' | 'aerial' | OnlineBasemap;
 export const vectorBasemapUrl = '/maps/style.json';
 export const imagerySource: RasterSourceSpecification = { type: 'raster', url: '/maps/imagery.json', tileSize: 256 };
 export const imageryOverviewSource: RasterSourceSpecification = {
   type: 'raster', url: '/maps/imagery-overview.json', tileSize: 256,
 };
 export const localBasemaps: { id: Exclude<EditorBasemap, OnlineBasemap>; label: string }[] = [
-  { id: 'street', label: 'OpenStreetMap · lokal' }, { id: 'cycling', label: 'Rennradkarte' },
-  { id: 'terrain', label: 'Geländekarte' }, { id: 'aerial', label: 'Satellit' }, { id: 'local', label: 'Straßennetz' },
+  { id: 'street', label: 'Karte' }, { id: 'aerial', label: 'Satellit' },
 ];
 
 // WMTS templates verified against basemap.at's EPSG:3857 capabilities.
@@ -70,6 +68,7 @@ export function aerialVectorLayers(style: StyleSpecification): LayerSpecificatio
   return layers;
 }
 
+// Motorways recede and minor roads stand out, as suits cycling.
 export function cyclingRoadPaint(layer: LineLayerSpecification): LineLayerSpecification['paint'] {
   if (layer['source-layer'] !== 'roads') return undefined;
   if (layer.id.includes('highway')) return { 'line-color': layer.id.includes('casing') ? '#b9bbb3' : '#dddcd3' };
@@ -78,20 +77,12 @@ export function cyclingRoadPaint(layer: LineLayerSpecification): LineLayerSpecif
   return undefined;
 }
 
-export const cyclingMapLayer: LineLayerSpecification = {
-  id: 'basemap-cycling-paths', type: 'line', source: 'basemap-vector-europe', 'source-layer': 'roads', minzoom: 11,
-  filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'kind_detail'], 'cycleway']],
-  layout: { 'line-cap': 'round', 'line-join': 'round' },
-  paint: { 'line-color': '#386bd1', 'line-opacity': .85,
-    'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 14, 2, 18, 3] },
-};
-
 export function initialBasemap(): EditorBasemap {
   try {
     const value = localStorage.getItem('richiroute.review-basemap');
     const online = value && onlineBasemap(value);
     if (online) return online.id;
-    // The former separate fast satellite view is now part of Satellit.
+    // The former fast satellite view is now part of Satellit; former map variants and online styles fall back to Karte.
     return localBasemaps.find(item => item.id === (value === 'aerial-fast' ? 'aerial' : value))?.id ?? 'street';
   } catch { return 'street'; }
 }

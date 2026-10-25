@@ -11,7 +11,7 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1100
 const errors = [];
 let routingRequests = 0;
 await context.addInitScript(origin => {
-  if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'local');
+  if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street');
 }, origin);
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
 await context.route('**/routing/**', route => { routingRequests++; return route.abort(); });
@@ -20,7 +20,7 @@ page.on('pageerror', error => errors.push(error.message));
 const gpx = segments => '<gpx version="1.1"><trk><name>Track prüfen</name>' + segments.map(points => '<trkseg>' + points.map(([lon, lat, height]) =>
   `<trkpt lon="${lon}" lat="${lat}">${height === null ? '' : `<ele>${height}</ele>`}</trkpt>`).join('') + '</trkseg>').join('') + '</trk></gpx>';
 const upload = async segments => {
-  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
+  await page.getByRole('tab', { name: 'Import', exact: true }).click();
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name: 'inspection.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(gpx(segments)) });
   await page.waitForFunction(() => !document.querySelector('.gpx')?.textContent.includes('GPX wird eingelesen'));
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('gpx-reference'));
@@ -104,7 +104,7 @@ try {
   const mapBox = await profile.boundingBox();
   await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
   await waitDot(1);
-  const basemaps = ['street', 'aerial', 'local'];
+  const basemaps = ['street', 'aerial'];
   for (const basemap of basemaps) {
     const selected = await focus();
     await chooseBasemap(page, basemap);

@@ -2,7 +2,7 @@
   <!-- Always present at a fixed height, so the map above only resizes when the profile is hidden or shown. -->
   <section id="elevation-profile" class="profile" :class="{ 'profile--collapsed': collapsed }" aria-label="Höhenprofil">
     <ElevationChart v-if="!collapsed && inspection.track" :track="inspection.track" :color-runs="inspection.colorRuns" :focus="inspection.focus"
-      label="Position in der Route" chart-label="Höhenprofil der Route" @inspect="inspection.focusAt">
+      on-route label="Position in der Route" chart-label="Höhenprofil der Route" @inspect="inspection.focusAt">
       <template #actions>
         <button ref="toggleButton" type="button" class="btn btn--ghost btn--icon btn--sm" :aria-label="toggleLabel"
           :title="toggleLabel" aria-expanded="true" aria-controls="elevation-profile" @click="toggle">

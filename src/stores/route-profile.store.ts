@@ -1,9 +1,9 @@
-import { computed, markRaw, shallowRef } from 'vue';
+import { computed, markRaw, ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import { useRouteStore } from './route.store.ts';
-import { isPlaced, legId } from '../domain/route-model.ts';
+import { isPlaced, legId, type Coord } from '../domain/route-model.ts';
 import { buildGpxTrack, type GpxTrack, type GpxSegment } from '../domain/gpx-track.ts';
-import { gpxGradients, gradientRuns, inspectGpxDistance, type GpxFocus } from '../domain/gpx-inspection.ts';
+import { bearing, gpxGradients, gradientRuns, inspectGpxDistance, nearestTrackDistance, type GpxFocus } from '../domain/gpx-inspection.ts';
 
 export const useRouteProfileStore = defineStore('route-profile', () => {
   const route = useRouteStore();
@@ -22,9 +22,23 @@ export const useRouteProfileStore = defineStore('route-profile', () => {
   const colorRuns = computed(() => track.value ? gradientRuns(track.value, gradients.value) : []);
   const selection = shallowRef<{ track: GpxTrack; focus: GpxFocus } | null>(null);
   const focus = computed(() => selection.value?.track === track.value ? selection.value?.focus ?? null : null);
+  // While Street View shows a spot on the route, the profile returns to it whenever the pointer leaves.
+  const rest = ref<number | null>(null);
   function focusAt(distance: number | null) {
-    selection.value = track.value && distance !== null && Number.isFinite(distance)
-      ? { track: track.value, focus: inspectGpxDistance(track.value, gradients.value, distance) } : null;
+    const value = distance ?? rest.value;
+    selection.value = track.value && value !== null && Number.isFinite(value)
+      ? { track: track.value, focus: inspectGpxDistance(track.value, gradients.value, value) } : null;
   }
-  return { track, colorRuns, focus, focusAt };
+  function restAt(distance: number | null) {
+    rest.value = distance;
+    focusAt(distance);
+  }
+  const coordinateAt = (distance: number) => track.value ? inspectGpxDistance(track.value, gradients.value, distance).coordinate : null;
+  const distanceNear = (coord: Coord) => track.value ? nearestTrackDistance(track.value, coord, 30) : null;
+  // Direction of travel across 30 m around a distance.
+  function headingAt(distance: number) {
+    const from = coordinateAt(distance - 15), to = coordinateAt(distance + 15);
+    return from && to ? bearing(from, to) : null;
+  }
+  return { track, colorRuns, focus, focusAt, restAt, coordinateAt, distanceNear, headingAt };
 });

@@ -12,7 +12,7 @@ try {
     localStorage.setItem('richiroute.cycling-overlays', '[]');
   });
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'));
+  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
   const results = [];
   let requested = 0, cancelled = 0, degraded = 0;
   page.on('request', request => { if (/\/maps\/imagery(?:-fast)?\//.test(request.url())) requested++; });

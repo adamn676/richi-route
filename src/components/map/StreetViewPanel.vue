@@ -9,14 +9,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { IconX } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
+import { useRouteProfileStore } from '@/stores/route-profile.store';
 
 const streetView = useStreetViewStore();
+const profile = useRouteProfileStore();
 const closeButton = ref<HTMLButtonElement>();
 // Focus starts on the close button, so Escape or Enter closes at once.
 onMounted(() => closeButton.value?.focus());
+// The elevation profile marks the spot on the route while Street View shows it.
+watch(() => streetView.routeDistance, distance => profile.restAt(distance), { immediate: true });
+onBeforeUnmount(() => profile.restAt(null));
 </script>
 
 <style scoped>

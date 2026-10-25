@@ -7,7 +7,7 @@ const output = '.cache/profile-hover';
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true, args: ['--enable-gpu'] });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, hasTouch: true });
-await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, body: Buffer.alloc(0), contentType: 'application/vnd.mapbox-vector-tile' }));
 let requests = 0;
 await context.route('**/routing/**', route => { requests++; return route.abort(); });
@@ -73,7 +73,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.queryRenderedFeatures({ layers: ['route-profile-dot'] }).length > 0);
   await page.screenshot({ path: output + '/desktop.png' });
   assert.equal((await current()).draft, before.draft);
-  const basemaps = ['street', 'aerial', 'local'];
+  const basemaps = ['street', 'aerial'];
   for (const basemap of basemaps) {
     const selected = (await current()).focus;
     await chooseBasemap(page, basemap);

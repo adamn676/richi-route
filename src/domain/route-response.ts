@@ -1,4 +1,4 @@
-import type { Coord, LegGeometry, Surface, SurfaceSpan } from './route-model.ts';
+import { cumulativeAscent, routerClimbThreshold, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
 
 export function surfaceType(tag: string | undefined): Surface {
   if (tag === 'asphalt') return 'asphalt';
@@ -64,6 +64,9 @@ export function parseBRouterLeg(raw: unknown): LegGeometry {
     coordinates.push([...coordinates[0]]);
     if (elevations) elevations.push(elevations[0]);
   }
+  // BRouter's filtered ascent runs about a tenth low, so its heights are filtered like file heights, only coarser.
   const ascent = properties['filtered ascend'];
-  return { coordinates, distanceMeters, elevations, surfaces, ascentMeters: ascent != null && Number.isFinite(Number(ascent)) ? Number(ascent) : null };
+  const ascentMeters = elevations ? cumulativeAscent(elevations, routerClimbThreshold).at(-1)!
+    : ascent != null && Number.isFinite(Number(ascent)) ? Number(ascent) : null;
+  return { coordinates, distanceMeters, elevations, surfaces, ascentMeters };
 }

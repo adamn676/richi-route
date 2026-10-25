@@ -7,7 +7,7 @@ const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH
   headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+  await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
   await context.route('**/tiles/**', route => route.fulfill({ status: 200,
     contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
   const page = await context.newPage();

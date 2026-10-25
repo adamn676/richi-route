@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
 import type { Coord } from '../domain/route-model.ts';
+import type { GpxTrack } from '../domain/gpx-track.ts';
 import { exportRouteBackup, importRouteBackup, type SavedRouteSummary } from '../domain/saved-route.ts';
 import { routeLibrary } from '../services/route-library.service.ts';
 import { useRouteStore } from '../stores/route.store.ts';
@@ -67,7 +68,7 @@ export function useRouteLibrary() {
     if (points !== store.points || legs !== store.legs) {
       throw new Error('Die aktuelle Route hat sich während des Speicherns geändert. Bitte den Wechsel erneut ausführen.');
     }
-    if (!alreadySaved) message.value = 'Der bisherige Entwurf wurde in „Meine Routen“ gesichert.';
+    if (!alreadySaved) message.value = 'Bisherige Route in „Meine Routen“ gesichert.';
   }
 
   async function open(entry: SavedRouteSummary) {
@@ -92,6 +93,17 @@ export function useRouteLibrary() {
       active.value = undefined;
       activePayload = '';
       name.value = '';
+    });
+  }
+
+  // The track replaces the current route, which is saved first; saving the new route suggests the track's name.
+  async function openTrack(track: GpxTrack) {
+    await run(async () => {
+      await protectDraft();
+      store.importTrack(track);
+      active.value = undefined;
+      activePayload = '';
+      name.value = track.name;
     });
   }
 
@@ -163,6 +175,6 @@ export function useRouteLibrary() {
   });
   onBeforeUnmount(() => { window.removeEventListener('focus', refreshList); channel?.close(); });
 
-  return { entries, active, name, busy, error, message, hasDraft, save, open, newRoute, rename, duplicate, remove,
+  return { entries, active, name, busy, error, message, hasDraft, save, open, openTrack, newRoute, rename, duplicate, remove,
     importFile, download, refreshList };
 }

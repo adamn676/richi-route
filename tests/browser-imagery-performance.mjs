@@ -37,7 +37,7 @@ async function measure(name, positions) {
 try {
   await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'aerial'));
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'), {}, { timeout: 90000 });
+  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'), {}, { timeout: 90000 });
   await measure('graz-detail', [{ center: [15.47, 47.08], zoom: 17 }]);
   await measure('graz-pan', [{ center: [15.48, 47.08], zoom: 17 }]);
   await measure('graz-zoom-and-pan', [

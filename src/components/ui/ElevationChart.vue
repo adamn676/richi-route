@@ -43,7 +43,7 @@
           <span v-if="gradientText">{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
             :aria-label="streetViewLabel" :title="streetViewLabel" :aria-disabled="streetView.missing"
-            @click="event => streetView.open(event, focus!.coordinate)"><IconMan :size="16" aria-hidden="true" /></a>
+            @click="event => streetView.open(event, focus!.coordinate, onRoute ? focus!.distance : undefined)"><IconMan :size="16" aria-hidden="true" /></a>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
@@ -63,7 +63,9 @@ import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
 import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
-const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string }>(), { enabled: true });
+// onRoute: distances are the planned route's, so Street View can mark its spot there (even where an out-and-back overlaps itself).
+const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string;
+  onRoute?: boolean }>(), { enabled: true });
 const emit = defineEmits<{ inspect: [distance: number | null] }>();
 const streetView = useStreetViewStore();
 const colorId = `elevation-colors-${useId()}`, clipId = `elevation-clip-${useId()}`;

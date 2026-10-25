@@ -18,7 +18,7 @@ await page.route('**/*', route => {
 page.on('pageerror', error => errors.push(error.message));
 try {
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('roads'));
+  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
   for (const [name, center] of [
     ['Graz', [15.44, 47.07]], ['Paris', [2.35, 48.85]], ['Berlin', [13.4, 52.52]],
     ['Madrid', [-3.7, 40.42]], ['Oslo', [10.75, 59.91]], ['Dublin', [-6.26, 53.35]],

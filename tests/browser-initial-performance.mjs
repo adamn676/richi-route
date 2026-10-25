@@ -42,7 +42,7 @@ const report = {
 async function measure(item, variant, round) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   try {
-    await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+    await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
     await context.route('**/tiles/**', route => route.fulfill({ status: 200,
       contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
     let requests = 0;

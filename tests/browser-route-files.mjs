@@ -9,7 +9,7 @@ const errors = [];
 async function makeContext(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
   await context.addInitScript(() => {
-    if (location.origin === 'http://127.0.0.1:5173') localStorage.setItem('richiroute.review-basemap', 'local');
+    if (location.origin === 'http://127.0.0.1:5173') localStorage.setItem('richiroute.review-basemap', 'street');
   });
   context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
   return context;

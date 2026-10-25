@@ -33,7 +33,7 @@ const hash = data => createHash('sha256').update(JSON.stringify(data)).digest('h
 try {
   for (const item of cases) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'local'));
+    await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
     const page = await context.newPage();
     const errors = [];
     let requests = 0;
