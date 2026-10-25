@@ -1,7 +1,8 @@
 <template>
-  <div class="address-search">
+  <div class="address-search float" :class="{ 'float--raised': raised }">
     <input
       :id="`address-${waypointId}`"
+      ref="input"
       class="field"
       type="text"
       autocomplete="off"
@@ -19,6 +20,9 @@
       @blur="onBlur"
       @keydown="onKeydown"
     />
+    <button v-if="inputValue && !disabled" type="button" class="address-search__clear" aria-label="Eingabe löschen" title="Eingabe löschen"
+      @mousedown.prevent @click="clear"><IconX :size="16" aria-hidden="true" /></button>
+    <label :for="`address-${waypointId}`">{{ label }}</label>
     <span v-if="isLoading" class="address-search__loading" aria-live="polite">Suche …</span>
     <ul
       v-if="isOpen && suggestions.length"
@@ -56,14 +60,19 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { forwardGeocode, type Place } from '@/services/geocoding.service';
+import { IconX } from '@/components/icons';
 
 const props = withDefaults(defineProps<{
   modelValue: string;
   waypointId: string;
+  label: string;
   placeholder?: string;
+  // Keeps the label up when the placeholder stands for a value, such as a point's position.
+  raised?: boolean;
   disabled?: boolean;
 }>(), {
   placeholder: 'Adresse suchen',
+  raised: false,
   disabled: false,
 });
 
@@ -81,6 +90,7 @@ const isWaiting = ref(false);
 const activeIndex = ref(-1);
 const errorMessage = ref<string | null>(null);
 const popup = ref<HTMLElement>();
+const input = ref<HTMLInputElement>();
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let blurTimer: ReturnType<typeof setTimeout> | undefined;
 let currentRequest: AbortController | null = null;
@@ -147,6 +157,17 @@ function onInput(event: Event): void {
   queueSearch(inputValue.value);
 }
 
+// Empties the field and keeps the cursor there for the next address; the stop stays until one is chosen.
+function clear(): void {
+  cancelSearch();
+  inputValue.value = '';
+  suggestions.value = [];
+  errorMessage.value = null;
+  isOpen.value = false;
+  emit('update:modelValue', '');
+  input.value?.focus();
+}
+
 function onFocus(): void {
   clearTimeout(blurTimer);
   if (suggestions.value.length) {
@@ -202,7 +223,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .address-search { position: relative; }
-.address-search__loading { position: absolute; right: .7rem; top: .7rem; color: var(--text-muted); font-size: .75rem; }
+.address-search .field { padding-right: 2.4rem; }
+/* The label leaves room for the clear button. */
+.address-search > label { max-width: calc(100% - 3rem); }
+.address-search__clear { position: absolute; top: 1.25rem; right: .35rem; display: grid; place-items: center; width: 1.75rem; height: 1.75rem;
+  padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-muted); cursor: pointer; transform: translateY(-50%); }
+.address-search__clear:hover { background: var(--surface-muted); color: var(--text); }
+.address-search__loading { position: absolute; right: 2.5rem; top: .7rem; color: var(--text-muted); font-size: .75rem; }
 .address-search__results, .address-search__feedback { position: absolute; z-index: 20; top: calc(100% + .25rem); left: 0; right: 0;
   max-height: 14rem; overflow: auto; margin: 0; padding: .3rem; list-style: none; }
 .address-search__results li { cursor: pointer; border-radius: var(--radius); padding: .5rem .55rem; font-size: .85rem; }

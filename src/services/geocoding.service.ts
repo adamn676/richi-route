@@ -4,6 +4,8 @@ export interface Place {
   label: string;
   coord: Coord;
   kind: string;
+  // The street of an address (a house, a shop), whose own position lies off the street.
+  street?: string;
   components: {
     place?: string;
     region?: string;
@@ -61,6 +63,7 @@ function parsePlace(value: unknown): Place {
     label,
     coord: [coordinates[0], coordinates[1]],
     kind: optionalText(properties.osm_value) ?? 'place',
+    ...(street && properties.type !== 'street' ? { street } : {}),
     components: { place: city, region, country },
   };
 }
@@ -125,4 +128,14 @@ export async function reverseGeocode(coord: Coord, signal: AbortSignal): Promise
   const label = [first !== city ? first : undefined, [optionalText(properties.postcode), city].filter(Boolean).join(' ')]
     .filter(Boolean).join(', ');
   return label || null;
+}
+
+// The town at a point, for naming a loop by where it leads.
+export async function townAt(coord: Coord, signal: AbortSignal): Promise<string | undefined> {
+  const [feature] = await search('/reverse', new URLSearchParams([
+    ['lat', String(coord[1])], ['lon', String(coord[0])], ['lang', 'de'], ['limit', '1'], ['radius', '3'],
+    ['layer', 'city'], ['layer', 'locality'], ['layer', 'district'],
+  ]), signal);
+  const properties = record(record(feature)?.properties);
+  return optionalText(properties?.city) ?? (properties?.type === 'city' ? optionalText(properties.name) : undefined);
 }

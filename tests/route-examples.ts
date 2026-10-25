@@ -1,4 +1,7 @@
-import type { Coord } from '../domain/route-model.ts';
+import type { Coord } from '../src/domain/route-model.ts';
+
+// Routes the browser checks open directly; they were example buttons in the planner.
+export const hahnhofweg: Coord[] = [[15.474345, 47.090869], [15.503735, 47.105271]];
 
 // Accepted western composite, indices 0, 45, 119, 146, 175, 245, 385, 644, 874.
 // The opening is routed normally; the remaining corridor uses visible shapes.

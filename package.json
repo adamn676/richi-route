@@ -46,10 +46,12 @@
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
     "@protomaps/basemaps": "^5.7.2",
     "@tabler/icons-vue": "3.49.0",
     "@vue/devtools-api": "^8.2.1",
     "maplibre-gl": "^6.15.0",
+    "pbf": "^5.1.2",
     "pinia": "^4.1.0",
     "pmtiles": "^4.5.0",
     "vue": "^3.5.44"

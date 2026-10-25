@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { chooseBasemap, openRoute } from './browser-ui.mjs';
+import { hahnhofweg } from './route-examples.ts';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/search';
@@ -59,11 +60,11 @@ try {
   await start.scrollIntoViewIfNeeded();
   await page.screenshot({ path: output + '/route-from-search.png' });
 
-  // An opened example moves the map to it, and its stops get the streets they lie on.
+  // A route opened as a whole moves the map to it, and its stops get the streets they lie on.
   const mapView = () => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
   await page.evaluate(`(${mapView})().jumpTo({ center: [16.37, 48.21], zoom: 12 })`);
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
-  await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
+  await openRoute(page, hahnhofweg);
   await page.waitForFunction(() => {
     const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     return route.waypoints.every(point => point.address);
@@ -82,6 +83,21 @@ try {
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
   assert.match(await start.inputValue(), /Hauptplatz/);
+
+  // An address starts on its own street: Georgigasse 95 lies nearer a park path to the south than its street.
+  await start.fill('Georgigasse 95');
+  await page.getByRole('option').first().waitFor();
+  await start.press('ArrowDown');
+  await start.press('Enter');
+  await page.waitForFunction(() => {
+    const stop = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').waypoints[0];
+    return stop.address?.startsWith('Georgigasse 95') && !stop.snapPending;
+  }, {}, { timeout: 30000 });
+  const house = (await points())[0].coord;
+  assert.ok(house[1] > 47.0768, `On Georgigasse, north of the house, not in the park: ${house}`);
+  // Typing is no undo step, so the field keeps the text; the start itself returns.
+  await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
+  assert.deepEqual((await points())[0].coord, placed[0].coord);
 
   // From here, controlled responses exercise errors and races for repeatable failures.
   let mode = 'empty';
@@ -121,6 +137,12 @@ try {
   await start.press('Escape');
   await page.waitForTimeout(500);
   assert.equal(await page.getByRole('listbox').count(), 0);
+  // The field's clear button empties it and keeps the cursor there.
+  await start.fill('Wird gelöscht');
+  await start.locator('xpath=..').getByRole('button', { name: 'Eingabe löschen', exact: true }).click();
+  assert.equal(await start.inputValue(), '');
+  assert.equal(await start.evaluate(field => field === document.activeElement), true, 'The field keeps the focus');
+  assert.equal(await start.locator('xpath=..').getByRole('button', { name: 'Eingabe löschen', exact: true }).count(), 0, 'Nothing left to clear');
   await page.setViewportSize({ width: 390, height: 844 });
   mode = 'many';
   await start.fill('Mobile query');

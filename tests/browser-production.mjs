@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { openRoute } from './browser-ui.mjs';
+import { hahnhofweg } from './route-examples.ts';
 
 // Run npm run build, then npm run preview -- --host 127.0.0.1 --port 5175.
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }),
@@ -15,7 +17,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('worker', worker => workers.push(worker.url()));
   await page.goto('http://127.0.0.1:5175/');
-  await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
+  await openRoute(page, hahnhofweg);
   await page.waitForFunction(() => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     return !store.pendingSnapCount && !store.pendingLegCount && store.draftStatus === 'saved';

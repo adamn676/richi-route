@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { openRoute } from './browser-ui.mjs';
+import { westernLoop } from './route-examples.ts';
 
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -38,7 +40,7 @@ try {
     failLast = failure;
     hold();
     if (failure) await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
-    await page.getByRole('button', { name: /Beispiel: Westliche Runde/ }).click();
+    await openRoute(page, westernLoop.coords, westernLoop.shapeIndices);
     await page.waitForFunction(() => {
       const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
       return Object.values(store.legs).filter(leg => leg.status === 'routed').length === 7 && store.pendingLegCount === 1;

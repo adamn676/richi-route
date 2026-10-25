@@ -11,6 +11,7 @@ import {
   reconcileLegs,
   sameEndpoints,
   type Coord,
+  type LegGeometry,
   type LegRequest,
   type RouteLeg,
   type RoutePoint,
@@ -20,10 +21,12 @@ import {
 } from '../domain/route-model.ts';
 import { routingEngine } from '../services/route.service.ts';
 import { forwardGeocode, reverseGeocode, type Place } from '../services/geocoding.service.ts';
+import { pointOnStreet } from '../services/street-point.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
 import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
 import { gpxSections, sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
+import { loopSections } from '../domain/loop-suggestions.ts';
 import { lookupGpxSurfaces } from '../services/gpx-surfaces.service.ts';
 
 export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
@@ -272,15 +275,25 @@ export const useRouteStore = defineStore('route', {
       this._reconcile();
       if (coords.length) this.fitRequest++;
     },
-    // Replaces the route with a GPX track, as one undoable step: start and end stops with shaping points between
-    // its sections. Gaps between track segments get routed. Surfaces are looked up afterwards.
+    // Replaces the route with a GPX track; surfaces are looked up afterwards.
     importTrack(track: GpxTrack) {
       const sections = gpxSections(track);
       if (!sections.length) throw new Error('Die GPX-Datei enthält keinen Streckenverlauf.');
-      this._remember();
+      void this._lookupSurfaces(track, this._openSections(sections));
+    },
+    // Shows a suggested loop as the route; it already has its surfaces. Trying another loop replaces it without a
+    // further undo step. The suggestions keep the map's view, so the loops stay comparable.
+    openLoop(loop: LegGeometry, replace = false) {
+      this._openSections([loopSections(loop)], { remember: !replace, fit: false });
+    },
+    // Replaces the route with fixed sections, as one undoable step: start and end stops with shaping points between
+    // the sections. Gaps between segments get routed.
+    _openSections<T extends LegGeometry>(segments: T[][], { remember = true, fit = true } = {}): { leg: RouteLeg; section: T }[] {
+      if (remember) this._remember();
+      else { this.surfaceFocus = null; this.errorMessage = null; }
       cancelRequests(this);
-      const stops: { coord: Coord; section?: GpxSection }[] = [];
-      for (const segment of sections) {
+      const stops: { coord: Coord; section?: T }[] = [];
+      for (const segment of segments) {
         const start = segment[0].coordinates[0];
         if (!stops.length || !sameCoord(stops[stops.length - 1].coord, start)) stops.push({ coord: start });
         for (const section of segment) stops.push({ coord: section.coordinates[section.coordinates.length - 1], section });
@@ -288,22 +301,22 @@ export const useRouteStore = defineStore('route', {
       this.points = stops.map((stop, i): RoutePoint => i === 0 ? waypoint('start', [...stop.coord])
         : i === stops.length - 1 ? waypoint('end', [...stop.coord]) : { id: newId('shape'), type: 'shape', coord: [...stop.coord] });
       const legs: Record<string, RouteLeg> = {};
-      const imported: { leg: RouteLeg; section: GpxSection }[] = [];
+      const opened: { leg: RouteLeg; section: T }[] = [];
       stops.forEach((stop, i) => {
         if (!stop.section) return;
         const from = this.points[i - 1] as RoutePoint & { coord: Coord }, to = this.points[i] as RoutePoint & { coord: Coord };
-        const { segment: _segment, from: _from, ...geometry } = stop.section;
-        const leg = markRaw<RouteLeg>({ ...geometry, id: legId(from.id, to.id), fromId: from.id, toId: to.id,
-          fromCoord: from.coord, toCoord: to.coord, status: 'routed' });
+        const { coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy } = stop.section;
+        const leg = markRaw<RouteLeg>({ coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy,
+          id: legId(from.id, to.id), fromId: from.id, toId: to.id, fromCoord: from.coord, toCoord: to.coord, status: 'routed' });
         legs[leg.id] = leg;
-        imported.push({ leg, section: stop.section });
+        opened.push({ leg, section: stop.section });
       });
       this.legs = legs;
       this.errorMessage = null;
       this._reconcile();
       for (const stop of this.waypoints) this._nameStop(stop.id);
-      this.fitRequest++;
-      void this._lookupSurfaces(track, imported);
+      if (fit) this.fitRequest++;
+      return opened;
     },
     async _lookupSurfaces(track: GpxTrack, imported: { leg: RouteLeg; section: GpxSection }[]) {
       const operations = operationsFor(this);
@@ -498,9 +511,16 @@ export const useRouteStore = defineStore('route', {
           : point);
     },
 
-    setWaypointPlace(id: string, place: Place) {
+    // An address starts on its own street: its centre can lie nearer a path behind it, such as a park.
+    async setWaypointPlace(id: string, place: Place) {
       if (!place.label.trim()) throw new Error('Der Adressvorschlag enthält keine Bezeichnung.');
-      this.updateWaypointCoord(id, place.coord, place.label);
+      const before = this.waypoints.find((point) => point.id === id);
+      const coord = place.street
+        ? await pointOnStreet(place.coord, place.street, AbortSignal.timeout(3000)).catch(() => null) ?? place.coord : place.coord;
+      // Typed over or moved in the meantime: the newer input wins.
+      const current = this.waypoints.find((point) => point.id === id);
+      if (!current || current.coord !== before?.coord || current.userInput !== before?.userInput) return;
+      this.updateWaypointCoord(id, coord, place.label);
     },
 
     async searchAndSetWaypointAddress(id: string, query: string): Promise<void> {
@@ -522,7 +542,7 @@ export const useRouteStore = defineStore('route', {
         const current = this.waypoints.find((point) => point.id === id);
         if (current?.userInput !== trimmed) return;
         if (!places.length) throw new Error(`Keine Adresse für „${trimmed}“ gefunden.`);
-        this.setWaypointPlace(id, places[0]);
+        await this.setWaypointPlace(id, places[0]);
       } catch (error) {
         if (controller.signal.aborted || operations.geocodes.get(id) !== controller) return;
         console.error('Adresssuche fehlgeschlagen:', error);

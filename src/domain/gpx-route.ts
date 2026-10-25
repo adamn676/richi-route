@@ -8,17 +8,22 @@ import { routingPolicyVersion } from '../config/routing-policy.ts';
 export const gpxSectionMeters = 5000;
 export interface GpxSection extends LegGeometry { segment: number; from: number }
 
+// Where a line of these cumulative distances is cut into sections; no cut leaves a last section shorter than half the length.
+export function sectionCuts(distances: number[]): number[] {
+  const last = distances.length - 1, cuts = [0];
+  for (let i = 1; i < last; i++) {
+    if (distances[i] - distances[cuts.at(-1)!] >= gpxSectionMeters && distances[last] - distances[i] >= gpxSectionMeters / 2) cuts.push(i);
+  }
+  if (last > 0) cuts.push(last);
+  return cuts;
+}
+
 export function gpxSections(track: GpxTrack): GpxSection[][] {
   return track.segments.map((segment, s) => {
-    const distances = track.distances[s], last = segment.coordinates.length - 1;
+    const distances = track.distances[s];
     // Ascent is filtered along the whole segment, so the sections add up to the track's ascent.
     const climbed = cumulativeAscent(segment.elevations);
-    const cuts = [0];
-    // No cut leaves a last section shorter than half the length.
-    for (let i = 1; i < last; i++) {
-      if (distances[i] - distances[cuts.at(-1)!] >= gpxSectionMeters && distances[last] - distances[i] >= gpxSectionMeters / 2) cuts.push(i);
-    }
-    if (last > 0) cuts.push(last);
+    const cuts = sectionCuts(distances);
     return cuts.slice(1).map((to, k): GpxSection => {
       const from = cuts[k];
       const heights = segment.elevations.slice(from, to + 1);
@@ -30,10 +35,14 @@ export function gpxSections(track: GpxTrack): GpxSection[][] {
   }).filter(sections => sections.length);
 }
 
-// A track segment's surfaces, cut to one section and counted from its start.
-export function sectionSurfaces(section: GpxSection, spans: SurfaceSpan[]): SurfaceSpan[] {
-  const to = section.from + section.coordinates.length - 1;
-  return spans.filter(span => span.toIndex > section.from && span.fromIndex < to).map(span => ({
-    ...span, fromIndex: Math.max(span.fromIndex, section.from) - section.from, toIndex: Math.min(span.toIndex, to) - section.from,
+// Surface spans cut to the stretch between two vertices and counted from its start.
+export function clipSpans(spans: SurfaceSpan[], from: number, to: number): SurfaceSpan[] {
+  return spans.filter(span => span.toIndex > from && span.fromIndex < to).map(span => ({
+    ...span, fromIndex: Math.max(span.fromIndex, from) - from, toIndex: Math.min(span.toIndex, to) - from,
   }));
+}
+
+// A track segment's surfaces, cut to one section.
+export function sectionSurfaces(section: GpxSection, spans: SurfaceSpan[]): SurfaceSpan[] {
+  return clipSpans(spans, section.from, section.from + section.coordinates.length - 1);
 }

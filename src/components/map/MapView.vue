@@ -5,6 +5,7 @@
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
       <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
+      <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected" />
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
@@ -54,6 +55,7 @@ import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouteStore } from '@/stores/route.store';
 import { LngLatBounds } from 'maplibre-gl';
+import { fitAndSettle } from '@/utils/map-fit';
 import { IconFocus2, IconMan, IconStack2 } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
@@ -62,6 +64,8 @@ import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
+import LoopSuggestionsLayer from '@/components/map/LoopSuggestionsLayer.vue';
+import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import GpxReferenceLayer from '@/components/map/GpxReferenceLayer.vue';
 import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
@@ -91,6 +95,7 @@ const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
 const { route, routingPending, focusedSurface, surfaceEstimate, fitRequest } = storeToRefs(useRouteStore());
+const loopSuggestions = useLoopSuggestionsStore();
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
@@ -117,14 +122,8 @@ watch(map, instance => {
     else if (route.value) fitRoute();
   });
 });
-// On phones the sheet makes way for an opened route, so the map grows: once it has settled, the route is fitted again.
-let fittedAt = 0, refit: ReturnType<typeof setTimeout> | undefined;
-watch(fitRequest, () => { fittedAt = Date.now(); fitRoute(); });
-watch(map, instance => instance?.on('resize', () => {
-  if (Date.now() - fittedAt > 1000) return;
-  clearTimeout(refit);
-  refit = setTimeout(fitRoute, 100);
-}));
+// On phones the sheet makes way for an opened route, so the map grows before the fit holds.
+watch(fitRequest, () => { if (map.value) fitAndSettle(map.value, fitRoute); });
 function fitRoute() {
   const bounds = new LngLatBounds();
   for (const feature of route.value?.features ?? []) {

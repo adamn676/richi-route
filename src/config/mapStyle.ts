@@ -9,3 +9,6 @@ export const routeStyle = {
   unknown: '#74818a',
   air: '#b33c4b',
 };
+
+// Suggested loops, told apart on the map and in their cards (checked for colour-blind separation).
+export const loopColors = ['#2f5fd0', '#d9480f', '#8e3fb8'] as const;

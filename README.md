@@ -11,6 +11,7 @@ Austria. The planner currently has a German interface.
 
 ## What it does
 
+- Get three loop suggestions from your start for a distance and climbing target, inspect each with its profile and surfaces, and keep one as an editable route.
 - Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
 - Drag points or route sections, with undo and redo.
 - Inspect distance, ascent, elevation and surface types along the route.

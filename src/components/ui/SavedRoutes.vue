@@ -1,10 +1,9 @@
 <template>
   <section class="library">
     <form class="library__save" @submit.prevent="save()">
-      <p class="label">{{ active ? `„${active.name}“ speichern` : 'Aktuelle Route speichern' }}</p>
       <div class="library__save-row">
-        <input v-model="name" class="field" maxlength="120" placeholder="Name, z. B. Feierabendrunde" required
-          aria-label="Routenname" />
+        <div class="float library__name"><input id="route-name" v-model="name" class="field" maxlength="120" placeholder="z. B. Feierabendrunde" required />
+          <label for="route-name">Routenname</label></div>
         <button type="submit" class="btn btn--primary" :disabled="busy || !hasDraft || !name.trim()"
           :aria-label="active ? 'Änderungen speichern' : 'Route speichern'">
           <IconDeviceFloppy :size="16" aria-hidden="true" />Speichern
@@ -37,7 +36,8 @@
             </div>
           </div>
           <form v-if="renaming?.id === entry.id" class="library__inline" @submit.prevent="finishRename(entry)">
-            <input :id="`rename-${entry.id}`" v-model="renameValue" class="field" maxlength="120" required aria-label="Neuer Routenname" />
+            <div class="float library__name"><input :id="`rename-${entry.id}`" v-model="renameValue" class="field" maxlength="120" placeholder=" " required />
+              <label :for="`rename-${entry.id}`">Neuer Routenname</label></div>
             <button type="submit" class="btn btn--primary btn--sm" :disabled="busy || !renameValue.trim()">Namen speichern</button>
             <button type="button" class="btn btn--sm" :disabled="busy" @click="renaming = undefined">Abbrechen</button>
           </form>
@@ -51,10 +51,11 @@
     </div>
 
     <footer class="library__backup">
-      <p class="muted">Routen bleiben in diesem Browser. Eine Sicherung bewahrt sie auch außerhalb auf.</p>
       <div class="library__backup-actions">
-        <button type="button" class="btn btn--sm" :disabled="busy || !hasDraft" aria-label="Sicherung herunterladen" @click="download"><IconDownload :size="16" aria-hidden="true" />Herunterladen</button>
-        <button type="button" class="btn btn--sm" :disabled="busy" aria-label="Sicherung importieren" @click="fileInput?.click()"><IconUpload :size="16" aria-hidden="true" />Importieren</button>
+        <button type="button" class="btn btn--sm" :disabled="busy || !hasDraft" aria-label="Sicherung herunterladen"
+          title="Die aktuelle Route als Datei sichern; Routen bleiben sonst nur in diesem Browser" @click="download"><IconDownload :size="16" aria-hidden="true" />Herunterladen</button>
+        <button type="button" class="btn btn--sm" :disabled="busy" aria-label="Sicherung importieren"
+          title="Eine RichiRoute-Sicherung zu „Meine Routen“ hinzufügen" @click="fileInput?.click()"><IconUpload :size="16" aria-hidden="true" />Importieren</button>
         <input ref="fileInput" type="file" accept=".json,application/json" aria-label="RichiRoute-Sicherung auswählen" hidden @change="importSelected" />
       </div>
     </footer>
@@ -105,7 +106,7 @@ async function importSelected(event: Event) {
 .library__save { display: grid; gap: .4rem; }
 .library__save .label { margin: 0; }
 .library__save-row, .library__inline { display: flex; gap: .4rem; }
-.library__save-row .field { flex: 1; }
+.library__name { flex: 1; min-width: 0; }
 .library__group { display: grid; gap: .5rem; }
 .library__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 h2 span { margin-left: .3rem; color: var(--text-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -119,7 +120,7 @@ h2 span { margin-left: .3rem; color: var(--text-muted); font-weight: 500; font-v
 .library__current { color: var(--accent-hover); font-weight: 600; }
 .library__tools { display: flex; flex-shrink: 0; }
 .library__inline { flex-wrap: wrap; align-items: center; }
-.library__inline .field { flex: 1 1 10rem; min-height: 2rem; }
+.library__inline .library__name { flex: 1 1 10rem; }
 .library__backup { display: grid; gap: .5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .library__backup-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
 </style>

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { chooseBasemap, openRoute } from './browser-ui.mjs';
+import { hahnhofweg } from './route-examples.ts';
 
 const output = 'experiments/routing/.local';
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }),
@@ -43,7 +44,7 @@ async function pixel(coord) {
 }
 try {
   await page.goto(process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173/');
-  await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
+  await openRoute(page, hahnhofweg);
   await idle();
   const initial = await state();
   assert.equal(initial.distance, 4371);

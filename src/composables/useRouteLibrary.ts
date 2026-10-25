@@ -1,13 +1,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
-import type { Coord, RoutePoint } from '../domain/route-model.ts';
+import type { RoutePoint } from '../domain/route-model.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
 import { exportRouteBackup, importRouteBackup, type SavedRouteSummary } from '../domain/saved-route.ts';
 import { routeLibrary } from '../services/route-library.service.ts';
 import { useRouteStore } from '../stores/route.store.ts';
+import { useLoopSuggestionsStore } from '../stores/loop-suggestions.store.ts';
 
 export function useRouteLibrary() {
   const store = useRouteStore();
+  const loops = useLoopSuggestionsStore();
   const entries = shallowRef<SavedRouteSummary[]>([]);
   const active = shallowRef<SavedRouteSummary>();
   const name = ref('');
@@ -69,8 +71,10 @@ export function useRouteLibrary() {
     });
   }
 
+  // Only a route worth keeping is saved before switching: one with a start and a destination, and not a suggested loop
+  // being looked at, which the same request brings back.
   async function protectDraft() {
-    if (!hasDraft.value) return;
+    if (!store.route || loops.selected !== null) return;
     const points = store.points, legs = store.legs;
     const snapshot = payload();
     const alreadySaved = unchanged(snapshot) && active.value && await routeLibrary.isCurrent(active.value);
@@ -101,10 +105,10 @@ export function useRouteLibrary() {
     });
   }
 
-  async function newRoute(coords: Coord[] = [], shapeIndices: readonly number[] = []) {
+  async function newRoute() {
     await run(async () => {
       await protectDraft();
-      store.resetRoute(coords, shapeIndices);
+      store.resetRoute();
       active.value = undefined;
       activePayload = '';
       name.value = '';

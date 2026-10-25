@@ -91,3 +91,16 @@ test('reverse lookup names the street and town, with the house number only when 
   body = { features: [] };
   assert.equal(await reverseGeocode(at, signal()), null);
 });
+
+test('an address knows its street; a street result does not need one', async t => {
+  let body;
+  t.mock.method(globalThis, 'fetch', async () => Response.json(body));
+  body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.39296, 47.07651] },
+    properties: { type: 'house', osm_value: 'apartments', street: 'Georgigasse', housenumber: '95', postcode: '8020', city: 'Graz' } }] };
+  const [house] = await forwardGeocode('Georgigasse 95', signal());
+  assert.equal(house.street, 'Georgigasse');
+  assert.equal(house.label, 'Georgigasse 95, 8020 Graz');
+  body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.393, 47.0769] },
+    properties: { type: 'street', name: 'Georgigasse', postcode: '8020', city: 'Graz' } }] };
+  assert.equal((await forwardGeocode('Georgigasse', signal()))[0].street, undefined);
+});

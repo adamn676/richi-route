@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { openRoute } from './browser-ui.mjs';
+import { westernLoop } from './route-examples.ts';
 
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -23,14 +25,12 @@ async function shapeIds() {
 }
 try {
   await page.goto('http://127.0.0.1:5173/');
-  const example = page.getByRole('button', { name: 'Beispiel: Westliche Runde über Augasse', exact: true });
-  await example.click();
+  await openRoute(page, westernLoop.coords, westernLoop.shapeIndices);
   await idle();
   assert.equal(routingRequests.length, 17, 'Nine snaps and eight legs, without repeated requests from action proxies');
   const ids = await shapeIds();
   assert.equal(ids.length, 6);
   assert.equal(await page.locator('.route-marker--shape').count(), 6);
-  assert.equal(await example.count(), 0, 'Example does not offer to replace an active route');
   assert.ok(await page.getByText('Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.', { exact: true }).isVisible());
   await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());

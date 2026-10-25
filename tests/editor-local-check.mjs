@@ -6,7 +6,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { getSegments } from '../src/utils/geometry.ts';
 import { assessReviewedRoute } from '../experiments/routing/reviewed-routes.mjs';
-import { westernLoop } from '../src/config/route-examples.ts';
+import { westernLoop } from './route-examples.ts';
 
 const originalFetch = globalThis.fetch;
 let requestCount = 0;

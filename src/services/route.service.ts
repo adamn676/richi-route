@@ -37,8 +37,8 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>, background = f
   });
 }
 
-async function request(points: Coord[], signal: AbortSignal, background = false): Promise<unknown> {
-  const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0' });
+async function request(points: Coord[], signal: AbortSignal, background = false, extra: Record<string, string> = {}): Promise<unknown> {
+  const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0', ...extra });
   // Guide the initial search and its refinement; road costs stay in the profile.
   for (const [name, value] of Object.entries(routingParameters)) params.set(`profile:${name}`, String(value));
   return withSlot(signal, async () => {
@@ -68,6 +68,12 @@ async function request(points: Coord[], signal: AbortSignal, background = false)
 
 export async function traceGpxPortion(points: Coord[], signal: AbortSignal) {
   return parseBRouterLeg(await request(points, signal, true));
+}
+
+// BRouter's round trip: a loop from the start through five points on a circle of this radius, centred in this direction.
+export async function traceRoundTrip(start: Coord, radiusMeters: number, direction: number, signal: AbortSignal) {
+  return parseBRouterLeg(await request([start], signal, false,
+    { engineMode: '4', roundTripDistance: String(Math.round(radiusMeters)), direction: String(direction), roundTripPoints: '5' }));
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {

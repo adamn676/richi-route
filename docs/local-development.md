@@ -614,6 +614,12 @@ Queries stay on this computer. Suggestions load after three characters and a
 loaded result. No routing geometry is sent to the search service, and unavailable
 local search never falls back to `photon.komoot.io`.
 
+An address with a house number starts on its own street: the planner takes the
+nearest point on the road of that name from its map tiles (within 150 m), since
+a building's centre can lie nearer a path behind it. Georgigasse 95 in Graz, for
+example, is nearer a footpath in the paid-entry Schlosspark Eggenberg than its
+street; the park's paths carry no bicycle restriction in OpenStreetMap.
+
 A stop placed or moved on the map, and the start and end of an imported GPX
 track, get the street they lie on from `/geocoding/reverse` once snapped, such as
 "Hahnhofweg, 8010 Graz". A house number is added only when that house is within
@@ -661,6 +667,40 @@ It blocks external requests. Reports and screenshots go to `.cache/search/`.
 street tiles in eight European cities with external HTTP requests blocked; it
 requires the complete European datasets. Results go to `.cache/local-services/`.
 
+## Suggest a loop
+
+With only a start set, **Runde vorschlagen** in the Route tab takes a distance
+and a climbing target and offers three loops that start and finish there, in
+blue, orange and purple, with the map showing all three. Selecting a card shows
+its loop as the route, in sections of about 5 km between shaping points with its
+heights and surfaces, so its distance, climbing, surfaces, elevation profile and
+Street View can be inspected, and the map zooms to it; the other two stay faint.
+Selecting another card replaces it in place, without a further undo step;
+selecting it again returns to the start and all three loops. Pointing at a card
+highlights its loop. **Übernehmen** keeps the selected loop and closes the
+suggestions; **Verwerfen** returns to the start alone. On a phone the sheet stays
+up while choosing. The last target is remembered in this browser.
+
+The loops come from BRouter's round-trip mode (`engineMode=4`) with the
+planner's profile: a loop through five points on a circle, which comes out about
+6.2 times the circle's radius. Where a circle point snaps onto a dead end, the loop
+rides in and back out; the planner cuts every stretch that returns to a point
+passed less than 1 km before, so dead ends and turning circles go while the road
+home a loop starts and ends on stays. It asks in twelve directions, then twice
+more per direction with the radius corrected towards the distance (36 requests,
+about 2–4 s locally). Direction decides most of the climbing: from Graz, loops to
+the north climb far more than those to the south. Of all loops, it prefers those
+within 15% of the distance, then the closest climbing, and avoids roads ridden
+both ways; the three it shows head at least 60° apart. Each card is named after
+the town the loop passes most (sampled at eight points, not the start's town or
+another card's), otherwise by its compass direction. Climbing uses the planner's
+filter for router heights, so it matches the route once taken.
+
+`node tests/browser-loops.mjs` checks the flow with mocked routing and address
+services: start required, three distinct names, overview first, each loop shown
+exactly as the route with zoom, no extra undo steps, deselection back to all
+loops, discard, keep, a failed routing service and the phone layout.
+
 ## Route storage and export
 
 The planner saves one draft in browser storage for `http://127.0.0.1:5173/`,
@@ -677,8 +717,9 @@ updates that entry, while the copy icon saves a separate one. Each entry's icons
 open, duplicate, rename or delete it. Reloading restores the draft; open
 its saved entry again before updating that entry.
 
-Opening another route, starting **Neue Route**, or loading an example first saves
-a changed draft as an **Entwurf** entry. If saving fails or the editor changes
+Opening another route, starting **Neue Route**, or opening a GPX track as a route
+first saves a changed route as an **Entwurf** entry. A start alone is not kept,
+nor a suggested loop that is only being looked at. If saving fails or the editor changes
 during that save, the switch stops and the current route stays open. Saving or
 deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
@@ -979,6 +1020,7 @@ node tests/browser-long-routes.mjs
 node tests/browser-surfaces.mjs
 node tests/browser-saved-routes.mjs
 node tests/browser-gpx-import.mjs
+node tests/browser-loops.mjs
 node tests/browser-initial-performance.mjs --baseline 0.5
 ```
 

@@ -13,7 +13,7 @@
     <div class="sidebar__tabs" role="tablist" aria-label="Bereiche" @keydown="moveFocus">
       <button v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" type="button" role="tab"
         :aria-selected="tab === item.id" :aria-controls="`panel-${item.id}`" :tabindex="tab === item.id ? 0 : -1"
-        @click="tab = item.id">{{ item.label }}</button>
+        @click="tab = item.id"><span class="sidebar__tab-label">{{ item.label }}</span></button>
     </div>
     <!-- Saving a draft before a route switch can report from any tab. -->
     <div class="sidebar__messages">
@@ -25,8 +25,7 @@
       <p v-else-if="message" class="notice notice--success" role="status">{{ message }}</p>
     </div>
     <div class="sidebar__body">
-      <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route"
-        @new-route="(coords, shapeIndices) => library.newRoute(coords, shapeIndices)" />
+      <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
@@ -91,11 +90,15 @@ async function moveFocus(event: KeyboardEvent) {
 .brand__accent { color: var(--accent); }
 .sidebar__status { display: inline-flex; color: var(--text-muted); cursor: help; }
 .sidebar__new { margin-left: auto; }
-.sidebar__tabs { display: flex; gap: 1.25rem; padding: 0 var(--gutter); border-bottom: 1px solid var(--border); }
-[role=tab] { padding: .7rem 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
-  color: var(--text-muted); font-size: .88rem; font-weight: 600; }
-[role=tab]:hover { color: var(--text); }
-[role=tab][aria-selected=true] { border-bottom-color: var(--accent); color: var(--text); }
+/* Material primary tabs: equal widths, the active label in the main colour over a rounded indicator as wide as the label. */
+.sidebar__tabs { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; border-bottom: 1px solid var(--border); }
+[role=tab] { display: grid; place-items: center; padding: 0 .5rem; border: 0; background: none; color: var(--text-muted);
+  font-size: .875rem; font-weight: 600; }
+[role=tab]:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+[role=tab][aria-selected=true] { color: var(--accent); }
+.sidebar__tab-label { position: relative; padding: .875rem 0; }
+[role=tab][aria-selected=true] .sidebar__tab-label::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; height: 3px;
+  border-radius: 3px 3px 0 0; background: var(--accent); }
 .sidebar__messages { display: grid; gap: .5rem; max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
 .sidebar__body { flex: 1; min-height: 0; overflow-y: auto; }

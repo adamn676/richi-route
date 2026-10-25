@@ -51,3 +51,4 @@ jobs:
           node tests/browser-gpx-import.mjs
           node tests/browser-gpx-surfaces.mjs
           node tests/browser-saved-routes.mjs
+          node tests/browser-loops.mjs
