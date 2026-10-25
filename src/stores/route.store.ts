@@ -19,7 +19,7 @@ import {
   type Waypoint,
 } from '../domain/route-model.ts';
 import { routingEngine } from '../services/route.service.ts';
-import { forwardGeocode, type Place } from '../services/geocoding.service.ts';
+import { forwardGeocode, reverseGeocode, type Place } from '../services/geocoding.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
 import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
@@ -178,6 +178,8 @@ export const useRouteStore = defineStore('route', {
     surfaceFocus: null as SurfaceFocus | null,
     // Progress of looking up the surfaces of an imported GPX track.
     surfaceEstimate: null as { completed: number; total: number } | null,
+    // Counts routes opened as a whole (examples, saved routes, imports); the map then shows the route.
+    fitRequest: 0,
   }),
 
   getters: {
@@ -250,6 +252,7 @@ export const useRouteStore = defineStore('route', {
         Object.values(this.legs).find(l => l.error)?.error ?? null;
       this._resumePendingSnaps();
       this._reconcile();
+      this.fitRequest++;
     },
     resetRoute(coords: Coord[] = [], shapeIndices: readonly number[] = []) {
       coords.forEach(validCoord);
@@ -266,6 +269,7 @@ export const useRouteStore = defineStore('route', {
       this.legs = {};
       for (const point of this.points) if (point.coord) this._snapPoint(point.id, point.coord);
       this._reconcile();
+      if (coords.length) this.fitRequest++;
     },
     // Replaces the route with a GPX track, as one undoable step: start and end stops with shaping points between
     // its sections. Gaps between track segments get routed. Surfaces are looked up afterwards.
@@ -296,6 +300,8 @@ export const useRouteStore = defineStore('route', {
       this.legs = legs;
       this.errorMessage = null;
       this._reconcile();
+      for (const stop of this.waypoints) this._nameStop(stop.id);
+      this.fitRequest++;
       void this._lookupSurfaces(track, imported);
     },
     async _lookupSurfaces(track: GpxTrack, imported: { leg: RouteLeg; section: GpxSection }[]) {
@@ -350,6 +356,24 @@ export const useRouteStore = defineStore('route', {
       operations.scheduler.update(this.legs, requests, optimize);
     },
 
+    // A stop placed on the map gets the street it lies on, without an undo step.
+    // Typing or moving the stop cancels the lookup, like a search.
+    _nameStop(id: string) {
+      const operations = operationsFor(this);
+      const stop = this.waypoints.find((point) => point.id === id);
+      if (!stop?.coord || stop.address !== null || stop.userInput || operations.geocodes.has(id)) return;
+      const controller = new AbortController();
+      operations.geocodes.set(id, controller);
+      void reverseGeocode(stop.coord, controller.signal)
+        .then((label) => {
+          if (!label || operations.geocodes.get(id) !== controller) return;
+          this.points = this.points.map((point) => point.id === id && point.type === 'stop' && point.address === null && !point.userInput
+            ? { ...point, address: label, userInput: label } : point);
+        })
+        .catch(() => { /* Without the address service, the position stays shown. */ })
+        .finally(() => { if (operations.geocodes.get(id) === controller) operations.geocodes.delete(id); });
+    },
+
     _snapPoint(id: string, coord: Coord) {
       const operations = operationsFor(this);
       operations.snaps.get(id)?.abort();
@@ -384,6 +408,7 @@ export const useRouteStore = defineStore('route', {
           operations.snaps.delete(id);
           this.points = this.points.map(point => point.id === id ? { ...point, snapPending: false } : point);
           this._reconcile();
+          this._nameStop(id);
         });
     },
 

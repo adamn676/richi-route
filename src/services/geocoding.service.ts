@@ -1,4 +1,4 @@
-import type { Coord } from '../domain/route-model.ts';
+import { distanceMeters, type Coord } from '../domain/route-model.ts';
 
 export interface Place {
   label: string;
@@ -65,11 +65,11 @@ function parsePlace(value: unknown): Place {
   };
 }
 
-async function search(params: URLSearchParams, signal: AbortSignal): Promise<Place[]> {
+async function search(path: string, params: URLSearchParams, signal: AbortSignal): Promise<unknown[]> {
   signal.throwIfAborted();
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/?${params}`, {
+    response = await fetch(`${baseUrl}${path}?${params}`, {
       signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
       referrerPolicy: 'no-referrer',
       credentials: 'omit',
@@ -84,16 +84,16 @@ async function search(params: URLSearchParams, signal: AbortSignal): Promise<Pla
   const data: unknown = await response.json();
   const features = record(data)?.features;
   if (!Array.isArray(features)) throw new Error('Der Adressdienst lieferte keine gültige Ergebnisliste.');
-  return features.map(parsePlace);
+  return features;
 }
 
 export async function forwardGeocode(query: string, signal: AbortSignal): Promise<Place[]> {
   if (query.trim().length < 3) throw new Error('Bitte mindestens drei Zeichen eingeben.');
-  const places = await search(new URLSearchParams({
+  const places = (await search('/api/', new URLSearchParams({
     q: query.trim(),
     lang: 'de',
     limit: '8',
-  }), signal);
+  }), signal)).map(parsePlace);
   const seen = new Set<string>();
   return places.filter((place) => {
     const key = `${place.label.toLocaleLowerCase('de-AT')}|${place.coord.join(',')}`;
@@ -101,4 +101,28 @@ export async function forwardGeocode(query: string, signal: AbortSignal): Promis
     seen.add(key);
     return true;
   });
+}
+
+// The street at a point set on the map, with the house number only when that house is right there,
+// and its town; null when nothing lies within 300 m.
+export async function reverseGeocode(coord: Coord, signal: AbortSignal): Promise<string | null> {
+  const [feature] = await search('/reverse', new URLSearchParams({
+    lat: String(coord[1]),
+    lon: String(coord[0]),
+    lang: 'de',
+    limit: '1',
+    radius: '0.3',
+  }), signal);
+  const properties = record(record(feature)?.properties);
+  const found = record(record(feature)?.geometry)?.coordinates;
+  if (!properties) return null;
+  const near = Array.isArray(found) && typeof found[0] === 'number' && typeof found[1] === 'number' &&
+    distanceMeters(coord, [found[0], found[1]]) <= 30;
+  const street = optionalText(properties.type === 'street' ? properties.name : properties.street);
+  const city = optionalText(properties.city);
+  const first = street ? [street, near ? optionalText(properties.housenumber) : undefined].filter(Boolean).join(' ') : optionalText(properties.name);
+  // Village addresses repeat the town as the street name ("Mortantsch 21, 8160 Mortantsch").
+  const label = [first !== city ? first : undefined, [optionalText(properties.postcode), city].filter(Boolean).join(' ')]
+    .filter(Boolean).join(', ');
+  return label || null;
 }

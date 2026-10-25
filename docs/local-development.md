@@ -389,7 +389,9 @@ provider credits, persisted selection and mobile layout. Reports are in
 
 The map's tool column at the top right holds the basemap choice (layers icon),
 **Rad-Infos** (bike icon), **Street View** (figure icon) and **Route zeigen**
-(focus icon); hover for their names. In Street View mode a figure follows the
+(focus icon); hover for their names. Opening an example, a saved route or a
+GPX track as a route also shows the whole route: nearby the map
+glides there, from farther away it jumps. In Street View mode a figure follows the
 pointer and snaps onto the route within 16 px, the route pauses its editing, and
 a click opens Street View at the nearest panorama; the figure turns grey where
 Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
@@ -607,6 +609,13 @@ Queries stay on this computer. Suggestions load after three characters and a
 350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
 loaded result. No routing geometry is sent to the search service, and unavailable
 local search never falls back to `photon.komoot.io`.
+
+A stop placed or moved on the map, and the start and end of an imported GPX
+track, get the street they lie on from `/geocoding/reverse` once snapped, such as
+"Hahnhofweg, 8010 Graz". A house number is added only when that house is within
+30 m, and nothing farther than 300 m names a point; then the position stays
+shown. Naming adds no undo step, and typing or moving the stop cancels it. Opening
+a saved route leaves its stops as saved.
 
 `npm run search:setup` downloads the Photon executable and the European database
 recorded in `scripts/photon.json`. The executable is SHA-256 verified and the

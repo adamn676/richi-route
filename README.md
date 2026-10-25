@@ -11,12 +11,13 @@ Austria. The planner currently has a German interface.
 
 ## What it does
 
-- Plan routes with multiple stops and shaping points, including loops and return trips.
+- Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
 - Drag points or route sections, with undo and redo.
 - Inspect distance, ascent, elevation and surface types along the route.
 - Highlight individual surface sections on the map.
-- Choose a street, road-cycling, terrain or simplified road map, plus fast and detailed aerial views with street names.
-- Switch on cycle paths, drinking-water sources, bicycle services, food stops and railway stations over any map.
+- Choose the local map, which colours roads for cycling, or an aerial view with street names; add shaded relief, or switch to OpenTopoMap online.
+- Switch on cycle paths, signed cycle routes, drinking-water sources, bicycle services, food stops and railway stations over any map.
+- Look at Google Street View from any point on the map or the elevation profile.
 - Save, reopen, rename and duplicate routes in a local route collection.
 - Back up editable routes as RichiRoute files and download calculated tracks as GPX.
 - Import GPX tracks to compare, with direction arrows, a linked elevation profile, and height or gradient colours, or open them as an editable route.
@@ -77,6 +78,9 @@ The map selector also offers **OpenTopoMap** (contour lines) online, local
 Waymarked Trails under **Rad-Infos**. The online sources need no account or API
 key and are contacted only when selected; the local maps remain the default. See
 [map choices](docs/local-development.md#online-map-choices).
+Street View links open Google Maps in a new tab; with an optional Google Maps
+Embed API key in the git-ignored `.env.local`, Street View shows inside the
+planner. See [Street View setup](docs/local-development.md#inspect-the-route-elevation-profile).
 Water, bicycle-service and railway-station overlays use a separate local OSM extract. Their
 installed coverage and data date appear under **Rad-Infos**; the initial extract
 covers Austria. See [cycling overlays](docs/local-development.md#cycling-overlays)

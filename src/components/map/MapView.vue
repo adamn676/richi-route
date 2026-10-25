@@ -90,7 +90,7 @@ function pick(event: MouseEvent, id: EditorBasemap, close: (refocus?: boolean) =
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
-const { route, routingPending, focusedSurface, surfaceEstimate } = storeToRefs(useRouteStore());
+const { route, routingPending, focusedSurface, surfaceEstimate, fitRequest } = storeToRefs(useRouteStore());
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
@@ -117,12 +117,14 @@ watch(map, instance => {
     else if (route.value) fitRoute();
   });
 });
+watch(fitRequest, () => fitRoute());
 function fitRoute() {
   const bounds = new LngLatBounds();
   for (const feature of route.value?.features ?? []) {
     for (const coord of feature.geometry.coordinates) bounds.extend([coord[0], coord[1]]);
   }
-  if (!bounds.isEmpty()) map.value?.fitBounds(bounds, { padding: 60, maxZoom: 16 });
+  // Nearby it glides; a route far away (an opened one in another region) appears at once.
+  if (!bounds.isEmpty()) map.value?.fitBounds(bounds, { padding: 60, maxZoom: 16, maxDuration: 1500 });
 }
 </script>
 

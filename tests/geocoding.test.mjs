@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { forwardGeocode } from '../src/services/geocoding.service.ts';
+import { forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
 
 const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: coord },
@@ -67,4 +67,27 @@ test('offline, timeout and cancellation remain distinguishable', async t => {
     throw options.signal.reason;
   });
   await assert.rejects(forwardGeocode('Graz', controller.signal), failure => failure === controller.signal.reason);
+});
+
+test('reverse lookup names the street and town, with the house number only when the house is right there', async t => {
+  const at = [15.4743, 47.0908];
+  let request, body;
+  t.mock.method(globalThis, 'fetch', async url => { request = new URL(url, 'http://127.0.0.1:5173'); return Response.json(body); });
+  const result = (properties, coord = at) => ({ features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties }] });
+  body = result({ type: 'street', name: 'Hahnhofweg', postcode: '8010', city: 'Graz', state: 'Steiermark' });
+  assert.equal(await reverseGeocode(at, signal()), 'Hahnhofweg, 8010 Graz');
+  assert.equal(request.pathname, '/geocoding/reverse');
+  assert.deepEqual([request.searchParams.get('lat'), request.searchParams.get('lon'), request.searchParams.get('radius')], ['47.0908', '15.4743', '0.3']);
+  body = result({ type: 'house', street: 'Georgigasse', housenumber: '89', postcode: '8020', city: 'Graz' }, [15.4744, 47.0908]);
+  assert.equal(await reverseGeocode(at, signal()), 'Georgigasse 89, 8020 Graz');
+  body = result({ type: 'house', street: 'Deckerweg', housenumber: '31', postcode: '8063', city: 'Eggersdorf bei Graz' }, [15.4755, 47.0908]);
+  assert.equal(await reverseGeocode(at, signal()), 'Deckerweg, 8063 Eggersdorf bei Graz', 'A house 90 m away does not lend its number');
+  body = result({ type: 'house', name: 'Wegkreuz', street: 'Roseggerweg', postcode: '8044', city: 'Graz' });
+  assert.equal(await reverseGeocode(at, signal()), 'Roseggerweg, 8044 Graz', 'A landmark gives its street');
+  body = result({ type: 'house', street: 'Mortantsch', housenumber: '21', postcode: '8160', city: 'Mortantsch' }, [15.4743, 47.093]);
+  assert.equal(await reverseGeocode(at, signal()), '8160 Mortantsch');
+  body = result({ type: 'locality', name: 'Gollersattel', postcode: '8164', city: 'Gutenberg' });
+  assert.equal(await reverseGeocode(at, signal()), 'Gollersattel, 8164 Gutenberg');
+  body = { features: [] };
+  assert.equal(await reverseGeocode(at, signal()), null);
 });

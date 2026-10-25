@@ -59,6 +59,30 @@ try {
   await start.scrollIntoViewIfNeeded();
   await page.screenshot({ path: output + '/route-from-search.png' });
 
+  // An opened example moves the map to it, and its stops get the streets they lie on.
+  const mapView = () => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  await page.evaluate(`(${mapView})().jumpTo({ center: [16.37, 48.21], zoom: 12 })`);
+  await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
+  await page.getByRole('button', { name: 'Beispiel: Hahnhofweg → Roseggerweg', exact: true }).click();
+  await page.waitForFunction(() => {
+    const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+    return route.waypoints.every(point => point.address);
+  }, {}, { timeout: 30000 });
+  const named = await points();
+  assert.match(named[0].address, /^Hahnhofweg, 8010 Graz$/);
+  assert.match(named[1].address, /Roseggerweg, 8044 Graz$/);
+  assert.equal(await start.inputValue(), named[0].address);
+  assert.ok(named.every(point => point.userInput === point.address));
+  await page.waitForFunction(mapView => {
+    const map = eval(`(${mapView})`)(), bounds = map.getBounds();
+    const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+    return !map.isMoving() && route.waypoints.every(point => bounds.contains(point.coord));
+  }, mapView.toString(), { timeout: 10000 });
+  // Two steps back: the empty new route, then the searched route with its addresses.
+  await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
+  await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
+  assert.match(await start.inputValue(), /Hauptplatz/);
+
   // From here, controlled responses exercise errors and races for repeatable failures.
   let mode = 'empty';
   let releaseSlow, startedSlow;
