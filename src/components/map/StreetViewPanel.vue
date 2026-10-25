@@ -1,10 +1,10 @@
 <template>
   <section class="street-view" aria-label="Street View" @keydown.esc="streetView.close()">
     <iframe :src="streetView.src ?? undefined" title="Google Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" />
-    <button ref="closeButton" type="button" class="btn btn--icon btn--map street-view__close" aria-label="Street View schließen"
-      title="Street View schließen" @click="streetView.close()">
+    <v-map-button ref="closeButton" v-tooltip:bottom="'Street View schließen'" class="street-view__close" aria-label="Street View schließen"
+      @click="streetView.close()">
       <IconX :size="20" aria-hidden="true" />
-    </button>
+    </v-map-button>
   </section>
 </template>
 
@@ -16,9 +16,9 @@ import { useRouteProfileStore } from '@/stores/route-profile.store';
 
 const streetView = useStreetViewStore();
 const profile = useRouteProfileStore();
-const closeButton = ref<HTMLButtonElement>();
+const closeButton = ref<{ $el: HTMLElement }>();
 // Focus starts on the close button, so Escape or Enter closes at once.
-onMounted(() => closeButton.value?.focus());
+onMounted(() => closeButton.value?.$el.focus());
 // The elevation profile marks the spot on the route while Street View shows it.
 watch(() => streetView.routeDistance, distance => profile.restAt(distance), { immediate: true });
 onBeforeUnmount(() => profile.restAt(null));

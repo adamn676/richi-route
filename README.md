@@ -117,7 +117,7 @@ accounts, cloud sync or a hosted service. Browser storage holds the current draf
 and a named route collection. Download RichiRoute backups to keep editable copies
 outside the browser; clearing browser data removes locally stored routes.
 
-Built with Vue 3, TypeScript, Pinia and MapLibre GL JS. Routing data comes from
+Built with Vue 3, Vuetify (Material Design 3), TypeScript, Pinia and MapLibre GL JS. Routing data comes from
 OpenStreetMap. The planner serves its own [Protomaps](https://protomaps.com/)
 vector tiles, fonts and symbols. Photon supplies local address search. Imagery
 comes from Copernicus Sentinel, basemap.at, swisstopo and IGN, with attribution

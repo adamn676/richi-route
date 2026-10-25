@@ -2,30 +2,31 @@
   <div class="planner">
     <section class="planner__section">
       <div class="planner__heading">
-        <h2 class="section-title">Streckenpunkte</h2>
+        <h2 class="text-title-medium">Streckenpunkte</h2>
         <span class="planner__tools">
-          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.canUndo" aria-label="Rückgängig" title="Rückgängig (Strg+Z)" @click="routeStore.undo()"><IconArrowBackUp :size="18" aria-hidden="true" /></button>
-          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.canRedo" aria-label="Wiederholen" title="Wiederholen (Strg+Y)" @click="routeStore.redo()"><IconArrowForwardUp :size="18" aria-hidden="true" /></button>
-          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.route" aria-label="Gesamte Route optimieren"
-            title="Gesamte Route optimieren" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></button>
-          <button type="button" class="btn btn--ghost btn--icon" :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
-            title="Formpunkte entfernen" @click="run(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></button>
-          <button type="button" class="btn btn--ghost btn--icon" :disabled="Boolean(exportReason)" aria-label="GPX herunterladen"
-            :title="exportReason ?? 'Route als GPX herunterladen'" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></button>
+          <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="routeStore.undo()"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="routeStore.redo()"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button :disabled="!routeStore.route" aria-label="Gesamte Route optimieren"
+            v-tooltip:bottom="'Gesamte Route optimieren'" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
+            v-tooltip:bottom="'Formpunkte entfernen'" @click="run(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
+          <!-- On a wrapper, so the reason also shows while the button is disabled. -->
+          <span v-tooltip:bottom="exportReason ?? 'Route als GPX herunterladen'"><v-icon-button :disabled="Boolean(exportReason)"
+            aria-label="GPX herunterladen" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></v-icon-button></span>
         </span>
       </div>
       <ol class="planner__stops">
         <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop">
           <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
           <span v-if="point.kind === 'via'" class="planner__stop-actions">
-            <button type="button" class="btn btn--ghost btn--icon btn--sm" :disabled="viaIds.indexOf(point.id) === 0"
-              :aria-label="`${stopLabel(point.kind, index)} nach oben verschieben`" title="Nach oben"
-              @click="run(() => routeStore.moveWaypoint(point.id, -1))"><IconChevronUp :size="16" aria-hidden="true" /></button>
-            <button type="button" class="btn btn--ghost btn--icon btn--sm" :disabled="viaIds.indexOf(point.id) === viaIds.length - 1"
-              :aria-label="`${stopLabel(point.kind, index)} nach unten verschieben`" title="Nach unten"
-              @click="run(() => routeStore.moveWaypoint(point.id, 1))"><IconChevronDown :size="16" aria-hidden="true" /></button>
-            <button type="button" class="btn btn--ghost btn--icon btn--sm" :aria-label="`${stopLabel(point.kind, index)} löschen`" title="Stopp löschen"
-              @click="run(() => routeStore.removeWaypoint(point.id))"><IconX :size="16" aria-hidden="true" /></button>
+            <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === 0"
+              :aria-label="`${stopLabel(point.kind, index)} nach oben verschieben`" v-tooltip:bottom="'Nach oben'"
+              @click="run(() => routeStore.moveWaypoint(point.id, -1))"><IconChevronUp :size="16" aria-hidden="true" /></v-icon-button>
+            <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === viaIds.length - 1"
+              :aria-label="`${stopLabel(point.kind, index)} nach unten verschieben`" v-tooltip:bottom="'Nach unten'"
+              @click="run(() => routeStore.moveWaypoint(point.id, 1))"><IconChevronDown :size="16" aria-hidden="true" /></v-icon-button>
+            <v-icon-button size="x-small" :aria-label="`${stopLabel(point.kind, index)} löschen`" v-tooltip:bottom="'Stopp löschen'"
+              @click="run(() => routeStore.removeWaypoint(point.id))"><IconX :size="16" aria-hidden="true" /></v-icon-button>
           </span>
           <div class="planner__stop-input">
             <AddressSearchInput
@@ -45,18 +46,16 @@
           </div>
         </li>
       </ol>
-      <button type="button" class="btn btn--ghost planner__add" :disabled="!hasEndpoints" @click="addStop">
-        <IconPlus :size="16" aria-hidden="true" />Zwischenstopp hinzufügen
-      </button>
+      <v-btn variant="text" class="planner__add" :prepend-icon="IconPlus" :disabled="!hasEndpoints" @click="addStop">Zwischenstopp hinzufügen</v-btn>
     </section>
 
     <div v-if="routingNotices.length || routeStore.errorMessage || airHint" class="planner__notices">
-      <p v-for="notice in routingNotices" :key="notice.id" class="notice notice--warning" role="status">{{ notice.text }}</p>
-      <p v-if="routeStore.errorMessage" class="notice notice--error planner__error" role="alert">
+      <v-alert v-for="notice in routingNotices" :key="notice.id" type="warning" role="status">{{ notice.text }}</v-alert>
+      <v-alert v-if="routeStore.errorMessage" type="error" class="planner__error">
         {{ routeStore.errorMessage }}
-        <button type="button" class="btn" @click="routeStore.retryRouting()">Erneut versuchen</button>
-      </p>
-      <p v-else-if="airHint" class="notice notice--warning" role="status">Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.</p>
+        <div><v-btn class="mt-2" @click="routeStore.retryRouting()">Erneut versuchen</v-btn></div>
+      </v-alert>
+      <v-alert v-else-if="airHint" type="warning" role="status">Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.</v-alert>
     </div>
 
     <LoopSuggestions v-if="!hasEndpoints || loops.suggestions" />
@@ -166,7 +165,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop-input { grid-column: 2; grid-row: 1; display: grid; gap: .3rem; }
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
-.planner__add { justify-self: start; margin-left: 1.6rem; padding-inline: .5rem; color: var(--accent); }
+.planner__add { justify-self: start; margin-left: 1.6rem; }
 .planner__notices { display: grid; gap: .5rem; padding: 1rem var(--gutter) 0; }
 .planner__stats dd { font-size: 1.5rem; }
 </style>

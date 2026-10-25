@@ -13,37 +13,35 @@
           Beläge werden ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
           {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
-        <p v-if="mapError" class="notice notice--error" role="alert">
-          {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
-        </p>
+        <v-alert v-if="mapError" type="error" variant="flat">
+          {{ mapError }}
+          <div><v-btn class="mt-2" @click="retryBasemap">Erneut laden</v-btn></div>
+        </v-alert>
       </div>
       <div class="map-view__tools">
         <MapMenu label="Kartenansicht" heading="Kartenansicht" :title="basemapTitle">
           <template #icon><IconStack2 :size="20" aria-hidden="true" /></template>
           <template #default="{ close }">
-            <fieldset v-for="group in basemapGroups" :key="group.label" class="map-view__basemaps">
-              <legend class="label">{{ group.label }}</legend>
-              <label v-for="item in group.items" :key="item.id" class="option" @click="event => pick(event, item.id, close)">
-                <input v-model="basemap" type="radio" name="basemap" :value="item.id" />{{ item.label }}
-              </label>
-            </fieldset>
-            <fieldset class="map-view__basemaps">
-              <legend class="label">Ebenen</legend>
-              <label class="option" :title="basemap === 'aerial' ? 'Das Satellitenbild zeigt das Gelände schon selbst' : undefined">
-                <input v-model="hillshade" type="checkbox" :disabled="basemap === 'aerial'" />Schummerung
-              </label>
-            </fieldset>
+            <!-- A choice by pointer closes the menu; arrow keys (clicks with detail 0) only move the selection. -->
+            <v-radio-group v-for="group in basemapGroups" :key="group.label" v-model="basemap" :label="group.label" name="basemap">
+              <v-radio v-for="item in group.items" :key="item.id" :label="item.label" :value="item.id"
+                @click="(event: MouseEvent) => event.detail && close()" />
+            </v-radio-group>
+            <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }">
+              <v-switch v-model="hillshade" label="Schummerung" :disabled="basemap === 'aerial'" />
+            </div>
           </template>
         </MapMenu>
         <CyclingOverlays :map="map" />
-        <button type="button" class="btn btn--icon btn--map map-view__street-view" :aria-pressed="streetView.picking" aria-label="Street View"
-        title="Street View: Punkt auf der Karte wählen" @click="streetView.picking = !streetView.picking">
-        <IconMan :size="20" aria-hidden="true" />
-      </button>
-      <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
+        <v-map-button v-tooltip:start="'Street View: Punkt auf der Karte wählen'" :active="streetView.picking"
+          :aria-pressed="streetView.picking" aria-label="Street View" @click="streetView.picking = !streetView.picking">
+          <IconMan :size="20" aria-hidden="true" />
+        </v-map-button>
+        <v-map-button v-if="route" v-tooltip:start="'Route zeigen'" aria-label="Route zeigen" @click="fitRoute">
           <IconFocus2 :size="20" aria-hidden="true" />
-        </button>
+        </v-map-button>
       </div>
+      <MapNavigation class="map-view__navigation" :map="map" />
       <StreetViewPanel v-if="streetView.location" />
     </div>
     <ElevationProfile v-show="route" class="map-view__profile" />
@@ -73,6 +71,7 @@ import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
 import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import MapMenu from '@/components/map/MapMenu.vue';
+import MapNavigation from '@/components/map/MapNavigation.vue';
 import StreetViewPanel from '@/components/map/StreetViewPanel.vue';
 import { useStreetViewStore } from '@/stores/street-view.store';
 import { onlineBasemaps } from '@/config/online-basemaps';
@@ -83,14 +82,6 @@ const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label
   { label: 'Eigene Karten · Europa', items: localBasemaps },
   { label: 'Online · Internet erforderlich', items: onlineBasemaps },
 ];
-// A pointer choice applies the map and closes the menu; arrow keys (clicks with detail 0) only move the selection.
-// A click on the label text skips the label's default action, which would pull focus into the closing panel.
-function pick(event: MouseEvent, id: EditorBasemap, close: (refocus?: boolean) => void) {
-  if (!event.detail) return;
-  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
-  basemap.value = id;
-  close(true);
-}
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
@@ -139,7 +130,6 @@ function fitRoute() {
 .map-view__stage { position: relative; flex: 1; min-height: 0; }
 /* Street View mode: a crosshair everywhere, also over the route, which otherwise shows its drag hand. */
 .map-view__stage--picking :deep(.maplibregl-canvas) { cursor: crosshair !important; }
-.map-view__street-view[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 .map-view__stage--overview :deep(.route-marker--shape) { display: none; }
 .map-view__canvas { position: absolute; inset: 0; }
 /* Below the map rather than over it, so the map's own controls stay visible. */
@@ -151,12 +141,11 @@ function fitRoute() {
 /* Touch screens have no Escape key; the pressed button ends the mode there. */
 @media (hover: none) { .map-view__escape { display: none; } }
 .map-view__tools { position: absolute; top: .75rem; right: .75rem; display: grid; gap: .5rem; }
-.map-view__basemaps { margin: 0; padding: 0; border: 0; }
-.map-view__basemaps + .map-view__basemaps { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }
-.map-view__basemaps legend { padding: .25rem 0; }
+.map-view__navigation { position: absolute; right: .75rem; bottom: .75rem; }
 @media (max-width: 760px) {
   .map-view__status { top: .5rem; left: .5rem; }
   .map-view__tools { top: .5rem; right: .5rem; }
+  .map-view__navigation { right: .5rem; bottom: .5rem; }
   .map-view__profile { --profile-height: 7.5rem; padding: .35rem .75rem .25rem; }
 }
 </style>

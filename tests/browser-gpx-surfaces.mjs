@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { trackColor, trackColorValue } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-surfaces';
 await mkdir(output, { recursive: true });
@@ -45,7 +46,7 @@ try {
   await upload('Surface test');
   const before = await state();
   assert.equal(requests, 0, 'Import never starts surface lookup');
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface');
+  await trackColor(page, 'surface');
   await complete();
   const after = await state();
   assert.equal(after.error, '');
@@ -54,24 +55,24 @@ try {
   assert.ok(peak <= 4, 'The lookup leaves routing slots free for editing');
   await page.getByRole('list', { name: 'Beläge des GPX-Tracks', exact: true }).waitFor();
   const count = requests;
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('plain');
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface');
+  await trackColor(page, 'plain');
+  await trackColor(page, 'surface');
   assert.equal(requests, count, 'Reusing surface results sends no requests');
   const chart = page.getByRole('slider', { name: 'Position im GPX-Track', exact: true });
   await chart.focus(); await chart.press('PageUp');
   assert.equal(requests, count);
 
   mode = 'offset'; await upload('Other road');
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface'); await complete();
+  await trackColor(page, 'surface'); await complete();
   assert.equal((await state()).matched, 0);
   mode = 'fail'; await upload('Unavailable');
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface'); await complete();
+  await trackColor(page, 'surface'); await complete();
   assert.match((await state()).error, /nicht erreichbar/);
   mode = 'success'; await page.getByRole('button', { name: 'Beläge ermitteln', exact: true }).click(); await complete();
   assert.ok((await state()).matched > 0);
 
   mode = 'hold'; await upload('Cancel');
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface');
+  await trackColor(page, 'surface');
   await page.waitForFunction(() => document.querySelector('.gpx__surfaces')?.textContent.includes('Beläge werden geprüft'));
   while (!release) await new Promise(resolve => setTimeout(resolve, 10));
   await page.getByRole('button', { name: 'Belagprüfung abbrechen', exact: true }).click();
@@ -87,8 +88,8 @@ try {
   await page.waitForTimeout(50);
   const replaced = await state();
   assert.equal(replaced.name, 'Replacement'); assert.equal(replaced.surfaces, null); assert.equal(replaced.loading, false);
-  assert.equal(await page.getByLabel('Trackfarbe', { exact: true }).inputValue(), 'plain');
-  mode = 'success'; await page.getByLabel('Trackfarbe', { exact: true }).selectOption('surface'); await complete();
+  assert.equal(await trackColorValue(page), 'plain');
+  mode = 'success'; await trackColor(page, 'surface'); await complete();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('list', { name: 'Beläge des GPX-Tracks', exact: true }).scrollIntoViewIfNeeded();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

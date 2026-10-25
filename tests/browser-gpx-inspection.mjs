@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { chooseBasemap, trackColor, trackColorValue } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-inspection';
@@ -52,7 +52,7 @@ try {
   assert.deepEqual((await data('gpx-reference-endpoints')).features.map(f => f.properties.icon), ['gpx-start', 'gpx-end']);
   const original = JSON.stringify(await data('gpx-reference'));
   for (const mode of ['elevation', 'gradient']) {
-    await page.getByLabel('Trackfarbe', { exact: true }).selectOption(mode);
+    await trackColor(page, mode);
     await page.getByLabel('Legende der Trackfarben', { exact: true }).waitFor();
     await page.waitForFunction(async () => (await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('gpx-reference-colors').getData()).features.length > 1);
     const colored = await data('gpx-reference-colors');
@@ -125,7 +125,7 @@ try {
   // A westbound track must retain its coordinate order and reverse the arrows.
   await upload([[...points].reverse()]);
   assert.deepEqual((await data('gpx-reference')).features[0].geometry.coordinates[0], points.at(-1).slice(0, 2));
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('plain');
+  await trackColor(page, 'plain');
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.screenshot({ path: output + '/westbound.png', fullPage: true });
 
@@ -147,7 +147,7 @@ try {
 
   await upload([[[15.4, 47.1, 100], [15.41, 47.1, null]], [[15.42, 47.1, 300], [15.43, 47.1, 310]]]);
   assert.equal(await focus(), null);
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('elevation');
+  await trackColor(page, 'elevation');
   await page.waitForFunction(async () => (await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('gpx-reference-colors').getData()).features.some(f => f.properties.color === '#87939a'));
   await setPosition((await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.track.distanceMeters)) / 4);
   await waitDot(1);
@@ -155,8 +155,9 @@ try {
   assert.match(await page.getByRole('slider', { name: 'Position im GPX-Track', exact: true }).getAttribute('aria-valuetext'), /Höhe unbekannt/);
 
   await upload([[[15.4, 47.1, null], [15.41, 47.1, null]]]);
-  assert.equal(await page.getByLabel('Trackfarbe', { exact: true }).inputValue(), 'plain');
-  assert.equal(await page.locator('option[value=elevation]').evaluate(el => el.disabled), true, 'Elevation colouring is disabled when the track has no heights');
+  assert.equal(await trackColorValue(page), 'plain');
+  assert.equal(await page.getByRole('group', { name: 'Trackfarbe', exact: true }).locator('[data-mode=elevation]').isDisabled(), true,
+    'Elevation colouring is disabled when the track has no heights');
   await setPosition(100); await waitDot(1);
   assert.equal((await focus()).gradient, null);
 
@@ -164,7 +165,7 @@ try {
   const longPoints = Array.from({ length: 50000 }, (_, i) => [15.4 + i / 500000, 47.1 + Math.sin(i / 1000) / 100, 300 + i % 50]);
   await upload([longPoints]);
   const started = performance.now();
-  await page.getByLabel('Trackfarbe', { exact: true }).selectOption('gradient');
+  await trackColor(page, 'gradient');
   await page.waitForFunction(async () => {
     const features = (await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('gpx-reference-colors').getData()).features;
     return features.length > 0 && features.reduce((n, f) => n + f.geometry.coordinates.length - 1, 1) === 50000;

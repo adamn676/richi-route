@@ -1,29 +1,31 @@
 <template>
   <section v-if="totals.length" class="surfaces" aria-labelledby="surfaces-title">
-    <h3 id="surfaces-title" class="label">Untergrund</h3>
+    <h3 id="surfaces-title" class="text-label-large text-medium-emphasis">Untergrund</h3>
     <div class="surfaces__bar" aria-hidden="true">
       <i v-for="total in totals" :key="total.key" :style="{ flexGrow: total.meters, background: routeStyle[total.surface] }" />
     </div>
-    <div class="surfaces__totals" role="group" aria-label="Belag auswählen">
-      <button v-for="total in totals" :key="total.key" type="button"
-        :aria-pressed="selectedKey === total.key" @click="selectSurface(total.key)">
-        <i class="swatch" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" />
-        <span>{{ total.label }}</span><strong>{{ lengthLabel(total.meters) }}</strong>
-      </button>
-    </div>
+    <v-list class="surfaces__totals" role="group" aria-label="Belag auswählen">
+      <v-list-item v-for="total in totals" :key="total.key" tag="button" type="button" role="button" :aria-pressed="selectedKey === total.key"
+        :active="selectedKey === total.key" color="primary" rounded="lg" @click="selectSurface(total.key)">
+        <template #prepend><i class="swatch" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
+        <span>{{ total.label }}</span>
+        <template #append><strong>{{ lengthLabel(total.meters) }}</strong></template>
+      </v-list-item>
+    </v-list>
     <p v-if="hasLegacyDetails">Ältere Abschnitte kennen nur Belagsgruppen; neu berechnete enthalten die genauen Angaben.</p>
     <template v-if="selectedKey">
       <h4>{{ selectedLabel }} · {{ matching.length }} {{ matching.length === 1 ? 'Abschnitt' : 'Abschnitte' }}</h4>
-      <ol class="surfaces__sections">
-        <li v-for="section in matching.slice(0, visibleCount)" :key="section.id">
-          <button type="button" :aria-pressed="isFocused(section)" @click="focus(section)">
-            <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}</span>
-            <strong>{{ lengthLabel(section.toMeters - section.fromMeters) }}</strong>
-          </button>
-        </li>
-      </ol>
-      <button v-if="matching.length > visibleCount" class="btn surfaces__more" type="button" @click="visibleCount += 10">Weitere Abschnitte</button>
-      <button v-if="store.focusedSurface" class="btn surfaces__more" type="button" @click="store.surfaceFocus = null">Markierung aufheben</button>
+      <v-list class="surfaces__sections">
+        <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
+          :aria-pressed="isFocused(section)" :active="isFocused(section)" color="primary" rounded="lg" @click="focus(section)">
+          <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}</span>
+          <template #append><strong>{{ lengthLabel(section.toMeters - section.fromMeters) }}</strong></template>
+        </v-list-item>
+      </v-list>
+      <div class="surfaces__more">
+        <v-btn v-if="matching.length > visibleCount" variant="outlined" size="small" @click="visibleCount += 10">Weitere Abschnitte</v-btn>
+        <v-btn v-if="store.focusedSurface" variant="text" size="small" @click="store.surfaceFocus = null">Markierung aufheben</v-btn>
+      </div>
     </template>
   </section>
 </template>
@@ -74,17 +76,12 @@ watch(inspection, value => {
 
 <style scoped>
 .surfaces { display: grid; gap: .5rem; }
-.surfaces .label { margin: 0; }
 .surfaces__bar { display: flex; gap: 2px; height: 8px; overflow: hidden; border-radius: 4px; }
 .surfaces__bar i { min-width: 2px; }
-.surfaces__totals, .surfaces__sections { display: grid; gap: .1rem; margin: 0 -.5rem; padding: 0; list-style: none; }
+.surfaces__totals, .surfaces__sections { margin: 0 -.5rem; padding: 0; font-size: .8rem; }
 p { margin: 0; color: var(--text-muted); font-size: .75rem; line-height: 1.45; }
 h4 { margin: .4rem 0 0; font-size: .8rem; }
-button[aria-pressed] { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .5rem; width: 100%; min-height: 1.85rem;
-  padding: .25rem .5rem; border: 1px solid transparent; border-radius: var(--radius); background: none; text-align: left; font-size: .78rem; }
-.surfaces__totals button { grid-template-columns: 1rem 1fr auto; }
-button[aria-pressed]:hover { background: var(--surface-muted); }
-button[aria-pressed="true"] { background: var(--accent-soft); font-weight: 600; }
+.v-list-item { width: 100%; min-height: 2rem; text-align: left; }
 strong { font-variant-numeric: tabular-nums; font-weight: 600; }
-.surfaces__more { justify-self: start; }
+.surfaces__more { display: flex; gap: .4rem; }
 </style>

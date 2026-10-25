@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { chooseBasemap, closeMenus } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/online-maps';
@@ -119,11 +119,11 @@ try {
   });
   assert.equal(await page.getByText('Radrouten konnten nicht geladen werden.').count(), 0);
   assert.ok(tiles.waymarkedtrails > 0, 'Radrouten loads its tiles');
-  await page.keyboard.press('Escape');
+  await closeMenus(page);
   await page.locator('.maplibregl-ctrl-attrib a[href="https://cycling.waymarkedtrails.org"]').first().waitFor({ state: 'visible' });
   await page.locator('.cycling-controls .map-menu__trigger').click();
   await page.getByLabel('Radrouten').uncheck();
-  await page.keyboard.press('Escape');
+  await closeMenus(page);
   await page.waitForFunction(() => !document.querySelector('.sidebar__credits').open);
 
   await page.setViewportSize({ width: 390, height: 844 });

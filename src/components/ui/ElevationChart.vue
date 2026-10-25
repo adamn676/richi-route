@@ -1,15 +1,9 @@
 <template>
   <div class="elevation-chart">
-    <div class="elevation-chart__heading">
+    <!-- The route's profile shows its heading in its own header. -->
+    <div v-if="heading" class="elevation-chart__heading">
       <strong>Höhenprofil</strong>
-      <div v-if="colorRuns.length" class="slope-scale" role="img" :aria-label="`Linienfarbe nach Steigung: ${gradientBands.map(band => band.label).join(', ')}`">
-        <span>Steigung in %</span>
-        <span class="slope-scale__bar"><i v-for="band in gradientBands" :key="band.color" :style="{ backgroundColor: band.color }" /></span>
-        <span class="slope-scale__labels" aria-hidden="true">
-          <span v-for="(band, i) in gradientBands.slice(0, -1)" :key="band.max" :style="{ left: `${(i + 1) / gradientBands.length * 100}%` }">{{ formatGradient(band.max) }}</span>
-        </span>
-      </div>
-      <slot name="actions" />
+      <SlopeScale v-if="colorRuns.length" />
     </div>
     <div class="elevation-chart__plot">
       <div class="elevation-chart__altitudes" aria-hidden="true">
@@ -35,14 +29,14 @@
         </svg>
         <span v-if="focus && focusY !== null" class="elevation-chart__position" :style="{ left: focusLeft, top: `${focusY / 88 * 100}%` }" />
         <!-- Beside the cursor, on whichever side has more room. -->
-        <div v-if="focus" class="popover elevation-chart__tooltip"
+        <div v-if="focus" class="elevation-chart__tooltip"
           :class="{ 'elevation-chart__tooltip--left': focusX > 150, 'elevation-chart__tooltip--pinned': pinned }"
           :style="{ left: focusLeft }" :aria-hidden="!pinned">
           <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
           <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText">{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
-            :aria-label="streetViewLabel" :title="streetViewLabel" :aria-disabled="streetView.missing"
+            :aria-label="streetViewLabel" v-tooltip:top="streetViewLabel" :aria-disabled="streetView.missing"
             @click="event => streetView.open(event, focus!.coordinate, onRoute ? focus!.distance : undefined)"><IconMan :size="16" aria-hidden="true" /></a>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
@@ -57,15 +51,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { niceStep, type GpxTrack } from '../../domain/gpx-track';
-import { formatKm, formatMeters } from '@/utils/format';
+import { formatGradient, formatKm, formatMeters } from '@/utils/format';
+import SlopeScale from './SlopeScale.vue';
 import { streetViewUrl } from '@/utils/street-view';
 import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
-import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
+import { unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
 // onRoute: distances are the planned route's, so Street View can mark its spot there (even where an out-and-back overlaps itself).
 const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null; enabled?: boolean; label: string; chartLabel: string;
-  onRoute?: boolean }>(), { enabled: true });
+  onRoute?: boolean; heading?: boolean }>(), { enabled: true, heading: true });
 const emit = defineEmits<{ inspect: [distance: number | null] }>();
 const streetView = useStreetViewStore();
 const colorId = `elevation-colors-${useId()}`, clipId = `elevation-clip-${useId()}`;
@@ -126,7 +121,6 @@ const gridPath = computed(() => (altitudeTicks.value.length ? altitudeTicks.valu
 const focusX = computed(() => xAt(focus.value?.distance ?? 0));
 const focusLeft = computed(() => `${focusX.value / 3}%`);
 const focusY = computed(() => focus.value?.elevation == null || !props.track.profile ? null : yAt(focus.value.elevation));
-const formatGradient = (gradient: number) => gradient.toLocaleString('de-DE', { maximumFractionDigits: 1, signDisplay: 'exceptZero' });
 const gradientText = computed(() => focus.value?.gradient == null ? undefined : formatGradient(focus.value.gradient));
 const gradientLabel = computed(() => gradientText.value ? `${gradientText.value} % Steigung` : 'Steigung unbekannt');
 const readout = computed(() => {
@@ -172,15 +166,10 @@ function key(event: KeyboardEvent) {
 .elevation-chart__heading { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; min-height: 1.6rem; margin-bottom: .5rem; }
 .elevation-chart__heading > strong { margin-right: auto; }
 .elevation-chart strong { font-weight: 600; color: var(--text); white-space: nowrap; }
-.slope-scale { display: grid; grid-template-columns: auto 6rem; gap: 2px .4rem; align-items: center; font-size: .65rem; }
-.slope-scale__bar { display: flex; gap: 1px; height: 6px; }
-.slope-scale__bar i { flex: 1; }
-.slope-scale__labels { position: relative; grid-column: 2; height: .7rem; font-size: .6rem; line-height: 1; }
-.slope-scale__labels span { position: absolute; transform: translateX(-50%); }
 @container (max-width: 20rem) { .slope-scale { display: none; } }
 /* At most half the chart wide, so it always fits on the side it opens to. */
 .elevation-chart__tooltip { position: absolute; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; width: max-content;
-  max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); white-space: nowrap; font-size: .7rem; pointer-events: none; }
+  max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); white-space: nowrap; font-size: .7rem; pointer-events: none; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
 .elevation-chart__tooltip--pinned { pointer-events: auto; }
 .elevation-chart__street-view { display: inline-flex; align-self: center; margin: -.15rem; padding: .15rem; border-radius: var(--radius); color: var(--accent); }

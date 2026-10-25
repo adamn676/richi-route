@@ -80,6 +80,7 @@ try {
     map.on('error', event => window.cyclingMapErrors.push(event.error?.message));
   });
   await page.locator('.cycling-controls .map-menu__trigger').click();
+  await page.locator('.cycling-controls .map-menu__panel').waitFor({ state: 'visible' });
   assert.equal(await page.getByRole('checkbox', { checked: true }).count(), 5, 'Selections survive a reload');
   await page.getByRole('checkbox', { name: 'Trinkwasser', exact: false }).uncheck();
   await page.getByRole('checkbox', { name: 'Reparatur & Radläden', exact: false }).uncheck();

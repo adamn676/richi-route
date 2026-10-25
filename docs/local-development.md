@@ -389,15 +389,18 @@ provider credits, persisted selection and mobile layout. Reports are in
 
 The map's tool column at the top right holds the basemap choice (layers icon),
 **Rad-Infos** (bike icon), **Street View** (figure icon) and **Route zeigen**
-(focus icon); hover for their names. Opening an example, a saved route or a
+(focus icon); hover for their names. Zoom buttons sit at the bottom right; a
+compass joins them once the map is turned or tilted and turns it back north.
+Opening an example, a saved route or a
 GPX track as a route also shows the whole route: nearby the map
 glides there, from farther away it jumps. In Street View mode a figure follows the
 pointer and snaps onto the route within 16 px, the route pauses its editing, and
 a click opens Street View at the nearest panorama; the figure turns grey where
 Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
-all map and imagery sources. The sidebar is 352–416 px wide, depending on the
-screen; the arrow on its edge folds it away for a full-width map, and the app
-remembers that choice. Below 760 px the sidebar becomes a sheet under the map:
+all map and imagery sources. The sidebar is a navigation drawer 352–416 px wide,
+depending on the screen; the arrow on its edge folds it away for a full-width map,
+and the app remembers that choice. The map keeps its content in place while the
+drawer moves. Below 760 px the drawer becomes a sheet under the map:
 drag or tap its handle (or use the arrow keys on it) to show only its header and
 tabs, half the screen, or all of it. The map and elevation profile fill the rest.
 Opening a route lowers the sheet so the route shows, and typing an address opens

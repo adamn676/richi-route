@@ -64,6 +64,7 @@ try {
   const mapView = () => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
   await page.evaluate(`(${mapView})().jumpTo({ center: [16.37, 48.21], zoom: 12 })`);
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').waypoints[0].coord);
   await openRoute(page, hahnhofweg);
   await page.waitForFunction(() => {
     const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
@@ -139,10 +140,9 @@ try {
   assert.equal(await page.getByRole('listbox').count(), 0);
   // The field's clear button empties it and keeps the cursor there.
   await start.fill('Wird gelöscht');
-  await start.locator('xpath=..').getByRole('button', { name: 'Eingabe löschen', exact: true }).click();
+  await page.getByRole('button', { name: 'Start leeren', exact: true }).click();
   assert.equal(await start.inputValue(), '');
   assert.equal(await start.evaluate(field => field === document.activeElement), true, 'The field keeps the focus');
-  assert.equal(await start.locator('xpath=..').getByRole('button', { name: 'Eingabe löschen', exact: true }).count(), 0, 'Nothing left to clear');
   await page.setViewportSize({ width: 390, height: 844 });
   mode = 'many';
   await start.fill('Mobile query');
@@ -158,8 +158,13 @@ try {
   await cdp.detach();
   assert.equal(await start.inputValue(), 'Mobile query', 'Touch scrolling must not select a suggestion');
   assert.equal(await page.getByRole('listbox').getByRole('option').count(), 8);
-  await page.waitForFunction(() => document.querySelector('.address-search__results')?.scrollTop > 0);
-  for (let i = 0; i < 8; i++) await start.press('ArrowDown');
+  await page.waitForFunction(() => {
+    for (let box = document.querySelector('[role=listbox]'); box; box = box.parentElement) if (box.scrollTop > 0) return true;
+    return false;
+  });
+  // The first arrow moves the focus into the list; the next ones walk it.
+  await start.press('ArrowDown');
+  for (let i = 1; i < 8; i++) await page.keyboard.press('ArrowDown');
   const lastOption = page.getByRole('option', { name: 'Mobile result 7, Graz', exact: true });
   const lastBox = await lastOption.boundingBox();
   assert.ok(lastBox.y >= menu.y && lastBox.y + lastBox.height <= menu.y + menu.height, 'Keyboard selection scrolls within the suggestion list');

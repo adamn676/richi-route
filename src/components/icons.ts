@@ -1,4 +1,6 @@
 // Each icon comes from its own module; the package entry makes the dev server bundle all 6,000 icons.
+export { default as IconAlertCircle } from '@tabler/icons-vue/dist/esm/icons/IconAlertCircle.mjs';
+export { default as IconAlertTriangle } from '@tabler/icons-vue/dist/esm/icons/IconAlertTriangle.mjs';
 export { default as IconArrowBackUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowBackUp.mjs';
 export { default as IconArrowForwardUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowForwardUp.mjs';
 export { default as IconBike } from '@tabler/icons-vue/dist/esm/icons/IconBike.mjs';
@@ -6,11 +8,14 @@ export { default as IconChevronDown } from '@tabler/icons-vue/dist/esm/icons/Ico
 export { default as IconChevronLeft } from '@tabler/icons-vue/dist/esm/icons/IconChevronLeft.mjs';
 export { default as IconChevronRight } from '@tabler/icons-vue/dist/esm/icons/IconChevronRight.mjs';
 export { default as IconChevronUp } from '@tabler/icons-vue/dist/esm/icons/IconChevronUp.mjs';
-export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.mjs';
+export { default as IconCircle } from '@tabler/icons-vue/dist/esm/icons/IconCircle.mjs';
+export { default as IconCircleDotFilled } from '@tabler/icons-vue/dist/esm/icons/IconCircleDotFilled.mjs';
 export { default as IconCloud } from '@tabler/icons-vue/dist/esm/icons/IconCloud.mjs';
 export { default as IconCloudCheck } from '@tabler/icons-vue/dist/esm/icons/IconCloudCheck.mjs';
 export { default as IconCloudUpload } from '@tabler/icons-vue/dist/esm/icons/IconCloudUpload.mjs';
+export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.mjs';
 export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
+export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/IconDotsVertical.mjs';
 export { default as IconDownload } from '@tabler/icons-vue/dist/esm/icons/IconDownload.mjs';
 export { default as IconEraser } from '@tabler/icons-vue/dist/esm/icons/IconEraser.mjs';
 export { default as IconEye } from '@tabler/icons-vue/dist/esm/icons/IconEye.mjs';
@@ -19,10 +24,15 @@ export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/Icon
 export { default as IconFocus2 } from '@tabler/icons-vue/dist/esm/icons/IconFocus2.mjs';
 export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/IconFolderOpen.mjs';
 export { default as IconMan } from '@tabler/icons-vue/dist/esm/icons/IconMan.mjs';
+export { default as IconMinus } from '@tabler/icons-vue/dist/esm/icons/IconMinus.mjs';
+export { default as IconNavigationNorth } from '@tabler/icons-vue/dist/esm/icons/IconNavigationNorth.mjs';
 export { default as IconPencil } from '@tabler/icons-vue/dist/esm/icons/IconPencil.mjs';
 export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
 export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';
 export { default as IconRoute } from '@tabler/icons-vue/dist/esm/icons/IconRoute.mjs';
+export { default as IconSquare } from '@tabler/icons-vue/dist/esm/icons/IconSquare.mjs';
+export { default as IconSquareCheckFilled } from '@tabler/icons-vue/dist/esm/icons/IconSquareCheckFilled.mjs';
+export { default as IconSquareMinusFilled } from '@tabler/icons-vue/dist/esm/icons/IconSquareMinusFilled.mjs';
 export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStack2.mjs';
 export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';
 export { default as IconUpload } from '@tabler/icons-vue/dist/esm/icons/IconUpload.mjs';

@@ -1,31 +1,40 @@
 <template>
-  <main class="editor-layout"
-    :class="[`editor-layout--${sheet}`, { 'editor-layout--collapsed': collapsed, 'editor-layout--dragging': dragHeight !== null }]"
-    :style="{ '--sheet-peek': peek && `${peek}px`, '--sheet-height': dragHeight === null ? undefined : `${dragHeight}px` }">
-    <div ref="sheetElement" class="editor-layout__sheet">
-      <!-- Phones: the sidebar is a sheet under the map; drag, tap or use the arrow keys to resize it. -->
-      <button type="button" class="editor-layout__handle" :aria-label="sheetLabel" :title="sheetLabel"
-        :aria-expanded="sheet !== 'peek'" aria-controls="sidebar"
-        @pointerdown="startDrag" @pointermove="drag" @pointerup="endDrag" @pointercancel="endDrag"
-        @click="tapped" @keydown.up.prevent="step(1)" @keydown.down.prevent="step(-1)" />
-      <AppSidebar id="sidebar" class="editor-layout__sidebar" />
-    </div>
-    <MapView class="editor-layout__map" />
-    <!-- Folds the sidebar away so the map gets the full width. -->
-    <button type="button" class="editor-layout__toggle" :aria-label="toggleLabel" :title="toggleLabel"
-      :aria-expanded="!collapsed" aria-controls="sidebar" @click="collapsed = !collapsed">
-      <component :is="collapsed ? IconChevronRight : IconChevronLeft" :size="16" aria-hidden="true" />
-    </button>
-  </main>
+  <div class="editor-layout" :class="[`editor-layout--${sheet}`, { 'editor-layout--dragging': dragHeight !== null }]">
+    <!-- Desktop: a drawer that folds away. Phones: a sheet under the map; drag, tap or use the arrow keys to resize it. -->
+    <v-navigation-drawer id="sidebar" tag="div" class="editor-layout__sheet" permanent
+      :model-value="phone || !collapsed" :location="phone ? 'bottom' : 'start'" :width="phone ? sheetHeight : sidebarWidth">
+      <template v-if="phone" #prepend>
+        <button ref="handle" type="button" class="editor-layout__handle" :aria-label="sheetLabel"
+          :aria-expanded="sheet !== 'peek'" aria-controls="sidebar"
+          @pointerdown="startDrag" @pointermove="drag" @pointerup="endDrag" @pointercancel="endDrag"
+          @click="tapped" @keydown.up.prevent="step(1)" @keydown.down.prevent="step(-1)" />
+      </template>
+      <AppSidebar ref="sidebar" class="editor-layout__sidebar" />
+    </v-navigation-drawer>
+    <v-main class="editor-layout__main">
+      <MapView />
+      <!-- Folds the drawer away so the map gets the full width. -->
+      <v-btn v-if="!phone" v-tooltip:end="toggleLabel" class="editor-layout__toggle" :aria-label="toggleLabel"
+        :aria-expanded="!collapsed" aria-controls="sidebar" variant="flat" color="surface" elevation="2" rounded="e-lg"
+        :width="32" :height="56" min-width="0" @click="collapsed = !collapsed">
+        <component :is="collapsed ? IconChevronRight : IconChevronLeft" :size="16" aria-hidden="true" />
+      </v-btn>
+    </v-main>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useDisplay } from 'vuetify';
 import AppSidebar from "@/components/layout/AppSidebar.vue";
 import MapView from "@/components/map/MapView.vue";
 import { IconChevronLeft, IconChevronRight } from '@/components/icons';
 import { useRouteStore } from '@/stores/route.store';
+
+const { width, mobile: phone } = useDisplay();
+// Narrower on small laptops, wider on large screens: 22 to 26 rem.
+const sidebarWidth = computed(() => Math.round(Math.min(416, Math.max(352, 166 + .15 * width.value))));
 
 const storageKey = 'richiroute.sidebar-collapsed';
 const collapsed = ref((() => { try { return localStorage.getItem(storageKey) === '1'; } catch { return false; } })());
@@ -36,23 +45,25 @@ watch(collapsed, value => { try { localStorage.setItem(storageKey, value ? '1' :
 const sheets = ['peek', 'half', 'full'] as const;
 const sheet = ref<typeof sheets[number]>('half');
 const sheetLabel = computed(() => sheet.value === 'full' ? 'Bereich verkleinern' : 'Bereich vergrößern');
-const sheetElement = ref<HTMLElement>();
-const peek = ref<number>(), dragHeight = ref<number | null>(null);
-const phone = window.matchMedia('(max-width: 760px)');
+const handle = ref<HTMLElement>(), sidebar = ref<{ $el: HTMLElement }>();
+const peek = ref(136), dragHeight = ref<number | null>(null);
+const sheetHeight = computed(() => dragHeight.value ?? { peek: peek.value, half: '50%', full: '100%' }[sheet.value]);
 
+// The sheet starts at its handle and reaches the bottom of the screen.
+const sheetTop = () => handle.value!.getBoundingClientRect().top;
 function heights() {
-  const tabs = sheetElement.value!.querySelector('[role=tablist]')!;
-  return [tabs.getBoundingClientRect().bottom - sheetElement.value!.getBoundingClientRect().top, innerHeight / 2, innerHeight];
+  const tabs = sidebar.value!.$el.querySelector('[role=tablist]')!;
+  return [tabs.getBoundingClientRect().bottom - sheetTop(), innerHeight / 2, innerHeight];
 }
 // Peek fits the header and tabs, whatever the font size.
-function measure() { if (phone.matches) peek.value = heights()[0]; }
+function measure() { if (phone.value) peek.value = heights()[0]; }
 function step(direction: 1 | -1) {
   sheet.value = sheets[Math.max(0, Math.min(2, sheets.indexOf(sheet.value) + direction))];
 }
 
 let start: { y: number; height: number } | null = null, moved = false;
 function startDrag(event: PointerEvent) {
-  start = { y: event.clientY, height: sheetElement.value!.offsetHeight };
+  start = { y: event.clientY, height: innerHeight - sheetTop() };
   moved = false;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 }
@@ -81,59 +92,30 @@ function tapped() {
 
 // An opened route shows on the map, so the sheet makes way.
 const { fitRequest } = storeToRefs(useRouteStore());
-watch(fitRequest, () => { if (phone.matches) sheet.value = 'peek'; });
-onMounted(() => { measure(); addEventListener('resize', measure); });
-onBeforeUnmount(() => removeEventListener('resize', measure));
+watch(fitRequest, () => { if (phone.value) sheet.value = 'peek'; });
+onMounted(measure);
+watch(width, measure, { flush: 'post' });
 </script>
 
 <style scoped>
-/* Narrower on small laptops, wider on large screens. */
-.editor-layout {
-  --sidebar-width: clamp(22rem, 10.4rem + 15vw, 26rem);
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  width: 100%;
-  height: 100dvh;
-  overflow: hidden;
-}
-.editor-layout--collapsed { --sidebar-width: 0px; }
-.editor-layout--collapsed .editor-layout__sheet { visibility: hidden; }
-/* Clip, not hidden: focus and scrollIntoView must not scroll the sheet's handle out of view. */
-.editor-layout__sheet { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: clip; border-right: 1px solid var(--border); }
-.editor-layout__sidebar { flex: 1; min-height: 0; }
-.editor-layout__handle { display: none; }
-.editor-layout__map { min-width: 0; }
-/* A tab on the sidebar's edge, halfway down the map. */
+.editor-layout__sidebar { height: 100%; }
+/* The map takes its new size at once rather than every frame, so it never jumps; the drawer slides over its own colour. */
+.editor-layout__main { height: 100dvh; background: rgb(var(--v-theme-surface)); transition: none; }
+/* A tab on the drawer's edge, halfway down the map. */
 .editor-layout__toggle {
-  position: absolute; top: 50%; left: var(--sidebar-width); z-index: 20; display: grid; place-items: center;
-  width: 1.25rem; height: 3rem; padding: 0; border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--radius) var(--radius) 0;
-  background: var(--surface); color: var(--text-muted); box-shadow: var(--shadow); cursor: pointer; transform: translateY(-50%);
+  position: absolute; top: 50%; left: var(--v-layout-left); z-index: 20; padding: 0;
+  transform: translateY(-50%); transition: left .2s cubic-bezier(.4, 0, .2, 1);
 }
-.editor-layout__toggle:hover { color: var(--text); }
+.editor-layout__handle {
+  display: grid; place-items: center; width: 100%; height: 1.5rem; padding: 0; border: 0;
+  background: var(--surface); cursor: grab; touch-action: none;
+}
+.editor-layout__handle::before { content: ''; width: 2.5rem; height: .25rem; border-radius: 1rem; background: var(--border-input); }
+.editor-layout--dragging .editor-layout__sheet { transition: none; }
+.editor-layout--dragging .editor-layout__handle { cursor: grabbing; }
+/* Typing gets the whole screen, so the keyboard does not cover the field and its suggestions; the drawer's own size
+   is an inline style. */
 @media (max-width: 760px) {
-  .editor-layout, .editor-layout--collapsed {
-    --sheet-height: 50dvh;
-    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--sheet-height);
-    transition: grid-template-rows .2s ease;
-  }
-  .editor-layout--peek { --sheet-height: var(--sheet-peek, 8.5rem); }
-  .editor-layout--full { --sheet-height: 100dvh; }
-  .editor-layout--dragging { transition: none; }
-  .editor-layout--collapsed .editor-layout__sheet { visibility: visible; }
-  .editor-layout__map { grid-row: 1; }
-  .editor-layout__sheet { border-right: 0; border-top: 1px solid var(--border); background: var(--surface); }
-  .editor-layout__handle {
-    display: grid; place-items: center; flex: none; width: 100%; height: 1.5rem; padding: 0; border: 0;
-    background: var(--surface); cursor: grab; touch-action: none;
-  }
-  .editor-layout__handle::before { content: ''; width: 2.5rem; height: .25rem; border-radius: 1rem; background: var(--border-input); }
-  .editor-layout--dragging .editor-layout__handle { cursor: grabbing; }
-  .editor-layout__toggle { display: none; }
-  /* Typing gets the whole screen, so the keyboard does not cover the field and its suggestions. */
-  .editor-layout:has(.editor-layout__sidebar input.field:focus) { grid-template-rows: 0 minmax(0, 1fr); }
-}
-@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
-  .editor-layout { transition: none; }
+  .editor-layout__sheet:has(.v-field--focused) { height: 100% !important; }
 }
 </style>

@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { AttributionControl, Map, NavigationControl, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
+import { AttributionControl, Map, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
 import { aerialVectorLayers, cyclingRoadPaint, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
@@ -139,7 +139,14 @@ export function useMap(container: string, creditsContainer: string) {
         ],
       },
     });
-    instance.addControl(new NavigationControl(), 'bottom-right');
+    // A panel moving one of the map's edges leaves the map's content where it is; MapLibre itself keeps the centre.
+    let frame = instance.getContainer().getBoundingClientRect();
+    instance.on('resize', () => {
+      const next = instance.getContainer().getBoundingClientRect();
+      const dx = next.left + next.width / 2 - (frame.left + frame.width / 2), dy = next.top + next.height / 2 - (frame.top + frame.height / 2);
+      frame = next;
+      if ((dx || dy) && !instance.isMoving()) instance.panBy([dx, dy], { animate: false });
+    });
     instance.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
     const credits = document.getElementById(creditsContainer);
     if (credits) credits.append(attribution.onAdd(instance));

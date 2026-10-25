@@ -1,114 +1,45 @@
 :root {
   color-scheme: light;
   --font: system-ui, sans-serif;
-  --bg: #eef1f0;
-  --surface: #fcfcfb;
-  --surface-muted: #f2f5f4;
-  --border: #dde3e1;
+  --v-font-body: var(--font);
+  /* The theme's colours (src/plugins/vuetify.ts); the accent is the green of asphalt on the map. */
+  --bg: rgb(var(--v-theme-background));
+  --surface: rgb(var(--v-theme-surface));
+  --border: rgb(var(--v-theme-surface-variant));
   --border-input: #848f8d;
-  --text: #17262a;
-  --text-muted: #56676b;
-  /* Same green as asphalt on the map (routeStyle.asphalt). */
-  --accent: #187b5a;
-  --accent-hover: #136649;
+  --text: rgb(var(--v-theme-on-surface));
+  --text-muted: rgb(var(--v-theme-on-surface-variant));
+  --accent: rgb(var(--v-theme-primary));
   --accent-soft: #e6f2ec;
-  --danger: #a3261b;
-  --danger-soft: #fdf0ee;
-  --warning: #7a5200;
-  --warning-soft: #fff6e0;
-  /* Material 3 shapes: text fields extra small, small controls, cards, menus and floating buttons medium, buttons full. */
-  --radius-xs: 4px;
+  --danger: rgb(var(--v-theme-error));
+  /* Material 3 shapes: small controls, then cards, menus and floating buttons. */
   --radius: 8px;
   --radius-lg: 12px;
-  --radius-full: 999px;
-  /* Material 3 elevation levels; menus and floating buttons sit at level 2. */
-  --elevation-1: 0 1px 2px rgb(0 0 0 / .3), 0 1px 3px 1px rgb(0 0 0 / .15);
-  --elevation-2: 0 1px 2px rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
-  --shadow: var(--elevation-2);
+  /* Material 3 elevation level 2, for menus and floating buttons. */
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
   --gutter: 1.25rem;
   accent-color: var(--accent);
   font-family: var(--font);
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
 }
 @media (max-width: 760px) { :root { --gutter: 1rem; } }
-* { box-sizing: border-box; }
-button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: not-allowed; }
-/* An outline, so elevation shadows never hide the focus ring. */
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-html, body, #app { width: 100%; height: 100%; }
-body { margin: 0; }
+/* Beneath Vuetify's layers (this file loads first), so they never override its components. */
+@layer app-base {
+  /* An outline, so elevation shadows never hide the focus ring. */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  html, body, #app { width: 100%; height: 100%; }
+}
 .maplibregl-map { width: 100%; height: 100%; }
 svg.tabler-icon { stroke-width: 1.75; }
 
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
-  min-height: 2.5rem; padding: 0 1.5rem; border: 1px solid var(--border-input); border-radius: var(--radius-full);
-  background-color: transparent; color: var(--accent); font-size: .875rem; font-weight: 600; letter-spacing: .01em; line-height: 1.25;
-  white-space: nowrap; transition: background-color .15s, box-shadow .15s;
-}
-/* Material state layers: hover and press tint a control in its own content colour. */
-.btn:hover:not(:disabled) { background-image: linear-gradient(color-mix(in srgb, currentColor 8%, transparent) 0 0); }
-.btn:active:not(:disabled) { background-image: linear-gradient(color-mix(in srgb, currentColor 12%, transparent) 0 0); }
-.btn:disabled { opacity: .38; }
-/* Filled, outlined (the default), text and icon buttons. */
-.btn--primary { border-color: transparent; background-color: var(--accent); color: #fff; }
-.btn--primary:hover:not(:disabled) { box-shadow: var(--elevation-1); }
-.btn--danger { border-color: var(--danger); color: var(--danger); }
-.btn--ghost { border-color: transparent; padding-inline: .75rem; }
-.btn--sm { min-height: 2rem; padding-inline: 1rem; font-size: .8125rem; }
-.btn--icon { width: 2.5rem; padding: 0; border-color: transparent; border-radius: 50%; color: var(--text-muted); }
-.btn--sm.btn--icon { width: 2rem; }
-/* The map's floating tool buttons: small floating action buttons. */
-.btn--map { min-height: 2.5rem; border-radius: var(--radius-lg); background-color: var(--surface); color: var(--text); box-shadow: var(--elevation-2); }
-.btn svg { flex-shrink: 0; }
-.field {
-  width: 100%; min-width: 0; min-height: 2.5rem; padding: .5rem .75rem; border: 1px solid var(--border-input);
-  border-radius: var(--radius-xs); background: #fff; font-size: .9rem;
-}
-.field::placeholder { color: var(--text-muted); }
-.field:hover:not(:disabled, :focus) { border-color: var(--text); }
-.field:focus-visible { outline: none; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.field:disabled { background: var(--surface-muted); }
-.label { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
-/* Material outlined fields: the label rests in the empty field and floats onto its border when the field is focused or
-   filled; its background matches the panel above the border and the field below. A hint shows only while typing. */
-.float { position: relative; }
-.float > label { position: absolute; top: 1.25rem; left: .5rem; max-width: calc(100% - 1rem); padding: 0 .25rem; overflow: hidden;
-  background: linear-gradient(var(--surface) 50%, #fff 50%); color: var(--text-muted); font-size: .9rem; line-height: 1.2;
-  white-space: nowrap; text-overflow: ellipsis; transform: translateY(-50%); transition: top .15s ease, font-size .15s ease; pointer-events: none; }
-.float > .field::placeholder { opacity: 0; }
-.float:focus-within > .field::placeholder, .float--raised > .field::placeholder { opacity: 1; }
-.float:focus-within > label, .float > .field:not(:placeholder-shown) ~ label, .float--raised > label { top: 0; font-size: .72rem; }
-.float:focus-within > label { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .float > label { transition: none; } }
-.notice { margin: 0; padding: .65rem .75rem; border-radius: var(--radius); font-size: .82rem; line-height: 1.45; }
-.notice--error { color: var(--danger); background: var(--danger-soft); }
-.notice--warning { color: var(--warning); background: var(--warning-soft); }
-.notice--success { color: var(--accent-hover); background: var(--accent-soft); }
-.notice .btn { display: flex; margin-top: .5rem; }
-/* A selectable row in a list of radios or checkboxes; the chosen rows are tinted. */
-.option { display: flex; align-items: center; gap: .6rem; margin-inline: -.5rem; padding: .45rem .5rem; border-radius: var(--radius); cursor: pointer; font-size: .85rem; }
-.option:hover { background: var(--surface-muted); }
-.option:has(:checked) { background: var(--accent-soft); font-weight: 600; }
-.option:has(:disabled) { background: none; color: var(--text-muted); font-weight: 400; cursor: not-allowed; }
-.option input { flex-shrink: 0; width: 1rem; height: 1rem; margin: 0; }
-.muted { margin: 0; color: var(--text-muted); font-size: .8rem; line-height: 1.5; }
-.section-title { margin: 0; font-size: 1rem; font-weight: 600; }
-.popover { border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elevation-2); }
-/* MapLibre's zoom and compass buttons match the floating tool buttons. */
-.maplibregl-ctrl-group:not(:empty) { overflow: hidden; border-radius: var(--radius-lg); box-shadow: var(--elevation-2); }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0; }
 .stats dt { color: var(--text-muted); font-size: .78rem; }
 .stats dd { margin: .1rem 0 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .legend { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: 0; padding: 0; list-style: none; color: var(--text-muted); font-size: .75rem; }
 .legend li { display: inline-flex; align-items: center; gap: .35rem; }
 .swatch { width: 1rem; height: 4px; flex-shrink: 0; border-radius: 2px; }
-@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 .route-marker {
   display: grid;
@@ -131,6 +62,8 @@ svg.tabler-icon { stroke-width: 1.75; }
 }
 .route-marker--preview { border-color: var(--text); pointer-events: none; }
 .route-marker:active { cursor: grabbing; }
+/* MapLibre's popups as Material menus. */
+.maplibregl-popup-content { border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 .cycling-popup { font: .8rem/1.45 var(--font); padding: .25rem; }
 .street-view-link { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius); color: var(--accent); }
 .street-view-link:hover:not([aria-disabled=true]) { background: var(--accent-soft); }

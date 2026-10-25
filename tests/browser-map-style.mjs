@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { chooseBasemap, closeMenus } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/map-style';
 await mkdir(output, { recursive: true });
@@ -108,7 +108,7 @@ try {
   await basemapMenu.click();
   await page.getByText('Schummerung', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'true');
-  await page.keyboard.press('Escape');
+  await closeMenus(page);
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
     .getLayoutProperty('basemap-hillshade', 'visibility') === 'visible');
   await page.evaluate(() => new Promise(resolve => {
@@ -120,7 +120,10 @@ try {
   assert.ok(terrainTiles.length, 'Terrain uses locally served DEM tiles');
   await page.reload();
   await waitMap();
+  // The menu builds its content when opened.
+  await page.getByRole('button', { name: 'Kartenansicht', exact: true }).click();
   assert.equal(await page.locator('input[name=basemap]:checked').inputValue(), 'street');
+  await closeMenus(page);
   assert.equal(await page.evaluate(() => localStorage.getItem('richiroute.hillshade')), '1');
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707] }));
   await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 13 }));

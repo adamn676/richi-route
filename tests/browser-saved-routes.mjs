@@ -30,8 +30,13 @@ async function setQuery(value) {
     store.setWaypointQuery(store.points[0].id, value);
   }, value);
 }
+// Duplicating, renaming and deleting sit in each row's menu.
+async function more(row, action) {
+  await row.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+  await row.page().locator('.v-overlay--active .v-list-item').filter({ hasText: action }).click();
+}
 async function waitRows(count) {
-  await page.waitForFunction(count => document.querySelectorAll('.library__list > li').length === count, count);
+  await page.waitForFunction(count => document.querySelectorAll('.library__list > [role=listitem]').length === count, count);
   await idle();
 }
 try {
@@ -99,16 +104,16 @@ try {
   await idle();
   assert.equal(await list.getByRole('listitem').count(), 2, 'Saving an opened route updates it');
   const edited = await state();
-  await entry('Lange Runde').getByRole('button', { name: 'Duplizieren', exact: true }).click();
+  await more(entry('Lange Runde'), 'Duplizieren');
   await waitRows(3);
-  await entry('Lange Runde (Kopie)').getByRole('button', { name: 'Umbenennen', exact: true }).click();
+  await more(entry('Lange Runde (Kopie)'), 'Umbenennen');
   await page.getByLabel('Neuer Routenname', { exact: true }).fill('Zweite Runde');
   await page.getByRole('button', { name: 'Namen speichern', exact: true }).click();
   await entry('Zweite Runde').waitFor();
-  await entry('Zweite Runde').getByRole('button', { name: 'Löschen', exact: true }).click();
+  await more(entry('Zweite Runde'), 'Löschen');
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
   assert.equal(await list.getByRole('listitem').count(), 3);
-  await entry('Zweite Runde').getByRole('button', { name: 'Löschen', exact: true }).click();
+  await more(entry('Zweite Runde'), 'Löschen');
   await page.getByRole('button', { name: 'Endgültig löschen', exact: true }).click();
   await waitRows(2);
   assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
@@ -228,9 +233,9 @@ try {
   const second = await context.newPage();
   await second.goto(origin);
   await second.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  await second.locator('.library__list > li').first().waitFor();
+  await second.locator('.library__list > [role=listitem]').first().waitFor();
   const secondEntry = second.locator('.library__list').getByRole('listitem', { name: 'Andere Registerkarte', exact: true });
-  await secondEntry.getByRole('button', { name: 'Umbenennen', exact: true }).click();
+  await more(secondEntry, 'Umbenennen');
   await second.getByLabel('Neuer Routenname', { exact: true }).fill('In anderem Tab umbenannt');
   await second.getByRole('button', { name: 'Namen speichern', exact: true }).click();
   await entry('In anderem Tab umbenannt').waitFor();

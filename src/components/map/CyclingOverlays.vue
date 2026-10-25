@@ -2,16 +2,20 @@
   <MapMenu class="cycling-controls" heading="Rad-Infos"
     :label="error ? 'Rad-Infos, Fehler beim Laden' : `Rad-Infos, ${selected.length} angezeigt`">
     <template #icon>
-      <IconBike :size="20" aria-hidden="true" />
-      <span v-if="error" class="cycling-controls__badge cycling-controls__badge--alert" aria-hidden="true">!</span>
-      <span v-else-if="selected.length" class="cycling-controls__badge" aria-hidden="true">{{ selected.length }}</span>
+      <v-badge :model-value="Boolean(error || selected.length)" :content="error ? '!' : selected.length" :color="error ? 'error' : 'primary'" floating>
+        <IconBike :size="20" aria-hidden="true" />
+      </v-badge>
     </template>
-    <label v-for="item in cyclingOverlays" :key="item.id" class="option">
-      <input v-model="selected" type="checkbox" :value="item.id" />
-      <span>{{ item.label }}</span>
-      <i :class="item.id === 'cycleways' || item.id === 'routes' ? 'swatch' : 'cycling-controls__dot'" :style="{ background: item.color }" aria-hidden="true" />
-    </label>
-    <p v-if="error" class="notice notice--error" role="alert">{{ error }} <button type="button" class="btn" @click="retry">Erneut laden</button></p>
+    <v-checkbox v-for="item in cyclingOverlays" :key="item.id" v-model="selected" :value="item.id">
+      <template #label>
+        <span class="cycling-controls__label">{{ item.label }}
+          <i :class="item.id === 'cycleways' || item.id === 'routes' ? 'swatch' : 'cycling-controls__dot'" :style="{ background: item.color }" aria-hidden="true" /></span>
+      </template>
+    </v-checkbox>
+    <v-alert v-if="error" type="error">
+      {{ error }}
+      <div><v-btn class="mt-2" @click="retry">Erneut laden</v-btn></div>
+    </v-alert>
   </MapMenu>
 </template>
 
@@ -155,10 +159,6 @@ onBeforeUnmount(() => detach(props.map));
 </script>
 
 <style scoped>
-.cycling-controls__badge { position: absolute; top: -.35rem; right: -.35rem; min-width: 1.1rem; padding: 0 .25rem; border: 2px solid var(--surface);
-  border-radius: 999px; background: var(--accent); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1rem; font-variant-numeric: tabular-nums; }
-.cycling-controls__badge--alert { background: var(--danger); }
-.option > i { margin-left: auto; }
+.cycling-controls__label { display: inline-flex; align-items: center; gap: .5rem; }
 .cycling-controls__dot { width: .6rem; height: .6rem; border-radius: 50%; flex-shrink: 0; }
-.notice { margin-top: .5rem; }
 </style>

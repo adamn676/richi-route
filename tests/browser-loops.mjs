@@ -59,7 +59,7 @@ const mapState = () => page.evaluate(() => {
   return { loops: map.getSource('loop-suggestions-source')?._data?.features?.length ?? map.getSource('loop-suggestions-source')?.serialize().data.features.length,
     highlight: map.getGlobalState().loopHighlight, selected: map.getGlobalState().loopSelected };
 });
-const cards = page.getByRole('list', { name: 'Vorschläge', exact: true }).getByRole('button');
+const cards = page.getByRole('group', { name: 'Vorschläge', exact: true }).getByRole('button');
 const routeState = () => page.evaluate(`(() => { const s = ${store('route')}, l = ${store('loop-suggestions')}; return { distance: s.distanceMeters,
   ascent: s.ascentMeters, end: s.waypoints.at(-1).coord, undo: s.undoStack.length, selected: l.selected,
   loops: l.suggestions?.map(loop => loop.leg.distanceMeters) ?? null }; })()`);
@@ -76,8 +76,8 @@ try {
   await page.evaluate(`${store('route')}.addWaypointByClick([${start}])`);
   await page.waitForFunction(`${store('route')}.waypoints[0].address === 'Teststraße, 8010 Graz'`);
   const before = await routeState();
-  await page.getByLabel('Distanz (km)', { exact: true }).fill('40');
-  await page.getByLabel('Anstieg (m)', { exact: true }).fill('600');
+  await page.getByLabel('Distanz', { exact: true }).fill('40');
+  await page.getByLabel('Anstieg', { exact: true }).fill('600');
   await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
   await cards.first().waitFor();
   const texts = await cards.allInnerTexts();

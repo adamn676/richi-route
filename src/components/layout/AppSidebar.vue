@@ -3,27 +3,24 @@
     <header class="sidebar__header">
       <h1 class="brand"><span class="brand__mark" aria-hidden="true"><IconRoute :size="18" /></span><span>Richi<span class="brand__accent">Route</span></span></h1>
       <!-- Errors have their own notice below; otherwise the icon's shape shows the state and the tooltip explains it. -->
-      <span v-if="!routeStore.draftError" class="sidebar__status" role="img" :aria-label="draft.label" :title="draft.label">
+      <span v-if="!routeStore.draftError" class="sidebar__status" role="img" :aria-label="draft.label" v-tooltip:bottom="draft.label">
         <component :is="draft.icon" :size="18" aria-hidden="true" />
       </span>
-      <button v-if="hasDraft" type="button" class="btn btn--sm sidebar__new" @click="library.newRoute()">
-        <IconPlus :size="16" aria-hidden="true" />Neue Route
-      </button>
+      <v-btn v-if="hasDraft" class="sidebar__new" variant="outlined" size="small" :prepend-icon="IconPlus" @click="library.newRoute()">Neue Route</v-btn>
     </header>
-    <div class="sidebar__tabs" role="tablist" aria-label="Bereiche" @keydown="moveFocus">
-      <button v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" type="button" role="tab"
-        :aria-selected="tab === item.id" :aria-controls="`panel-${item.id}`" :tabindex="tab === item.id ? 0 : -1"
-        @click="tab = item.id"><span class="sidebar__tab-label">{{ item.label }}</span></button>
-    </div>
+    <v-tabs v-model="tab" class="sidebar__tabs" aria-label="Bereiche">
+      <v-tab v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" :value="item.id" :aria-controls="`panel-${item.id}`">{{ item.label }}</v-tab>
+    </v-tabs>
     <!-- Saving a draft before a route switch can report from any tab. -->
     <div class="sidebar__messages">
-      <p v-if="routeStore.draftError" class="notice notice--error" role="alert">
+      <v-alert v-if="routeStore.draftError" type="error">
         {{ routeStore.draftError }}
-        <button type="button" class="btn" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</button>
-      </p>
-      <p v-if="error" class="notice notice--error" role="alert">{{ error }}</p>
-      <p v-else-if="message" class="notice notice--success" role="status">{{ message }}</p>
+        <template #append><v-btn variant="text" size="small" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</v-btn></template>
+      </v-alert>
+      <v-alert v-if="error" type="error">{{ error }}</v-alert>
     </div>
+    <!-- Confirmations pass by; errors stay above until resolved. -->
+    <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="4000" @update:model-value="open => open || (message = '')">{{ message }}</v-snackbar>
     <div class="sidebar__body">
       <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
@@ -39,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { IconCloud, IconCloudCheck, IconCloudUpload, IconPlus, IconRoute } from '@/components/icons';
 import RoutePanel from '@/components/ui/RoutePanel.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
@@ -71,14 +68,6 @@ const draft = computed(() => ({
   error: { icon: IconCloud, label: '' },
 }[routeStore.draftStatus]));
 
-async function moveFocus(event: KeyboardEvent) {
-  const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
-  if (!step) return;
-  const index = tabs.findIndex(item => item.id === tab.value);
-  tab.value = tabs[(index + step + tabs.length) % tabs.length].id;
-  await nextTick();
-  document.getElementById(`tab-${tab.value}`)?.focus();
-}
 </script>
 
 <style scoped>
@@ -90,15 +79,7 @@ async function moveFocus(event: KeyboardEvent) {
 .brand__accent { color: var(--accent); }
 .sidebar__status { display: inline-flex; color: var(--text-muted); cursor: help; }
 .sidebar__new { margin-left: auto; }
-/* Material primary tabs: equal widths, the active label in the main colour over a rounded indicator as wide as the label. */
-.sidebar__tabs { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; border-bottom: 1px solid var(--border); }
-[role=tab] { display: grid; place-items: center; padding: 0 .5rem; border: 0; background: none; color: var(--text-muted);
-  font-size: .875rem; font-weight: 600; }
-[role=tab]:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
-[role=tab][aria-selected=true] { color: var(--accent); }
-.sidebar__tab-label { position: relative; padding: .875rem 0; }
-[role=tab][aria-selected=true] .sidebar__tab-label::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; height: 3px;
-  border-radius: 3px 3px 0 0; background: var(--accent); }
+.sidebar__tabs { flex: none; border-bottom: 1px solid var(--border); }
 .sidebar__messages { display: grid; gap: .5rem; max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
 .sidebar__body { flex: 1; min-height: 0; overflow-y: auto; }
