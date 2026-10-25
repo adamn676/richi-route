@@ -55,3 +55,17 @@ test('surface details retain different recorded materials within the same colour
     ['rough', 'paving_stones'], ['rough', 'wood'], ['unknown', 'metal'], ['unknown', undefined],
   ]);
 });
+test('classified roads without a surface tag count as likely asphalt; minor roads stay unknown', () => {
+  const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47]], [
+    ['Longitude', 'Latitude', 'WayTags'],
+    ['15001000', '47000000', 'highway=secondary'],
+    ['15002000', '47000000', 'highway=tertiary_link'],
+    ['15003000', '47000000', 'highway=unclassified'],
+    ['15004000', '47000000', 'highway=primary surface=gravel'],
+  ]));
+  assert.deepEqual(leg.surfaces, [
+    { fromIndex: 0, toIndex: 2, surface: 'likelyAsphalt' },
+    { fromIndex: 2, toIndex: 3, surface: 'unknown' },
+    { fromIndex: 3, toIndex: 4, surface: 'unpaved', surfaceTag: 'gravel' },
+  ]);
+});

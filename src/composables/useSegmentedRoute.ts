@@ -59,6 +59,7 @@ export function useSegmentedRoute() {
             'match',
             ['get', 'surface'],
             'asphalt', routeStyle.asphalt,
+            'likelyAsphalt', routeStyle.likelyAsphalt,
             'paved', routeStyle.paved,
             'rough', routeStyle.rough,
             'unpaved', routeStyle.unpaved,

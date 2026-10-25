@@ -8,6 +8,9 @@ export function surfaceType(tag: string | undefined): Surface {
   return 'unknown';
 }
 
+// Classified roads in Austria are as good as always asphalt; without a surface tag they count as likely asphalt.
+const classifiedRoads = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link']);
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -50,8 +53,9 @@ export function parseBRouterLeg(raw: unknown): LegGeometry {
         while (end < coordinates.length && !(Math.round(coordinates[end][0] * 1e6) === Number(row[lon]) && Math.round(coordinates[end][1] * 1e6) === Number(row[lat]))) end++;
         if (end === coordinates.length) break; // Unmatched spans remain unknown.
         if (end > start) {
-          const tag = typeof row[tags] === 'string' ? /(?:^|\s)surface=([^\s]+)/.exec(row[tags])?.[1] : undefined;
-          const surface = surfaceType(tag);
+          const wayTags = typeof row[tags] === 'string' ? row[tags] : '';
+          const tag = /(?:^|\s)surface=([^\s]+)/.exec(wayTags)?.[1];
+          const surface = tag ? surfaceType(tag) : classifiedRoads.has(/(?:^|\s)highway=([^\s]+)/.exec(wayTags)?.[1] ?? '') ? 'likelyAsphalt' : 'unknown';
           const previous = surfaces.at(-1);
           if (previous?.surface === surface && previous.surfaceTag === tag && previous.toIndex === start) previous.toIndex = end;
           else surfaces.push({ fromIndex: start, toIndex: end, surface, ...(tag ? { surfaceTag: tag } : {}) });

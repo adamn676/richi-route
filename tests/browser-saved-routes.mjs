@@ -236,6 +236,31 @@ try {
   await entry('In anderem Tab umbenannt').waitFor();
   await second.close();
 
+  // A route saved before stops were named gets street names on opening, and that alone is no change to protect.
+  await context.route('**/geocoding/reverse**', route => route.fulfill({ json: { features: [{ type: 'Feature',
+    geometry: { type: 'Point', coordinates: [15.4, 47.1] }, properties: { type: 'street', name: 'Testweg', postcode: '8010', city: 'Graz' } }] } }));
+  const unnamedPayload = await page.evaluate(async () => {
+    const { routeLibrary } = await import('/src/services/route-library.service.ts');
+    const saved = await routeLibrary.read((await routeLibrary.list()).find(row => row.name === 'In anderem Tab umbenannt').id);
+    const data = JSON.parse(saved.payload);
+    data.points = data.points.map(point => point.type === 'stop' ? { ...point, address: null, userInput: '' } : point);
+    await routeLibrary.save('Ohne Straßennamen', JSON.stringify(data));
+    return JSON.stringify(data);
+  });
+  await page.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
+  await entry('Ohne Straßennamen').getByRole('button', { name: 'Öffnen', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
+    .waypoints.every(point => point.address === 'Testweg, 8010 Graz' && point.userInput === point.address));
+  await idle();
+  const rows = await list.getByRole('listitem').count();
+  await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
+  await idle();
+  assert.equal(await list.getByRole('listitem').count(), rows, 'Filled-in street names need no recovery copy');
+  assert.equal(await page.evaluate(async () => {
+    const { routeLibrary } = await import('/src/services/route-library.service.ts');
+    return (await routeLibrary.read((await routeLibrary.list()).find(row => row.name === 'Ohne Straßennamen').id)).payload;
+  }), unnamedPayload, 'The saved route changes only when saved');
+
   await page.locator('.library').evaluate(element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: output + '/desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

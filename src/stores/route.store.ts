@@ -252,7 +252,8 @@ export const useRouteStore = defineStore('route', {
         Object.values(this.legs).find(l => l.error)?.error ?? null;
       this._resumePendingSnaps();
       this._reconcile();
-      this.fitRequest++;
+      // Routes saved before stops were named get their street names now.
+      for (const stop of this.waypoints) this._nameStop(stop.id);
     },
     resetRoute(coords: Coord[] = [], shapeIndices: readonly number[] = []) {
       coords.forEach(validCoord);

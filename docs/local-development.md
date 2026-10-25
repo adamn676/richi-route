@@ -397,7 +397,11 @@ a click opens Street View at the nearest panorama; the figure turns grey where
 Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
 all map and imagery sources. The sidebar is 352–416 px wide, depending on the
 screen; the arrow on its edge folds it away for a full-width map, and the app
-remembers that choice. Below 760 px the sidebar sits under the map instead.
+remembers that choice. Below 760 px the sidebar becomes a sheet under the map:
+drag or tap its handle (or use the arrow keys on it) to show only its header and
+tabs, half the screen, or all of it. The map and elevation profile fill the rest.
+Opening a route lowers the sheet so the route shows, and typing an address opens
+it fully.
 
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway
@@ -614,8 +618,10 @@ A stop placed or moved on the map, and the start and end of an imported GPX
 track, get the street they lie on from `/geocoding/reverse` once snapped, such as
 "Hahnhofweg, 8010 Graz". A house number is added only when that house is within
 30 m, and nothing farther than 300 m names a point; then the position stays
-shown. Naming adds no undo step, and typing or moving the stop cancels it. Opening
-a saved route leaves its stops as saved.
+shown. Naming adds no undo step, and typing or moving the stop cancels it. Stops of
+routes saved before naming get their streets when the route is opened; that alone
+does not count as a change, so switching routes saves no recovery copy, and the
+names are stored with the next save.
 
 `npm run search:setup` downloads the Photon executable and the European database
 recorded in `scripts/photon.json`. The executable is SHA-256 verified and the
@@ -796,21 +802,26 @@ for very long tracks to limit rendering work, while preserving all vertices.
 Profile movement updates only the map dot, without rebuilding the track.
 
 **Belag (geschätzt)** starts optional surface lookup using the existing local
-BRouter service. Nothing is requested during import. Lookup runs sequentially,
-and queued route edits take priority. Switching away from this colour mode,
+BRouter service. Nothing is requested during import. Lookup traces four
+portions at a time and leaves two routing slots free; queued route edits take
+priority. A 98 km recorded ride takes about 4 s. Switching away from this colour mode,
 hiding the track, cancelling, removing or replacing it stops outstanding work.
 Completed results stay in memory for this track; switching back reuses them.
 Service errors preserve completed portions and offer a retry.
 
 This is conservative route-following with geometry checks, not a probabilistic
-GPS map matcher. Each request follows recorded points roughly 10 m apart, with
-at most 64 anchors and a target length of 2 km. Edges longer than 200 m are left
-unknown. Returned geometry must follow the original in order, within 8 m at
-every vertex on both paths and at intervals of at most 10 m. Its length must
-differ by no more than 3% or 10 m, whichever is larger. A known material is copied
-only if it covers the entire original edge; transitions within an edge remain
-unknown. This preserves every original coordinate and segment break. Distances
-and percentages use the original track, including unknown parts.
+GPS map matcher. Each request traces a portion of about 2 km through a recorded
+point every 100 m; denser points snap onto sidewalks and side streets and send
+the trace on detours. Edges longer than 200 m are left unknown. The trace must
+follow the original in travel order within 8 m: both lines are walked forwards
+in 5 m steps and compared by their discrete Fréchet distance, so GPS jitter and
+small length differences do not matter. A portion that fails is split in half
+and traced again, down to 150 m. A known material is copied only if it covers
+the whole original edge; transitions within an edge remain unknown. This
+preserves every original coordinate and segment break. Distances and percentages
+use the original track, including unknown parts. On a 98 km recorded ride, the
+previous fixed check found surfaces for 31.5 km; this one finds 76.8 km, out of
+about 83 km whose roads carry surface tags.
 
 The checks reject detours, reversed paths and missing loop legs, but closely
 parallel roads and noisy recordings can still produce a wrong or missing
@@ -861,7 +872,12 @@ Abschnitte** shows ten more entries; **Markierung aufheben** removes the
 highlight.
 
 The inspector distinguishes materials such as fine gravel, wood and paving
-stones. Missing surface tags stay unknown. Lengths follow the drawn coordinates
+stones. Paving labels say how they ride: **Pflaster, eben** (flat paving
+stones), **Natursteinpflaster, holprig** (setts) and **Kopfsteinpflaster, sehr
+holprig** (cobblestones); they share the paving colour on the map. Primary, secondary and tertiary roads (and trunk roads) without a
+surface tag show as **Vermutlich Asphalt** in a lighter green, since classified
+roads in Austria are as good as always paved; other roads without a tag stay
+unknown. Lengths follow the drawn coordinates
 and can differ slightly from the routing engine's reported total. Material tags
 describe the map data; they do not establish the current condition of a road.
 

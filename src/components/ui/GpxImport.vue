@@ -38,7 +38,7 @@
         <li v-if="reference.colorMode !== 'surface'"><i class="swatch" :style="{ backgroundColor: unknownGpxColor }" />Unbekannt</li>
       </ul>
       <div v-if="reference.colorMode === 'surface'" class="gpx__surfaces">
-        <p v-if="reference.surfaceLoading" class="muted" role="status">Beläge werden geprüft: {{ reference.surfaceProgress.completed }} / {{ reference.surfaceProgress.total }} Teilstrecken
+        <p v-if="reference.surfaceLoading" class="muted" role="status">Beläge werden geprüft … {{ reference.surfaceProgress.total ? Math.round(reference.surfaceProgress.completed / reference.surfaceProgress.total * 100) : 0 }} %
           <button type="button" class="btn btn--ghost" @click="reference.cancelSurfaces()">Belagprüfung abbrechen</button>
         </p>
         <p v-if="reference.surfaceError" class="notice notice--error gpx__error" role="alert">{{ reference.surfaceError }} Noch nicht geprüfte Teile bleiben unbekannt.</p>

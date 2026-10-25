@@ -57,7 +57,7 @@ try {
   assert.equal(requests, 3);
   const original = await snapshot(page);
   const details = page.getByRole('region', { name: 'Untergrund' });
-  assert.match(await details.locator('.surfaces__totals').textContent(), /Feiner Schotter364 m.*Unbekannt44,3 km/);
+  assert.match(await details.locator('.surfaces__totals').textContent(), /Vermutlich Asphalt25,7 km.*Feiner Schotter364 m.*Unbekannt18,6 km/);
   await details.getByRole('button', { name: /Feiner Schotter/ }).click();
   await checkFocus(page, 'fine_gravel');
   assert.equal(await details.locator('.surfaces__sections button').count(), 1);

@@ -51,7 +51,7 @@ try {
   assert.equal(after.error, '');
   assert.ok(after.matched > after.distance * .99);
   assert.equal(after.geometry, before.geometry); assert.equal(after.draft, before.draft);
-  assert.equal(peak, 1);
+  assert.ok(peak <= 4, 'The lookup leaves routing slots free for editing');
   await page.getByRole('list', { name: 'Beläge des GPX-Tracks', exact: true }).waitFor();
   const count = requests;
   await page.getByLabel('Trackfarbe', { exact: true }).selectOption('plain');

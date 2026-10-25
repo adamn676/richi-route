@@ -60,7 +60,7 @@ function leg(value: unknown): RouteLeg {
     const fromIndex = number(s.fromIndex), toIndex = number(s.toIndex);
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < previousEnd ||
         toIndex <= fromIndex || toIndex >= coordinates.length ||
-        !['asphalt', 'paved', 'rough', 'unpaved', 'unknown'].includes(text(s.surface))) throw new Error('Invalid draft surface');
+        !['asphalt', 'likelyAsphalt', 'paved', 'rough', 'unpaved', 'unknown'].includes(text(s.surface))) throw new Error('Invalid draft surface');
     previousEnd = toIndex;
     if (s.surfaceTag !== undefined && (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200)) {
       throw new Error('Invalid draft surface tag');

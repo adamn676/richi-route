@@ -3,12 +3,12 @@ import { distanceMeters, isPlaced, legId, type RouteLeg, type RoutePoint, type S
 const labels: Record<string, string> = {
   asphalt: 'Asphalt', paved: 'Befestigt', concrete: 'Beton',
   'concrete:lanes': 'Betonspuren', 'concrete:plates': 'Betonplatten',
-  paving_stones: 'Pflastersteine', sett: 'Natursteinpflaster', cobblestone: 'Kopfsteinpflaster',
+  paving_stones: 'Pflaster, eben', sett: 'Natursteinpflaster, holprig', cobblestone: 'Kopfsteinpflaster, sehr holprig',
   wood: 'Holz', metal: 'Metall', gravel: 'Schotter', fine_gravel: 'Feiner Schotter',
   compacted: 'Verdichtetes Material', unpaved: 'Unbefestigt', ground: 'Naturboden',
   dirt: 'Erde', earth: 'Erde', grass: 'Gras', sand: 'Sand', mud: 'Schlamm',
   clay: 'Lehm', rock: 'Fels', pebblestone: 'Kies', grass_paver: 'Rasengitter', woodchips: 'Holzhackschnitzel',
-  rough: 'Pflaster / Holz', unknown: 'Unbekannt',
+  rough: 'Pflaster / Holz', likelyAsphalt: 'Vermutlich Asphalt', unknown: 'Unbekannt',
 };
 
 export interface SurfaceSection {
@@ -24,7 +24,7 @@ export interface SurfaceSection {
 }
 
 // Totals grouped like the map's colours, longest material first within each group.
-const surfaceRank: Record<Surface, number> = { asphalt: 0, paved: 1, rough: 2, unpaved: 3, unknown: 4 };
+const surfaceRank: Record<Surface, number> = { asphalt: 0, likelyAsphalt: 1, paved: 2, rough: 3, unpaved: 4, unknown: 5 };
 export const bySurfaceThenLength = (a: { surface: Surface; meters: number }, b: { surface: Surface; meters: number }) =>
   surfaceRank[a.surface] - surfaceRank[b.surface] || b.meters - a.meters;
 

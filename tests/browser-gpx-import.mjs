@@ -171,6 +171,9 @@ try {
   assert.ok(opened.statuses.every(status => status === 'routed'));
   assert.ok(opened.distances.slice(0, -1).every(distance => distance >= 5000));
   assert.equal(opened.reference, false);
+  // On a phone the sheet makes way for the opened route; its handle brings the route panel back.
+  assert.match(await page.locator('.editor-layout').getAttribute('class'), /editor-layout--peek/);
+  await page.getByRole('button', { name: 'Bereich vergrößern', exact: true }).click();
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
   const restored = JSON.parse(await state());
   assert.deepEqual([restored.points, restored.legs], [before.points, before.legs]);

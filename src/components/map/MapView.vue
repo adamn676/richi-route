@@ -117,7 +117,14 @@ watch(map, instance => {
     else if (route.value) fitRoute();
   });
 });
-watch(fitRequest, () => fitRoute());
+// On phones the sheet makes way for an opened route, so the map grows: once it has settled, the route is fitted again.
+let fittedAt = 0, refit: ReturnType<typeof setTimeout> | undefined;
+watch(fitRequest, () => { fittedAt = Date.now(); fitRoute(); });
+watch(map, instance => instance?.on('resize', () => {
+  if (Date.now() - fittedAt > 1000) return;
+  clearTimeout(refit);
+  refit = setTimeout(fitRoute, 100);
+}));
 function fitRoute() {
   const bounds = new LngLatBounds();
   for (const feature of route.value?.features ?? []) {

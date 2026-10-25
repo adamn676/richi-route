@@ -40,14 +40,14 @@ test('surface attribution preserves original geometry, fills unknown and does no
 
 test('nearby roads, detours, reversed paths and missing return legs cannot supply surface tags', () => {
   const coordinates = line(), track = build(coordinates), portion = gpxSurfacePortions(track)[0];
-  assert.deepEqual(matchGpxSurfaces(track, portion, candidate(coordinates.map(([x, y]) => [x, y + .0001]))), []);
-  assert.deepEqual(matchGpxSurfaces(track, portion, candidate([...coordinates].reverse())), []);
+  assert.equal(matchGpxSurfaces(track, portion, candidate(coordinates.map(([x, y]) => [x, y + .0001]))), null, 'A road 11 m beside');
+  assert.equal(matchGpxSurfaces(track, portion, candidate([...coordinates].reverse())), null);
   const detour = coordinates.map(([x, y], i) => [x, y + Math.sin(i / 100 * Math.PI) * .0005]);
-  assert.deepEqual(matchGpxSurfaces(track, portion, candidate(detour)), []);
+  assert.equal(matchGpxSurfaces(track, portion, candidate(detour)), null);
   const loop = [...coordinates, ...coordinates.slice(0, -1).reverse()];
   const outBack = build(loop);
   const wholeLoop = { segment: 0, from: 0, to: loop.length - 1, points: loop };
-  assert.deepEqual(matchGpxSurfaces(outBack, wholeLoop, candidate(coordinates)), []);
+  assert.equal(matchGpxSurfaces(outBack, wholeLoop, candidate(coordinates)), null, 'The return leg is missing');
   const complete = matchGpxSurfaces(outBack, wholeLoop, candidate(loop, [
     { fromIndex: 0, toIndex: 100, surface: 'asphalt', surfaceTag: 'asphalt' },
     { fromIndex: 100, toIndex: 200, surface: 'unpaved', surfaceTag: 'gravel' },
@@ -65,20 +65,22 @@ test('unknown tags and isolated points remain unknown; matching works across the
   assert.equal(inspection.estimatedMeters, 0);
 });
 
-test('surface lookup runs sequentially and stops on failure with completed results intact', async () => {
-  const track = build(line(1001));
+test('surface lookup traces a few portions at a time and stops on failure with completed results intact', async () => {
+  const track = build(line(3001)), portions = gpxSurfacePortions(track).length;
   let active = 0, calls = 0, peak = 0;
   const progress = [];
   const result = await lookupGpxSurfaces(track, new AbortController().signal, (done, total) => progress.push([done, total]), async points => {
-    calls++; peak = Math.max(peak, ++active);
+    const call = ++calls; peak = Math.max(peak, ++active);
     await new Promise(resolve => setTimeout(resolve, 1)); active--;
-    if (calls === 2) throw new Error('Service unavailable');
+    if (call === 2) throw new Error('Service unavailable');
     return candidate(points);
   });
-  assert.equal(peak, 1); assert.equal(calls, 2);
+  assert.ok(peak > 1 && peak <= 4, `${peak} at once, leaving routing slots free`);
+  assert.ok(calls < portions, 'No new portions start after the failure');
   assert.equal(result.error, 'Service unavailable');
   assert.ok(result.surfaces[0].length > 0);
-  assert.equal(progress.at(-1)[0], 1);
+  assert.ok(result.surfaces[0].every((span, i, spans) => !i || spans[i - 1].toIndex <= span.fromIndex), 'Spans stay in travel order');
+  assert.ok(progress.at(-1)[0] > 0 && progress.at(-1)[0] < progress.at(-1)[1], 'Progress counts the metres checked');
   const inspection = inspectGpxSurfaces(track, result.surfaces);
   assert.ok(inspection.estimatedMeters < track.distanceMeters);
 });
@@ -99,4 +101,39 @@ test('dense long-track inspection preserves every coordinate and original distan
   assert.ok(result.estimatedMeters > track.distanceMeters * .99);
   assert.deepEqual(result.geojson.features[0].geometry.coordinates, coords);
   assert.ok(distanceMeters(coords[0], coords.at(-1)) > 0);
+});
+
+test('GPS jitter and a slightly longer trace still match; tags stay with their stretch', () => {
+  // The recording zigzags 4 m either side of the road; the trace wiggles 3 m and comes out about 6% longer.
+  const road = line(), jittery = road.map(([x, y], i) => [x, y + (i % 2 ? 1 : -1) * .000036]);
+  const track = build(jittery), portion = { segment: 0, from: 0, to: jittery.length - 1, points: jittery };
+  const traced = road.map(([x, y], i) => [x, y + Math.sin(i) * .000027]);
+  const spans = matchGpxSurfaces(track, portion, candidate(traced, [
+    { fromIndex: 0, toIndex: 50, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 50, toIndex: 100, surface: 'unpaved', surfaceTag: 'gravel' },
+  ]));
+  assert.deepEqual(spans.map(s => s.surfaceTag), ['asphalt', 'gravel']);
+  assert.deepEqual([spans[0].fromIndex, spans[1].toIndex], [0, 100]);
+  assert.ok(spans[1].fromIndex - spans[0].toIndex <= 1, 'At most the step at the change stays unknown');
+});
+
+test('a portion whose trace takes a detour is split until the halves match', async () => {
+  const track = build(line(3001));
+  const result = await lookupGpxSurfaces(track, new AbortController().signal, () => {}, async points => {
+    // Long traces wander off through a side street; short ones stay on the road.
+    const long = distanceMeters(points[0], points.at(-1)) > 600;
+    return candidate(long ? points.map(([x, y], i) => [x, y + (i === 3 ? .001 : 0)]) : points);
+  });
+  const inspection = inspectGpxSurfaces(track, result.surfaces);
+  assert.equal(result.error, '');
+  assert.ok(inspection.estimatedMeters > track.distanceMeters * .99, `${inspection.estimatedMeters} of ${track.distanceMeters}`);
+});
+
+test('likely asphalt carries over to a track and counts as its own group', () => {
+  const coordinates = line(), track = build(coordinates), portion = gpxSurfacePortions(track)[0];
+  const spans = matchGpxSurfaces(track, portion, candidate(coordinates, [{ fromIndex: 0, toIndex: 100, surface: 'likelyAsphalt' }]));
+  assert.deepEqual(spans, [{ fromIndex: 0, toIndex: 100, surface: 'likelyAsphalt' }]);
+  const inspection = inspectGpxSurfaces(track, [spans]);
+  assert.deepEqual(inspection.totals.map(t => [t.key, t.label]), [['likelyAsphalt', 'Vermutlich Asphalt']]);
+  assert.ok(Math.abs(inspection.estimatedMeters - track.distanceMeters) < 1e-6);
 });

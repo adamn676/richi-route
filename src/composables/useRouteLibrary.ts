@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
-import type { Coord } from '../domain/route-model.ts';
+import type { Coord, RoutePoint } from '../domain/route-model.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
 import { exportRouteBackup, importRouteBackup, type SavedRouteSummary } from '../domain/saved-route.ts';
 import { routeLibrary } from '../services/route-library.service.ts';
@@ -20,6 +20,19 @@ export function useRouteLibrary() {
   let refreshId = 0;
 
   const payload = () => serializeDraft(store.points, store.legs);
+  // Street names filled in after opening (a stop saved without one, still in its place) are no change of the route.
+  function unchanged(snapshot: string) {
+    if (snapshot === activePayload) return true;
+    if (!activePayload) return false;
+    const saved = new Map(parseDraft(activePayload).points.map(point => [point.id, point]));
+    const points = store.points.map((point): RoutePoint => {
+      const before = saved.get(point.id);
+      return point.type === 'stop' && before?.type === 'stop' && before.address === null && !before.userInput &&
+        point.address !== null && point.address === point.userInput && String(point.coord) === String(before.coord)
+        ? { ...point, address: null, userInput: '' } : point;
+    });
+    return serializeDraft(points, store.legs) === activePayload;
+  }
   async function refresh() {
     const id = ++refreshId;
     const list = await routeLibrary.list();
@@ -60,7 +73,7 @@ export function useRouteLibrary() {
     if (!hasDraft.value) return;
     const points = store.points, legs = store.legs;
     const snapshot = payload();
-    const alreadySaved = snapshot === activePayload && active.value && await routeLibrary.isCurrent(active.value);
+    const alreadySaved = unchanged(snapshot) && active.value && await routeLibrary.isCurrent(active.value);
     if (!alreadySaved) {
       await routeLibrary.save(`Entwurf · ${new Date().toLocaleString('de-AT')}`, snapshot);
       await changed();
@@ -80,6 +93,8 @@ export function useRouteLibrary() {
       await protectDraft();
       activePayload = serializeDraft(draft.points, draft.legs);
       store.restoreDraft(draft);
+      // Restoring the draft on start keeps the view; an opened route is shown.
+      store.fitRequest++;
       active.value = saved.summary;
       name.value = saved.summary.name;
       message.value = `„${name.value}“ geöffnet. ${message.value}`;

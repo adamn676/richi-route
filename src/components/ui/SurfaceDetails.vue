@@ -42,7 +42,7 @@ const selectedKey = ref<string | null>(null);
 const visibleCount = ref(10);
 const matching = computed(() => inspection.value?.sections.filter(section => section.key === selectedKey.value) ?? []);
 const selectedLabel = computed(() => totals.value.find(total => total.key === selectedKey.value)?.label);
-const hasLegacyDetails = computed(() => Object.values(store.legs).some(leg => leg.surfaces.some(span => span.surface !== 'unknown' && span.surfaceTag === undefined)));
+const hasLegacyDetails = computed(() => Object.values(store.legs).some(leg => leg.surfaces.some(span => !['unknown', 'likelyAsphalt'].includes(span.surface) && span.surfaceTag === undefined)));
 
 function lengthLabel(meters: number) {
   return meters < 1000 ? `${meters < 1 ? '< 1' : Math.round(meters)} m` : `${formatKm(meters, 1)} km`;
