@@ -9,7 +9,7 @@
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
-          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }} · Esc bricht ab</span>
+          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
         <p v-if="mapError" class="notice notice--error" role="alert">
           {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
         </p>
@@ -127,6 +127,8 @@ function fitRoute() {
 .map-view__status { position: absolute; top: .75rem; left: .75rem; right: 4.5rem; display: grid; justify-items: start; gap: .5rem; pointer-events: none; }
 .map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
 .map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }
+/* Touch screens have no Escape key; the pressed button ends the mode there. */
+@media (hover: none) { .map-view__escape { display: none; } }
 .map-view__tools { position: absolute; top: .75rem; right: .75rem; display: grid; gap: .5rem; }
 .map-view__basemaps { margin: 0; padding: 0; border: 0; }
 .map-view__basemaps + .map-view__basemaps { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }

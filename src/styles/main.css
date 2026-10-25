@@ -111,10 +111,14 @@ svg.tabler-icon { stroke-width: 1.75; }
 .route-marker--preview { border-color: var(--text); pointer-events: none; }
 .route-marker:active { cursor: grabbing; }
 .cycling-popup { font: .8rem/1.45 var(--font); padding: .25rem; }
-.street-view-link { display: grid; place-items: center; width: 2rem; height: 2rem; color: var(--accent); }
+.street-view-link { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius); color: var(--accent); }
+.street-view-link:hover:not([aria-disabled=true]) { background: var(--accent-soft); }
 .street-view-link[aria-disabled=true] { color: var(--text-muted); opacity: .6; cursor: not-allowed; }
 .street-view-marker { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border: 2px solid #fff; border-radius: 50%;
   background: var(--accent); color: #fff; box-shadow: var(--shadow); pointer-events: none; }
+/* The pin's tip, in the same colour and white outline. */
+.street-view-marker::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 10px; height: 10px;
+  box-sizing: border-box; border: solid #fff; border-width: 0 2px 2px 0; background: inherit; transform: translateX(-50%) rotate(45deg); }
 .street-view-marker--missing { background: var(--text-muted); }
 .cycling-popup strong { display: block; padding-right: 1rem; font-size: .9rem; }
 .cycling-popup p { margin: .45rem 0; }

@@ -181,7 +181,8 @@ function key(event: KeyboardEvent) {
   max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); white-space: nowrap; font-size: .7rem; pointer-events: none; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
 .elevation-chart__tooltip--pinned { pointer-events: auto; }
-.elevation-chart__street-view { display: inline-flex; align-self: center; color: var(--accent); }
+.elevation-chart__street-view { display: inline-flex; align-self: center; margin: -.15rem; padding: .15rem; border-radius: var(--radius); color: var(--accent); }
+.elevation-chart__street-view:hover:not([aria-disabled=true]) { background: var(--accent-soft); }
 .elevation-chart__street-view[aria-disabled=true] { color: var(--text-muted); opacity: .6; cursor: not-allowed; }
 .elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto; }
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }

@@ -22,6 +22,6 @@ onMounted(() => closeButton.value?.focus());
 <style scoped>
 .street-view { position: absolute; inset: 0; z-index: 10; background: #000; }
 iframe { display: block; width: 100%; height: 100%; border: 0; }
-.street-view__close { position: absolute; top: .75rem; right: .75rem; }
-@media (max-width: 760px) { .street-view__close { top: .5rem; right: .5rem; } }
+/* Beside Google's fullscreen button (40 px, 10 px from the corner), not on top of it. */
+.street-view__close { position: absolute; top: 10px; right: 60px; }
 </style>

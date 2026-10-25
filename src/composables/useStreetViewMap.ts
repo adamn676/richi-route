@@ -35,7 +35,9 @@ function figure<T extends HTMLElement>(element: T, size: number): T {
 export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
   const streetView = useStreetViewStore();
   let popup: Popup | undefined;
-  const marker = new Marker({ element: figure(Object.assign(document.createElement('div'), { className: 'street-view-marker' }), 18) });
+  // A pin whose tip marks the spot, so the pointer's crosshair never covers the figure.
+  const marker = new Marker({ element: figure(Object.assign(document.createElement('div'), { className: 'street-view-marker' }), 18),
+    anchor: 'bottom', offset: [0, -6] });
   let markerShown = false;
 
   function offer(event: MapMouseEvent): void {
@@ -55,17 +57,17 @@ export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
     popup = new Popup({ closeButton: false, offset: 6 }).setLngLat(event.lngLat).setDOMContent(link).addTo(event.target);
   }
   function follow(event: MapMouseEvent): void {
-    if (!streetView.picking) return;
-    const coord = routePointNear(event.target, event.point) ?? event.lngLat.toArray() as Coord;
-    marker.setLngLat(coord);
-    streetView.spot = coord;
-    if (!markerShown) { marker.addTo(event.target); markerShown = true; }
+    if (streetView.picking) streetView.spot = routePointNear(event.target, event.point) ?? event.lngLat.toArray() as Coord;
   }
   function hide(): void {
-    marker.remove();
-    markerShown = false;
+    if (streetView.picking) streetView.spot = null;
   }
-  watch(() => streetView.picking, picking => { if (!picking) hide(); });
+  // The pin stands where Street View would open, also where a tap on a phone found no imagery.
+  watch(() => streetView.picking ? streetView.spot : null, coord => {
+    if (!coord) { marker.remove(); markerShown = false; return; }
+    marker.setLngLat(coord);
+    if (!markerShown && mapRef.value) { marker.addTo(mapRef.value); markerShown = true; }
+  });
   // Greyed out where Google has no imagery.
   watch(() => streetView.missing, missing => marker.getElement().classList.toggle('street-view-marker--missing', missing));
   watch(mapRef, (map, previous) => {
@@ -75,6 +77,6 @@ export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
   onBeforeUnmount(() => {
     const map = mapRef.value;
     map?.off('contextmenu', offer); map?.off('mousemove', follow); map?.off('mouseout', hide);
-    popup?.remove(); hide();
+    popup?.remove(); marker.remove();
   });
 }
