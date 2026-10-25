@@ -405,8 +405,11 @@ persisted selection and mobile attribution. Reports are in `.cache/online-maps/`
 ## Cycling overlays
 
 The map's tool column at the top right holds the basemap choice (layers icon),
-**Rad-Infos** (bike icon) and **Route zeigen** (focus icon); hover for their
-names. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
+**Rad-Infos** (bike icon), **Street View** (figure icon) and **Route zeigen**
+(focus icon); hover for their names. In Street View mode a figure follows the
+pointer and snaps onto the route within 16 px, the route pauses its editing, and
+a click opens Street View at the nearest panorama; the figure turns grey where
+Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
 all map and imagery sources.
 
 **Rad-Infos** independently toggles cycle paths, drinking-water sources,
@@ -715,10 +718,14 @@ View appears in place of the map and closes with ✕ or Escape:
 1. In the Google Cloud console, enable the **Maps Embed API** and create an API
    key. Google asks for a billing account; Maps Embed API use is free and
    unlimited.
-2. Restrict the key to the Maps Embed API and the website
+2. Also enable the **Street View Static API**. The app only uses its free
+   metadata lookup, to grey out Street View where there is no imagery and to
+   open at the nearest panorama; without it, Street View opens unchecked.
+3. Restrict the key to these two APIs and the website
    `http://127.0.0.1:5173/*`.
-3. Add `VITE_GOOGLE_MAPS_EMBED_KEY=your-key` to `app/.env.local` (ignored by
-   git) and restart the planner.
+4. Add `VITE_GOOGLE_MAPS_EMBED_KEY=your-key` to `app/.env.local` (ignored by
+   git) and restart with `./start-local.sh`, which exports that file's settings;
+   when running `npm run dev` directly, export the variable in the shell.
 
 Focus
 the chart to use arrow keys, Home/End and Escape. No separate slider is shown.

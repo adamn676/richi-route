@@ -10,6 +10,7 @@ import type {
 import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
 import { createPreviewMarker } from '@/composables/useMapMarkers';
 import { useRouteStore } from '@/stores/route.store';
+import { useStreetViewStore } from '@/stores/street-view.store';
 
 interface DragState {
   fromId: string;
@@ -31,6 +32,7 @@ export function consumeRouteDragClick(map: MaplibreMap, point: { x: number; y: n
 
 export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): void {
   const routeStore = useRouteStore();
+  const streetView = useStreetViewStore();
   let drag: DragState | null = null;
 
   function onMouseMove(event: MapMouseEvent): void {
@@ -84,7 +86,8 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
 
   function start(event: MapLayerMouseEvent | MapLayerTouchEvent): void {
     const map = options.map.value;
-    if (!map || drag || !routeStore.route) return;
+    // While a Street View spot is being chosen, the route takes clicks instead of drags.
+    if (!map || drag || !routeStore.route || streetView.picking) return;
     if (event.type === 'mousedown' && event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) return;
     const feature = event.features?.[0];
     const { fromId, toId } = feature?.properties ?? {};

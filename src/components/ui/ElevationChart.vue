@@ -42,7 +42,8 @@
           <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText">{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
-            @click="event => streetView.open(event, focus!.coordinate)">Street View</a>
+            :aria-label="streetViewLabel" :title="streetViewLabel" :aria-disabled="streetView.missing"
+            @click="event => streetView.open(event, focus!.coordinate)"><IconMan :size="16" aria-hidden="true" /></a>
         </div>
         <span v-if="!track.profile && !focus" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
@@ -58,6 +59,7 @@ import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { niceStep, type GpxTrack } from '../../domain/gpx-track';
 import { formatKm, formatMeters } from '@/utils/format';
 import { streetViewUrl } from '@/utils/street-view';
+import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
 import { gradientBands, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
@@ -135,6 +137,9 @@ const readout = computed(() => {
 // another click or a drag does, and Escape, a route change or leaving the chart releases it.
 const pinned = ref(false);
 watch(focus, value => { if (!value) pinned.value = false; });
+// The Street View icon greys out where Google has no imagery at the pinned position.
+watch(() => pinned.value && focus.value ? focus.value.coordinate : null, coord => { streetView.spot = coord; });
+const streetViewLabel = computed(() => streetView.missing ? 'Kein Street View hier' : 'Street View');
 const fromTooltip = (event: Event) => event.target instanceof Element && event.target.closest('.elevation-chart__tooltip') !== null;
 function pin(event: MouseEvent) { if (props.enabled && focus.value && !fromTooltip(event)) pinned.value = true; }
 function leaveFocus(event: FocusEvent) { if (!chart.value?.contains(event.relatedTarget as Node | null)) selectDistance(null); }
@@ -176,7 +181,8 @@ function key(event: KeyboardEvent) {
   max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); white-space: nowrap; font-size: .7rem; pointer-events: none; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
 .elevation-chart__tooltip--pinned { pointer-events: auto; }
-.elevation-chart__street-view { color: var(--accent); font-weight: 600; }
+.elevation-chart__street-view { display: inline-flex; align-self: center; color: var(--accent); }
+.elevation-chart__street-view[aria-disabled=true] { color: var(--text-muted); opacity: .6; cursor: not-allowed; }
 .elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto; }
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
 .elevation-chart__altitudes span { position: absolute; right: .5rem; transform: translateY(-50%); white-space: nowrap; }

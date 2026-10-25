@@ -16,6 +16,7 @@ export { default as IconEyeOff } from '@tabler/icons-vue/dist/esm/icons/IconEyeO
 export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/IconFileImport.mjs';
 export { default as IconFocus2 } from '@tabler/icons-vue/dist/esm/icons/IconFocus2.mjs';
 export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/IconFolderOpen.mjs';
+export { default as IconMan } from '@tabler/icons-vue/dist/esm/icons/IconMan.mjs';
 export { default as IconPencil } from '@tabler/icons-vue/dist/esm/icons/IconPencil.mjs';
 export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
 export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';

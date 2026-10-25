@@ -1,6 +1,6 @@
 <template>
   <div class="map-view">
-    <div class="map-view__stage">
+    <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking }">
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
@@ -8,6 +8,8 @@
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
+        <span v-if="streetView.picking" class="map-view__progress" role="status">
+          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }} · Esc bricht ab</span>
         <p v-if="mapError" class="notice notice--error" role="alert">
           {{ mapError }} <button type="button" class="btn" @click="retryBasemap">Erneut laden</button>
         </p>
@@ -25,7 +27,11 @@
           </template>
         </MapMenu>
         <CyclingOverlays :map="map" />
-        <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
+        <button type="button" class="btn btn--icon btn--map map-view__street-view" :aria-pressed="streetView.picking" aria-label="Street View"
+        title="Street View: Punkt auf der Karte wählen" @click="streetView.picking = !streetView.picking">
+        <IconMan :size="20" aria-hidden="true" />
+      </button>
+      <button v-if="route" type="button" class="btn btn--icon btn--map" aria-label="Route zeigen" title="Route zeigen" @click="fitRoute">
           <IconFocus2 :size="20" aria-hidden="true" />
         </button>
       </div>
@@ -40,10 +46,10 @@ import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouteStore } from '@/stores/route.store';
 import { LngLatBounds } from 'maplibre-gl';
-import { IconFocus2, IconStack2 } from '@/components/icons';
+import { IconFocus2, IconMan, IconStack2 } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
-import { useStreetViewMenu } from '@/composables/useStreetViewMenu';
+import { useStreetViewMap } from '@/composables/useStreetViewMap';
 import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
@@ -86,8 +92,13 @@ watch([route, routingPending], ([value, pending]) => {
 }, { immediate: true });
 useRouteDragging({ map });
 useMapInteractions(map);
-useStreetViewMenu(map);
+useStreetViewMap(map);
 const streetView = useStreetViewStore();
+function cancelPicking(event: KeyboardEvent) { if (event.key === 'Escape') streetView.picking = false; }
+watch(() => streetView.picking, picking => {
+  if (picking) window.addEventListener('keydown', cancelPicking);
+  else window.removeEventListener('keydown', cancelPicking);
+});
 useMarkerWatches(map);
 watch(map, instance => {
   if (instance) instance.once('load', () => {
@@ -107,6 +118,9 @@ function fitRoute() {
 <style scoped>
 .map-view { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
 .map-view__stage { position: relative; flex: 1; min-height: 0; }
+/* Street View mode: a crosshair everywhere, also over the route, which otherwise shows its drag hand. */
+.map-view__stage--picking :deep(.maplibregl-canvas) { cursor: crosshair !important; }
+.map-view__street-view[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 .map-view__canvas { position: absolute; inset: 0; }
 /* Below the map rather than over it, so the map's own controls stay visible. */
 .map-view__profile { --profile-height: 11rem; padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }

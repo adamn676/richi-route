@@ -8,6 +8,8 @@ java_bin="$app_dir/.cache/runtime/java/bin/java"
 rules_jar="$app_dir/experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar"
 rules_dir="$app_dir/experiments/routing/.local/local-routing-rules"
 log_dir="$app_dir/experiments/routing/.local"
+# Vite ignores .env files; local settings such as VITE_GOOGLE_MAPS_EMBED_KEY come from app/.env.local instead.
+if [ -f "$app_dir/.env.local" ]; then set -a; . "$app_dir/.env.local"; set +a; fi
 
 if [ ! -f "$bundle_dir/manifest.json" ] || [ ! -f "$bundle_dir/benchmark.mjs" ]; then
   echo 'The verified routing bundle is missing. Place richiroute-ubuntu-benchmark/ next to this checkout; see docs/local-development.md.' >&2

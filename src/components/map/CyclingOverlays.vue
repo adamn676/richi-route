@@ -20,6 +20,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Popup, type Map, type MapMouseEvent, type GeoJSONSource, type FilterSpecification } from 'maplibre-gl';
 import { IconBike } from '@/components/icons';
 import MapMenu from '@/components/map/MapMenu.vue';
+import { useStreetViewStore } from '@/stores/street-view.store';
 import { cyclingOverlays, cyclingPoiLayers, poiHitBox, type CyclingOverlay } from '@/config/cycling-overlays';
 
 const props = defineProps<{ map: Map | null }>();
@@ -92,9 +93,10 @@ async function loadPoints() {
     error.value = 'Rad-Infos konnten nicht geladen werden.';
   } finally { if (request === controller) request = undefined; }
 }
+const streetView = useStreetViewStore();
 function inspect(event: MapMouseEvent) {
   const map = props.map;
-  if (!installed || !map) return;
+  if (!installed || !map || streetView.picking) return;
   const feature = map.queryRenderedFeatures(poiHitBox(event.point), { layers: cyclingPoiLayers })[0];
   if (!feature || feature.geometry.type !== 'Point') return;
   const p = feature.properties, kind = p.kind;
