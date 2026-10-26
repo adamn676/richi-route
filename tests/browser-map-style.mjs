@@ -78,9 +78,9 @@ try {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
     return ['aerial', 'basemap-hybrid-road'].map(id => map.getLayoutProperty(id, 'visibility'));
   }), ['none', 'none']);
-  // Karte uses the cycling road colours.
+  // Karte uses the calm cycling colours of the map service's style.
   assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
-    .getPaintProperty('basemap-vector-roads_minor_casing', 'line-color')), '#738f81');
+    .getPaintProperty('basemap-vector-roads_minor_casing', 'line-color')), '#c3c8c1');
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .resetRoute([[15.438, 47.068], [15.444, 47.074]]));
   await page.waitForFunction(() => {
@@ -104,10 +104,12 @@ try {
   await page.getByText('Satellit', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'false');
   await chooseBasemap(page, 'street');
-  // Geländerelief is a switch, so the menu stays open for further choices.
+  // Geländerelief is on at first and a switch, so the menu stays open for further choices.
   await basemapMenu.click();
   await page.getByText('Geländerelief', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.evaluate(() => localStorage.getItem('richiroute.hillshade')), '0');
+  await page.getByText('Geländerelief', { exact: true }).click();
   await closeMenus(page);
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
     .getLayoutProperty('basemap-hillshade', 'visibility') === 'visible');

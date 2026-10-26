@@ -198,7 +198,8 @@ export const useRouteStore = defineStore('route', {
       const focus = state.surfaceFocus;
       if (!focus || state.legs[focus.leg.id] !== focus.leg) return null;
       return { legId: focus.leg.id, fromIndex: focus.fromIndex, toIndex: focus.toIndex,
-        coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1) };
+        coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1),
+        surface: focus.leg.surfaces.find(span => span.fromIndex === focus.fromIndex && span.toIndex === focus.toIndex)?.surface ?? 'unknown' };
     },
     distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
     ascentMeters: (state): number | null => {
@@ -437,11 +438,35 @@ export const useRouteStore = defineStore('route', {
         this.updateWaypointCoord(target.id, coord);
         return;
       }
-      const stop = waypoint('via', [...coord]);
-      const endIndex = this.points.findIndex((point) => point.type === 'stop' && point.kind === 'end');
+      // A further click extends the route: it becomes the destination, and the old one a stop on the way.
+      const stop = waypoint('end', [...coord]);
       this._remember();
-      this.points = [...this.points.slice(0, endIndex), stop, ...this.points.slice(endIndex)];
+      this.points = [...this.points.map((point): RoutePoint => point.type === 'stop' && point.kind === 'end' ? { ...point, kind: 'via' } : point), stop];
       this._snapPoint(stop.id, coord);
+      this._reconcile();
+    },
+
+    // The field's clear button takes the stop's point too, as one undoable step. A start or destination also takes the
+    // shaping points of its section, which would otherwise begin or end the route.
+    clearWaypoint(id: string) {
+      const index = this.points.findIndex((point) => point.id === id);
+      const stop = this.points[index];
+      if (stop?.type !== 'stop') throw new Error('Der ausgewählte Stopp existiert nicht mehr.');
+      if (!stop.coord) { this.setWaypointQuery(id, ''); return; }
+      let from = index, to = index;
+      if (stop.kind !== 'via') {
+        while (this.points[from - 1]?.type === 'shape') from--;
+        while (this.points[to + 1]?.type === 'shape') to++;
+      }
+      this._remember();
+      const operations = operationsFor(this);
+      for (const point of this.points.slice(from, to + 1)) {
+        operations.snaps.get(point.id)?.abort();
+        operations.snaps.delete(point.id);
+      }
+      operations.geocodes.get(id)?.abort();
+      operations.geocodes.delete(id);
+      this.points = [...this.points.slice(0, from), { ...waypoint(stop.kind), id }, ...this.points.slice(to + 1)];
       this._reconcile();
     },
 

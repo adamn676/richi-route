@@ -80,21 +80,24 @@ try {
 }
 const header = await archive.getHeader();
 const bounds = [header.minLon, header.minLat, header.maxLon, header.maxLat];
+// A calm light map, so the route, cycle paths and points stand out: off-white land, soft greens, white minor roads with
+// light outlines, pale main roads, and motorways, which bicycles may not use, in grey.
 const flavor = { ...namedFlavor('light'),
-  background: '#f7f6f1', earth: '#f7f6f1', water: '#91c6de', buildings: '#d9d0c4',
-  park_a: '#dbeacb', park_b: '#c5dfa9', wood_a: '#d0e3bd', wood_b: '#adcf98',
-  scrub_a: '#e2eacc', scrub_b: '#cdddb1', industrial: '#e6e2dc', pedestrian: '#f1e3c9',
-  minor_a: '#ffffff', minor_b: '#ffffff', minor_service: '#ffffff',
-  minor_casing: '#b8beb5', minor_service_casing: '#c6cbc1', other: '#b9aa8e',
-  major: '#ffe7a8', highway: '#f6ce83', major_casing_early: '#c6ad7d', major_casing_late: '#c6ad7d',
-  highway_casing_early: '#b79b6a', highway_casing_late: '#b79b6a',
-  bridges_major: '#ffe7a8', bridges_highway: '#f6ce83',
-  landcover: { ...namedFlavor('light').landcover, forest: '#adcf98', grassland: '#e2eacc',
-    farmland: '#eee9d4', urban_area: '#eae5dc', scrub: '#cdddb1' },
-  roads_label_minor: '#535b55', roads_label_major: '#434b46',
-  subplace_label: '#6b7369', subplace_label_halo: '#f1f0e9',
-  city_label: '#35433b', city_label_halo: '#f1f0e9',
-  state_label: '#70776d', country_label: '#556257', ocean_label: '#4c7c93',
+  background: '#f4f4f1', earth: '#f4f4f1', water: '#a8d2e6', buildings: '#e2e0da',
+  park_a: '#e1eed5', park_b: '#d2e7bf', wood_a: '#d9eacb', wood_b: '#c4dfb0',
+  scrub_a: '#e4edd6', scrub_b: '#d6e6c4', industrial: '#ebebe7', pedestrian: '#efede6', hospital: '#efe8e7', school: '#efece5',
+  minor_a: '#ffffff', minor_b: '#ffffff', minor_service: '#ffffff', other: '#bdb7aa', railway: '#b9bfbd',
+  minor_casing: '#c3c8c1', minor_service_casing: '#d3d7d0', bridges_minor_casing: '#c3c8c1',
+  major: '#fdf5e1', link: '#fdf5e1', major_casing_early: '#c9c1ad', major_casing_late: '#c9c1ad', link_casing: '#c9c1ad',
+  bridges_major: '#fdf5e1', bridges_link: '#fdf5e1', bridges_major_casing: '#c9c1ad', bridges_link_casing: '#c9c1ad',
+  highway: '#e4e1da', highway_casing_early: '#c6c2b8', highway_casing_late: '#c6c2b8',
+  bridges_highway: '#e4e1da', bridges_highway_casing: '#c6c2b8',
+  landcover: { ...namedFlavor('light').landcover, forest: '#c9e2b8', grassland: '#e6eed8',
+    farmland: '#f1f0e6', urban_area: '#ecece8', scrub: '#d6e6c4' },
+  roads_label_minor: '#5f6762', roads_label_major: '#4b524e',
+  subplace_label: '#757c77', subplace_label_halo: '#f4f4f1',
+  city_label: '#2f3834', city_label_halo: '#f4f4f1',
+  state_label: '#7a817c', country_label: '#5c645f', ocean_label: '#4f7f95',
 };
 const style = Buffer.from(JSON.stringify({
   version: 8,
@@ -108,7 +111,7 @@ const style = Buffer.from(JSON.stringify({
   layers: layers('europe', flavor, { lang: 'de' }).flatMap(layer => {
     if (layer.id === 'pois') return [{ ...layer, minzoom: 16 }];
     if (layer.id === 'buildings') return [{ ...layer, paint: { ...layer.paint,
-      'fill-opacity': 1, 'fill-outline-color': '#c4baab' } }];
+      'fill-opacity': 1, 'fill-outline-color': '#d4d1ca' } }];
     if (layer.id === 'landuse_park') return [{ ...layer, paint: { ...layer.paint,
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 6, .25, 9, 1] } }];
     return [layer];

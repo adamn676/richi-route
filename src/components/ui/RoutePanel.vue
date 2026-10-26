@@ -37,6 +37,7 @@
               @update:model-value="(value) => routeStore.setWaypointQuery(point.id, value)"
               @item-select="(place) => run(() => routeStore.setWaypointPlace(point.id, place))"
               @text-submit="(query) => run(() => routeStore.searchAndSetWaypointAddress(point.id, query))"
+              @clear="run(() => routeStore.clearWaypoint(point.id))"
             />
             <small v-if="point.isGeocoding">Adresse wird ermittelt …</small>
             <small v-else-if="point.address && point.address !== point.userInput">Bisher: {{ point.address }}</small>

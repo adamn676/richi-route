@@ -1,4 +1,4 @@
-import type { LayerSpecification, LineLayerSpecification, RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
+import type { LayerSpecification, RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
 import { onlineBasemap, type OnlineBasemap } from './online-basemaps';
 
 export type EditorBasemap = 'street' | 'aerial' | OnlineBasemap;
@@ -66,15 +66,6 @@ export function aerialVectorLayers(style: StyleSpecification): LayerSpecificatio
     });
   }
   return layers;
-}
-
-// Motorways recede and minor roads stand out, as suits cycling.
-export function cyclingRoadPaint(layer: LineLayerSpecification): LineLayerSpecification['paint'] {
-  if (layer['source-layer'] !== 'roads') return undefined;
-  if (layer.id.includes('highway')) return { 'line-color': layer.id.includes('casing') ? '#b9bbb3' : '#dddcd3' };
-  if (layer.id.includes('minor') && layer.id.includes('casing')) return { 'line-color': '#738f81' };
-  if (layer.id.includes('major') && layer.id.includes('casing')) return { 'line-color': '#b7a581' };
-  return undefined;
 }
 
 export function initialBasemap(): EditorBasemap {

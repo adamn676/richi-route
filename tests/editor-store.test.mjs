@@ -256,3 +256,38 @@ test('outer routing uses the original click even when preliminary snapping choos
   assert.deepEqual(store.waypoints[0].coord, [15.4, 47]);
   assert.equal(store.hasAirLines, false);
 });
+
+test('a further map click extends the route and undo takes it back', async t => {
+  setActivePinia(createPinia());
+  intercept(t);
+  const store = useRouteStore();
+  for (const coord of [[15.4, 47], [15.41, 47], [15.42, 47]]) { store.addWaypointByClick(coord); await settle(); }
+  assert.deepEqual(store.waypoints.map(p => [p.kind, p.coord]), [['start', [15.4, 47]], ['via', [15.41, 47]], ['end', [15.42, 47]]]);
+  assert.equal(Object.keys(store.legs).length, 2);
+  store.undo();
+  await settle();
+  assert.deepEqual(store.waypoints.map(p => [p.kind, p.coord]), [['start', [15.4, 47]], ['end', [15.41, 47]]]);
+});
+
+test('clearing a start takes its point and the shaping of its section, as one undo step', async t => {
+  setActivePinia(createPinia());
+  intercept(t);
+  const store = useRouteStore();
+  store.resetRoute([[15.4, 47], [15.41, 47], [15.42, 47], [15.43, 47]], [1]);
+  await settle();
+  const before = JSON.stringify(store.points);
+  store.clearWaypoint(store.waypoints[0].id);
+  await settle();
+  assert.deepEqual(store.points.map(p => p.type === 'stop' ? [p.kind, p.coord, p.userInput] : p.type),
+    [['start', null, ''], ['via', [15.42, 47], ''], ['end', [15.43, 47], '']]);
+  assert.equal(Object.keys(store.legs).length, 1, 'Only the section between the remaining stops is routed');
+  store.undo();
+  await settle();
+  assert.equal(JSON.stringify(store.points), before);
+  const empty = store.addIntermediateStopAndPrepare();
+  store.setWaypointQuery(empty, 'Graz');
+  const steps = store.undoStack.length;
+  store.clearWaypoint(empty);
+  assert.equal(store.waypoints.find(p => p.id === empty).userInput, '', 'A stop without a point only loses its text');
+  assert.equal(store.undoStack.length, steps);
+});

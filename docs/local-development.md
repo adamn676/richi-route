@@ -286,10 +286,11 @@ Tiles, font glyphs, symbols and the generated German street style are served
 from `.cache/maps/` by `npm run maps:start`. The planner requests them through
 Vite's same-origin `/maps` proxy. No public map service is used for **Karte**,
 and a failed local service never triggers an online fallback. All map choices
-preserve the route and profile overlays. Karte keeps buildings opaque and uses
-distinct road, water and vegetation colours. As suits cycling, minor roads get
-stronger outlines and motorways recede; these are road classes, not traffic
-measurements or a guarantee of paved surfaces. Labels remain above route geometry.
+preserve the route and profile overlays. Karte uses a calm light palette, so the
+route, cycle paths and points stand out: off-white land, soft greens, white minor
+roads with light outlines, pale main roads and grey motorways, which bicycles may
+not use. These are road classes, not traffic measurements or a guarantee of paved
+surfaces. Labels remain above route geometry.
 Map labels fade over 100 ms. MapLibre allows eight outstanding image requests
 in detailed aerial mode and 32 in the other modes. The shorter queue prevents
 slow regional exports from delaying local labels on HTTP/1.1; the browser's
@@ -298,8 +299,8 @@ The imagery service keeps its bounded worker and queue limits.
 Street names remain visible on Karte and Satellit with or without a route. They
 render above route lines and surface highlights, while route markers stay on top.
 
-**Geländerelief** (a switch in the map menu) adds shaded relief:
-beneath roads and labels on Karte, over OpenTopoMap. It stays off on Satellit,
+**Geländerelief** (a switch in the map menu, on at first) adds soft shaded relief,
+softer still in town: beneath roads and labels on Karte, over OpenTopoMap. It stays off on Satellit,
 whose photos already show real shadows. Run
 `npm run terrain:setup` after `maps:setup`, then restart `maps:start`.
 The setup extracts Europe from [Mapterhorn](https://mapterhorn.com/data-access/)
@@ -620,7 +621,8 @@ Address suggestions use the local Photon service through `/geocoding/api/`.
 Queries stay on this computer. Suggestions load after three characters and a
 350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
 loaded result. Results of the same name within 200 m (a square, its street and
-its stops) show once. No routing geometry is sent to the search service, and unavailable
+its stops) show once. The × in a stop's field removes the stop's point as well as
+its text (a start or destination also its shaping points); undo restores it. No routing geometry is sent to the search service, and unavailable
 local search never falls back to `photon.komoot.io`.
 
 An address with a house number starts on its own street: the planner takes the
@@ -920,7 +922,8 @@ as a bar and lists its length and percentage; the colours match the route on the
 map: green for asphalt, blue for other paving, amber for rough paving and wood,
 magenta for unpaved and a light grey for unknown, told apart also with colour
 blindness. Select a material to see its sections along the route, with its part
-of the bar standing out, and select it again to close them. Select a section to frame and highlight it on the map. **Weitere
+of the bar standing out, and select it again to close them. Select a section to frame it on the map, drawn in its colour above the
+route, which fades meanwhile. **Weitere
 Abschnitte** shows ten more entries; **Markierung aufheben** removes the
 highlight.
 

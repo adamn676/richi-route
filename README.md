@@ -16,7 +16,7 @@ Austria. The planner currently has a German interface.
 - Drag points or route sections, with undo and redo.
 - Inspect distance, ascent, elevation and surface types along the route.
 - Highlight individual surface sections on the map.
-- Choose the local map, which colours roads for cycling, or an aerial view with street names; add shaded relief, or switch to OpenTopoMap online.
+- Choose the calm local map with shaded relief, or an aerial view with street names, or switch to OpenTopoMap online.
 - Switch on cycle paths, signed cycle routes, drinking-water sources, bicycle services, food stops and railway stations over any map.
 - Look at Google Street View from any point on the map or the elevation profile.
 - Save, reopen, rename and duplicate routes in a local route collection.
@@ -44,8 +44,9 @@ before starting the planner:
 npm run dev:local
 ```
 
-Open **http://127.0.0.1:5173/**. Click the map to place a start and destination,
-then drag the route to choose different roads (on a phone, hold it briefly first). Ctrl+C stops the planner,
+Open **http://127.0.0.1:5173/**. Click the map to place a start and destination;
+further clicks extend the route. Drag the route to choose different roads (on a
+phone, hold it briefly first); the × in a stop's field removes that stop. Ctrl+C stops the planner,
 routing engine, search and map services. The launcher is included in `scripts/start-local.sh`.
 
 Without the routing bundle, the frontend and unit tests can still be built

@@ -1,4 +1,4 @@
-import type { Map as MaplibreMap, GeoJSONSource } from 'maplibre-gl';
+import type { Map as MaplibreMap, ExpressionSpecification, GeoJSONSource } from 'maplibre-gl';
 import type { Feature, LineString } from 'geojson';
 import {
   MAP_LABELS_ANCHOR,
@@ -11,6 +11,9 @@ import {
 import { routeStyle } from '@/config/mapStyle';
 import type { EditorRoute, RouteFeature } from '@/stores/route.store';
 import { getSegments } from '@/utils/geometry';
+
+// While a surface section is shown (SurfaceFocusLayer), the rest of the route fades.
+const faded: ExpressionSpecification = ['boolean', ['global-state', 'surfaceFocus'], false];
 
 export function useSegmentedRoute() {
   // Segment ids per drawn leg feature, so that an edit only sends the changed legs to the map.
@@ -45,7 +48,7 @@ export function useSegmentedRoute() {
         paint: {
           'line-color': routeStyle.outlineColor,
           'line-width': 9,
-          'line-opacity': .95,
+          'line-opacity': ['case', faded, .35, .95],
         },
       }, MAP_LABELS_ANCHOR);
       map.addLayer({
@@ -66,6 +69,7 @@ export function useSegmentedRoute() {
             routeStyle.unknown,
           ],
           'line-width': 5,
+          'line-opacity': ['case', faded, .35, 1],
         },
       }, MAP_LABELS_ANCHOR);
       map.addLayer({

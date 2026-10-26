@@ -1,6 +1,6 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { AttributionControl, Map, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
-import { aerialVectorLayers, cyclingRoadPaint, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
+import { aerialVectorLayers, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 
@@ -9,8 +9,9 @@ const hillshadeKey = 'richiroute.hillshade';
 export function useMap(container: string, creditsContainer: string) {
   const map = shallowRef<Map | null>(null);
   const basemap = ref(initialBasemap());
-  // Terrain shading from the local terrain data; satellite photos have real shadows, so it stays off there.
-  const hillshade = ref((() => { try { return localStorage.getItem(hillshadeKey) === '1'; } catch { return false; } })());
+  // Terrain shading from the local terrain data, on unless switched off; satellite photos have real shadows, so it stays
+  // off there.
+  const hillshade = ref((() => { try { return localStorage.getItem(hillshadeKey) !== '0'; } catch { return true; } })());
   const mapError = ref('');
   const aerialMap = () => basemap.value === 'aerial';
   const vectorMap = () => basemap.value === 'street';
@@ -47,8 +48,6 @@ export function useMap(container: string, creditsContainer: string) {
         instance.addLayer({ ...layer, id, ...('source' in layer ? { source: `basemap-vector-${layer.source}` } : {}),
           layout: { ...layer.layout, visibility: vectorMap() ? visibility : 'none' } }, layer.id.startsWith('roads_labels_') ? 'map-labels-top' : 'aerial');
         vectorLayers.push({ id, visibility });
-        const paint = layer.type === 'line' && cyclingRoadPaint(layer);
-        if (paint) instance.setPaintProperty(id, 'line-color', paint['line-color']);
       }
       for (const layer of aerialVectorLayers(style)) {
         instance.addLayer({ ...layer, layout: { ...layer.layout, visibility: aerialMap() ? 'visible' : 'none' } },
@@ -74,8 +73,9 @@ export function useMap(container: string, creditsContainer: string) {
     if (hillshade.value && !instance.getSource('basemap-terrain')) {
       instance.addSource('basemap-terrain', { type: 'raster-dem', url: '/maps/terrain.json', tileSize: 512, encoding: 'terrarium' });
       instance.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain',
-        paint: { 'hillshade-exaggeration': .3, 'hillshade-shadow-color': '#445648',
-          'hillshade-highlight-color': '#fffcec', 'hillshade-accent-color': '#68765b' } }, 'basemap-overlay-anchor');
+        // Soft, and softer still in town, where the coarse terrain data would only smudge streets and buildings.
+        paint: { 'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 12, .25, 16, .08], 'hillshade-shadow-color': '#5d6a63',
+          'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#7b8a80' } }, 'basemap-overlay-anchor');
     }
     // On Karte the shading lies beneath the roads; on online maps it lies over them.
     if (instance.getLayer('basemap-hillshade')) {

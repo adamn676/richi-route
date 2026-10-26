@@ -1,7 +1,7 @@
 <template>
   <!-- A combobox keeps typed text and offers matching places; Vuetify handles the menu and its keys, Enter in the field is
        handled here. Empty text is no value, so the field shows its placeholder, which says what to do, and no clear
-       button. -->
+       button. That button is our own, since it empties the stop rather than only its text. -->
   <v-combobox
     :id="`address-${waypointId}`"
     :model-value="inputValue || null"
@@ -25,6 +25,10 @@
     @keydown.enter="submitText"
     @keydown.esc="cancelSearch"
   >
+    <template #clear>
+      <!-- Its keys stay away from the combobox, which would take Enter for a search. -->
+      <v-icon-button icon="$clear" size="x-small" :aria-label="`${label} entfernen`" @click="clearStop" @keydown.stop />
+    </template>
     <template #no-data>
       <v-list-item v-if="errorMessage" role="alert" base-color="error" :title="errorMessage" />
       <v-list-item v-else title="Keine Adresse gefunden. Du kannst den Punkt auch auf der Karte setzen." />
@@ -52,6 +56,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
   'item-select': [place: Place];
   'text-submit': [query: string];
+  clear: [];
 }>();
 
 const { mobile } = useDisplay();
@@ -113,6 +118,12 @@ function queueSearch(value: string): void {
         menu.value = focused.value;
       });
   }, 350);
+}
+
+// The cleared field hides its button, so the focus returns to the field.
+function clearStop(): void {
+  emit('clear');
+  document.getElementById(`address-${props.waypointId}`)?.focus();
 }
 
 // A chosen place closes the keyboard on phones, so the sheet gives the map back; only once Vuetify has closed its menu,

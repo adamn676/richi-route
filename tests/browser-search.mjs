@@ -138,10 +138,11 @@ try {
   await start.press('Escape');
   await page.waitForTimeout(500);
   assert.equal(await page.getByRole('listbox').count(), 0);
-  // The field's clear button empties it and keeps the cursor there.
+  // The field's clear button removes the stop with its text and keeps the cursor there.
   await start.fill('Wird gelöscht');
-  await page.getByRole('button', { name: 'Start leeren', exact: true }).click();
+  await page.getByRole('button', { name: 'Start entfernen', exact: true }).click();
   assert.equal(await start.inputValue(), '');
+  assert.equal((await points())[0].coord, null, 'The start is removed, not only its text');
   assert.equal(await start.evaluate(field => field === document.activeElement), true, 'The field keeps the focus');
   await page.setViewportSize({ width: 390, height: 844 });
   mode = 'many';
