@@ -2,17 +2,18 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, watch } from 'vue';
-import { LngLatBounds, type ExpressionSpecification, type Map, type GeoJSONSource } from 'maplibre-gl';
+import { LngLatBounds, type ExpressionSpecification, type Map, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { LoopSuggestion } from '@/services/loop-suggestions.service';
-import { MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '@/config/map.config';
+import { LOOP_OUTLINE_LAYER, MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '@/config/map.config';
 import { loopColors } from '@/config/mapStyle';
 import { fitAndSettle } from '@/utils/map-fit';
 
 // The suggested loops in their card colours, beneath the route. The selected one is the route itself; the others stay
 // faint for comparison, and the one pointed at in the list stands out.
 const props = defineProps<{ map: Map; loops: LoopSuggestion[] | null; highlighted: number | null; selected: number | null }>();
-const source = 'loop-suggestions-source', layers = ['loop-suggestions-outline', 'loop-suggestions-line'];
+const emit = defineEmits<{ highlight: [index: number | null] }>();
+const source = 'loop-suggestions-source', layers = [LOOP_OUTLINE_LAYER, 'loop-suggestions-line'];
 let ready = false;
 const highlight: ExpressionSpecification = ['coalesce', ['global-state', 'loopHighlight'], -1];
 const selection: ExpressionSpecification = ['coalesce', ['global-state', 'loopSelected'], -1];
@@ -43,6 +44,16 @@ function mark() {
   props.map.setGlobalStateProperty('loopSelected', props.selected ?? -1);
 }
 function styleLoaded() { ready = true; draw(); }
+// Pointing at a loop on the map marks it in the list too; a click chooses it (useMapInteractions).
+function point(event: MapLayerMouseEvent) {
+  props.map.getCanvas().style.cursor = 'pointer';
+  emit('highlight', event.features?.[0]?.properties.index ?? null);
+}
+function leave() {
+  const canvas = props.map.getCanvas();
+  if (canvas.style.cursor === 'pointer') canvas.style.cursor = '';
+  emit('highlight', null);
+}
 // The selected loop in view, otherwise all of them. The profile comes and goes with a selection, so the fit holds once
 // the map has changed size.
 function fit() {
@@ -54,6 +65,7 @@ function fit() {
 watch(() => props.loops, loops => {
   draw();
   if (loops?.length) fitAndSettle(props.map, fit);
+  else leave();
 });
 watch(() => props.highlighted, mark);
 watch(() => props.selected, () => {
@@ -62,11 +74,15 @@ watch(() => props.selected, () => {
 });
 onMounted(() => {
   props.map.on('style.load', styleLoaded);
+  props.map.on('mousemove', layers[0], point);
+  props.map.on('mouseleave', layers[0], leave);
   ready = props.map.isStyleLoaded() === true;
   draw();
 });
 onBeforeUnmount(() => {
   props.map.off('style.load', styleLoaded);
+  props.map.off('mousemove', layers[0], point);
+  props.map.off('mouseleave', layers[0], leave);
   for (const layer of [...layers].reverse()) if (props.map.getLayer(layer)) props.map.removeLayer(layer);
   if (props.map.getSource(source)) props.map.removeSource(source);
 });

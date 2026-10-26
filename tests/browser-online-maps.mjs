@@ -73,10 +73,10 @@ try {
     if (mode !== 'street') assert.ok(tiles[mode] > 0, `${mode} loads its tiles`);
     const state = await page.evaluate(mode => {
       const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
-      return { mode, waterVisible: map.getLayoutProperty('cycling-water', 'visibility'), localGlyphs: map.getGlyphs()?.includes('/maps/fonts/'),
+      return { mode, cyclewaysVisible: map.getLayoutProperty('cycling-cycleways', 'visibility'), localGlyphs: map.getGlyphs()?.includes('/maps/fonts/'),
         vectorVisible: map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-') && layer.layout?.visibility !== 'none') };
     }, mode);
-    assert.equal(state.waterVisible, 'visible');
+    assert.equal(state.cyclewaysVisible, 'visible', 'Overlays stay on every map');
     assert.equal(state.vectorVisible, mode === 'street', `${mode}: the local map shows only on Karte`);
     assert.equal(state.localGlyphs, true, 'Overlay labels keep the local fonts');
     assert.equal(await page.evaluate(async () => JSON.stringify(await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('segments-source').getData())), geometry);

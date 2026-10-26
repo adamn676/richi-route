@@ -4,3 +4,4 @@ export const SEGMENTS_OUTLINE_LAYER = 'segments-outline';
 export const SEGMENTS_ROUTE_LAYER = 'segments-routed';
 export const SEGMENTS_AIR_LAYER = 'segments-air';
 export const SEGMENTS_BASE_LAYER = 'segments-base';
+export const LOOP_OUTLINE_LAYER = 'loop-suggestions-outline';

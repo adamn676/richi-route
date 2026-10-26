@@ -1,6 +1,7 @@
 <template>
   <!-- A combobox keeps typed text and offers matching places; Vuetify handles the menu and its keys, Enter in the field is
-       handled here. Empty text is no value, so the field shows its placeholder and no clear button. -->
+       handled here. Empty text is no value, so the field shows its placeholder, which says what to do, and no clear
+       button. -->
   <v-combobox
     :id="`address-${waypointId}`"
     :model-value="inputValue || null"
@@ -10,7 +11,7 @@
     no-filter
     :label="label"
     :placeholder="placeholder"
-    :persistent-placeholder="raised"
+    persistent-placeholder
     :disabled="disabled"
     :loading="isLoading"
     :hide-no-data="!errorMessage && !nothingFound"
@@ -33,6 +34,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
+import { useDisplay } from 'vuetify';
 import { forwardGeocode, type Place } from '@/services/geocoding.service';
 
 const props = withDefaults(defineProps<{
@@ -40,12 +42,9 @@ const props = withDefaults(defineProps<{
   waypointId: string;
   label: string;
   placeholder?: string;
-  // Keeps the label up and the placeholder shown when it stands for a value, such as a point's position.
-  raised?: boolean;
   disabled?: boolean;
 }>(), {
   placeholder: 'Adresse suchen',
-  raised: false,
   disabled: false,
 });
 
@@ -55,6 +54,7 @@ const emit = defineEmits<{
   'text-submit': [query: string];
 }>();
 
+const { mobile } = useDisplay();
 const inputValue = ref(props.modelValue);
 const suggestions = ref<Place[]>([]);
 const isLoading = ref(false);
@@ -115,6 +115,12 @@ function queueSearch(value: string): void {
   }, 350);
 }
 
+// A chosen place closes the keyboard on phones, so the sheet gives the map back; only once Vuetify has closed its menu,
+// which would take the focus back.
+function closeKeyboard(): void {
+  if (mobile.value) setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
+}
+
 // Typing (or clearing) gives text; choosing a suggestion gives the place, then its label as text, which needs no search.
 function onUpdate(value: Place | string | null): void {
   if (value && typeof value === 'object') {
@@ -124,6 +130,7 @@ function onUpdate(value: Place | string | null): void {
     menu.value = false;
     emit('update:modelValue', value.label);
     emit('item-select', value);
+    closeKeyboard();
     return;
   }
   if ((value ?? '') === inputValue.value) return;
@@ -140,6 +147,7 @@ function submitText(): void {
   cancelSearch();
   menu.value = false;
   emit('text-submit', inputValue.value.trim());
+  closeKeyboard();
 }
 
 onBeforeUnmount(cancelSearch);

@@ -50,7 +50,7 @@ try {
   const placed = await points();
   assert.ok(placed.every(point => point.coord && !point.snapError));
   assert.equal(queries, 2);
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chooseBasemap(page, 'street');
   await page.waitForFunction(() => {
     const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;

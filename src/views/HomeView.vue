@@ -9,7 +9,7 @@
           @pointerdown="startDrag" @pointermove="drag" @pointerup="endDrag" @pointercancel="endDrag"
           @click="tapped" @keydown.up.prevent="step(1)" @keydown.down.prevent="step(-1)" />
       </template>
-      <AppSidebar ref="sidebar" class="editor-layout__sidebar" />
+      <AppSidebar ref="sidebar" class="editor-layout__sidebar" @tab-click="sheet === 'peek' && (sheet = 'half')" />
     </v-navigation-drawer>
     <v-main class="editor-layout__main">
       <MapView />
@@ -90,9 +90,9 @@ function tapped() {
   sheet.value = sheet.value === 'full' ? 'peek' : sheets[sheets.indexOf(sheet.value) + 1];
 }
 
-// An opened route shows on the map, so the sheet makes way.
-const { fitRequest } = storeToRefs(useRouteStore());
-watch(fitRequest, () => { if (phone.value) sheet.value = 'peek'; });
+// A route opened or completed by address shows on the map, so the sheet makes way; a single stop shows above it.
+const { fitRequest, route } = storeToRefs(useRouteStore());
+watch(fitRequest, () => { if (phone.value && route.value) sheet.value = 'peek'; });
 onMounted(measure);
 watch(width, measure, { flush: 'post' });
 </script>
@@ -106,8 +106,9 @@ watch(width, measure, { flush: 'post' });
   position: absolute; top: 50%; left: var(--v-layout-left); z-index: 20; padding: 0;
   transform: translateY(-50%); transition: left .2s cubic-bezier(.4, 0, .2, 1);
 }
+/* A tall strip, so a thumb finds it. */
 .editor-layout__handle {
-  display: grid; place-items: center; width: 100%; height: 1.5rem; padding: 0; border: 0;
+  display: grid; place-items: center; width: 100%; height: 2.25rem; padding: 0; border: 0;
   background: var(--surface); cursor: grab; touch-action: none;
 }
 .editor-layout__handle::before { content: ''; width: 2.5rem; height: .25rem; border-radius: 1rem; background: var(--border-input); }

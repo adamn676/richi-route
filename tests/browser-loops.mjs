@@ -162,7 +162,8 @@ try {
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await page.waitForFunction(`!${store('route')}.waypoints[0].coord`);
   assert.equal(await saved(), library, 'A start alone is not saved');
-  await page.evaluate(`${store('route')}.addWaypointByClick([${start}])`);
+  // Set as if by a click on the map, which takes the focus from the Start field the new route focused.
+  await page.evaluate(`${store('route')}.addWaypointByClick([${start}]); document.activeElement.blur()`);
   await page.waitForFunction(`${store('route')}.waypoints[0].address && !${store('route')}.waypoints[0].snapPending`);
 
   // On a phone the sheet stays up while choosing, and the cards fit.

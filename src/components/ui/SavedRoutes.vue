@@ -10,7 +10,7 @@
 
     <div class="library__group">
       <div class="library__heading">
-        <h2 class="text-title-medium">Gespeicherte Routen <span>{{ entries.length }}</span></h2>
+        <h2 ref="heading" class="text-title-medium" tabindex="-1">Gespeicherte Routen <span>{{ entries.length }}</span></h2>
         <v-icon-button v-tooltip:bottom="'Liste aktualisieren'" :disabled="busy" aria-label="Aktualisieren"
           @click="refreshList"><IconRefresh :size="16" aria-hidden="true" /></v-icon-button>
       </div>
@@ -23,7 +23,8 @@
             <v-icon-button v-tooltip:bottom="'Öffnen'" :disabled="busy" aria-label="Öffnen" @click="open(entry)"><IconFolderOpen :size="17" aria-hidden="true" /></v-icon-button>
             <v-menu location="bottom end">
               <template #activator="{ props: menu, isActive }">
-                <v-icon-button v-bind="menu" v-tooltip:bottom="{ text: 'Weitere Aktionen', disabled: isActive }" :disabled="busy" aria-label="Weitere Aktionen">
+                <v-icon-button v-bind="menu" v-tooltip:bottom="{ text: 'Weitere Aktionen', disabled: isActive }" :disabled="busy" aria-label="Weitere Aktionen"
+                  @click="menuButton = $event.currentTarget">
                   <IconDotsVertical :size="17" aria-hidden="true" /></v-icon-button>
               </template>
               <v-list>
@@ -38,14 +39,13 @@
     </div>
 
     <footer class="library__backup">
-      <v-btn v-tooltip:bottom="'Die aktuelle Route als Datei sichern; Routen bleiben sonst nur in diesem Browser'" variant="outlined" size="small"
-        :prepend-icon="IconDownload" :disabled="busy || !hasDraft" aria-label="Sicherung herunterladen" @click="download">Herunterladen</v-btn>
-      <v-btn v-tooltip:bottom="'Eine RichiRoute-Sicherung zu „Meine Routen“ hinzufügen'" variant="outlined" size="small"
-        :prepend-icon="IconUpload" :disabled="busy" aria-label="Sicherung importieren" @click="fileInput?.click()">Importieren</v-btn>
+      <p class="text-body-small text-medium-emphasis">Routen bleiben nur in diesem Browser. Eine Sicherungsdatei bringt sie auf ein anderes Gerät.</p>
+      <v-btn variant="outlined" size="small" :prepend-icon="IconDownload" :disabled="busy || !hasDraft" @click="download">Aktuelle Route sichern</v-btn>
+      <v-btn variant="outlined" size="small" :prepend-icon="IconUpload" :disabled="busy" @click="fileInput?.click()">Sicherung einlesen</v-btn>
       <input ref="fileInput" type="file" accept=".json,application/json" aria-label="RichiRoute-Sicherung auswählen" hidden @change="importSelected" />
     </footer>
 
-    <v-dialog :model-value="Boolean(renaming)" max-width="400" @update:model-value="open => open || (renaming = undefined)">
+    <v-dialog :model-value="Boolean(renaming)" max-width="400" @update:model-value="open => open || (renaming = undefined)" @after-leave="returnFocus">
       <v-card title="Route umbenennen">
         <form @submit.prevent="finishRename">
           <v-card-text>
@@ -60,7 +60,7 @@
         </form>
       </v-card>
     </v-dialog>
-    <v-dialog :model-value="Boolean(deleting)" max-width="400" @update:model-value="open => open || (deleting = undefined)">
+    <v-dialog :model-value="Boolean(deleting)" max-width="400" @update:model-value="open => open || (deleting = undefined)" @after-leave="returnFocus">
       <v-card title="Route löschen?">
         <v-card-text>
           „{{ deleting?.name }}“ wird endgültig aus „Meine Routen“ gelöscht.
@@ -91,6 +91,12 @@ const renaming = shallowRef<SavedRouteSummary>();
 const deleting = shallowRef<SavedRouteSummary>();
 const renameValue = ref('');
 const dateLabel = (date: string) => new Date(date).toLocaleDateString('de-AT');
+// The dialogs open from a row's menu, so closing one returns to that menu's button, or after a deletion to the heading.
+const heading = ref<HTMLElement>();
+const menuButton = shallowRef<EventTarget | null>(null);
+function returnFocus() {
+  (menuButton.value instanceof HTMLElement && menuButton.value.isConnected ? menuButton.value : heading.value)?.focus();
+}
 
 function startRename(entry: SavedRouteSummary) {
   renaming.value = entry;
@@ -124,4 +130,5 @@ h2 span { margin-left: .3rem; color: var(--text-muted); font-weight: 500; font-v
 .library__list :deep(.v-list-item) { border-bottom: 1px solid var(--border); }
 .library__list :deep(.v-list-item-title) { white-space: normal; overflow-wrap: anywhere; }
 .library__backup { display: flex; flex-wrap: wrap; gap: .4rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.library__backup p { flex-basis: 100%; margin: 0 0 .2rem; }
 </style>

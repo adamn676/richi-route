@@ -20,7 +20,7 @@ page.on('pageerror', error => errors.push(error.message));
 const gpx = (body, namespace = 'http://www.topografix.com/GPX/1/1', version = '1.1') => `<gpx version="${version}" xmlns="${namespace}">${body}</gpx>`;
 const point = (lon, lat, ele = '') => `<trkpt lon="${lon}" lat="${lat}">${ele === '' ? '' : `<ele>${ele}</ele>`}</trkpt>`;
 const upload = async (name, contents) => {
-  await page.getByRole('tab', { name: 'Import', exact: true }).click();
+  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
   await page.waitForFunction(() => !document.querySelector('.gpx')?.textContent.includes('GPX wird eingelesen'));
 };
@@ -83,7 +83,7 @@ try {
 
   await page.getByLabel('Track einblenden', { exact: true }).uncheck();
   assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('gpx-reference-line', 'visibility')), 'none');
-  await page.getByRole('button', { name: 'Track zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Track zoomen', exact: true }).click();
   assert.equal(await page.getByLabel('Track einblenden', { exact: true }).isChecked(), true);
   await chooseBasemap(page, 'aerial');
   await chooseBasemap(page, 'street');
@@ -131,7 +131,7 @@ try {
   await page.locator('.gpx').evaluate(el => el.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: output + '/desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Track zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Track zoomen', exact: true }).click();
   await page.locator('.gpx').evaluate(el => el.scrollIntoView({ block: 'start' }));
   for (const button of await page.locator('.gpx button:visible').all()) {
     const box = await button.boundingBox();

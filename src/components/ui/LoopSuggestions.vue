@@ -4,15 +4,15 @@
     <form class="loops__form" @submit.prevent="suggest">
       <v-text-field v-model.number="target.km" label="Distanz" suffix="km" type="number" min="10" max="300" step="5" required />
       <v-text-field v-model.number="target.ascent" label="Anstieg" suffix="m" type="number" min="0" max="6000" step="50" required />
-      <span v-tooltip:bottom="{ text: 'Zuerst einen Start setzen', disabled: Boolean(start) }">
-        <v-btn type="submit" variant="flat" :loading="loops.loading" :disabled="!start || loops.loading">Vorschläge</v-btn>
-      </span>
+      <v-btn type="submit" variant="flat" :loading="loops.loading" :disabled="!start || loops.loading">Vorschläge</v-btn>
     </form>
+    <p v-if="!start" class="text-body-small text-medium-emphasis">Runden beginnen am Start; zuerst einen Start setzen.</p>
     <v-alert v-if="loops.error" type="error">{{ loops.error }}</v-alert>
     <p v-else-if="loops.suggestions && !loops.suggestions.length" class="text-body-small text-medium-emphasis" role="status">Von hier ließ sich keine Runde berechnen.</p>
     <template v-else-if="loops.suggestions">
       <!-- A selected loop is the route below, with its profile and surfaces, and the map zooms to it; the others stay faint.
            Selecting it again shows all three. -->
+      <p class="text-body-small text-medium-emphasis">Eine Runde hier oder auf der Karte wählen.</p>
       <v-list class="loops__list" role="group" aria-label="Vorschläge">
         <v-list-item v-for="(loop, index) in loops.suggestions" :key="index" tag="button" type="button" role="button" class="loops__item"
           :aria-pressed="loops.selected === index" :active="loops.selected === index" color="primary" rounded="lg"
@@ -63,5 +63,5 @@ onBeforeUnmount(() => { if (!loops.suggestions) loops.clear(); });
 .loops__item { width: 100%; text-align: left; }
 .loops__swatch { display: block; width: .9rem; height: .9rem; border-radius: 50%; }
 .loops__actions { display: flex; gap: .5rem; }
-@media (max-width: 380px) { .loops__form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .loops__form > span { grid-column: 1 / -1; } }
+@media (max-width: 380px) { .loops__form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .loops__form > .v-btn { grid-column: 1 / -1; } }
 </style>

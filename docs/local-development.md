@@ -298,7 +298,7 @@ The imagery service keeps its bounded worker and queue limits.
 Street names remain visible on Karte and Satellit with or without a route. They
 render above route lines and surface highlights, while route markers stay on top.
 
-**Schummerung** (a checkbox under **Ebenen** in the map menu) adds shaded relief:
+**Geländerelief** (a switch in the map menu) adds shaded relief:
 beneath roads and labels on Karte, over OpenTopoMap. It stays off on Satellit,
 whose photos already show real shadows. Run
 `npm run terrain:setup` after `maps:setup`, then restart `maps:start`.
@@ -388,11 +388,12 @@ provider credits, persisted selection and mobile layout. Reports are in
 ## Cycling overlays
 
 The map's tool column at the top right holds the basemap choice (layers icon),
-**Rad-Infos** (bike icon), **Street View** (figure icon) and **Route zeigen**
+**Rad-Infos** (bike icon), **Street View** (figure icon) and **Auf Route zoomen**
 (focus icon); hover for their names. Zoom buttons sit at the bottom right; a
 compass joins them once the map is turned or tilted and turns it back north.
 Opening an example, a saved route or a
-GPX track as a route also shows the whole route: nearby the map
+GPX track as a route, or starting or completing one by address, also shows the whole
+route (or the first stop alone): nearby the map
 glides there, from farther away it jumps. In Street View mode a figure follows the
 pointer and snaps onto the route within 16 px, the route pauses its editing, and
 a click opens Street View at the nearest panorama; the figure turns grey where
@@ -403,12 +404,16 @@ and the app remembers that choice. The map keeps its content in place while the
 drawer moves. Below 760 px the drawer becomes a sheet under the map:
 drag or tap its handle (or use the arrow keys on it) to show only its header and
 tabs, half the screen, or all of it. The map and elevation profile fill the rest.
-Opening a route lowers the sheet so the route shows, and typing an address opens
-it fully.
+Opening a route, or completing one by address, lowers the sheet so the route shows.
+Typing an address opens it fully; choosing one closes the keyboard again. A tab
+tapped while only the header shows raises the sheet to half the screen. On touch
+screens a finger on the route pans the map; holding it still for a moment picks
+the route up to drag it.
 
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway
-stations over all base maps. Cycle paths and food reuse the local Protomaps tiles.
+stations over all base maps. Only cycle paths are on at first; points are labelled
+only where they have a name. Cycle paths and food reuse the local Protomaps tiles.
 The cycle-path layer highlights `highway=cycleway`; it does not contain every
 roadside cycle lane. **Radrouten** is online: the
 [Waymarked Trails](https://cycling.waymarkedtrails.org) overlay of signed routes
@@ -614,7 +619,8 @@ For a new Sentinel quarter, update the source URL, manifest URL, checksum and
 Address suggestions use the local Photon service through `/geocoding/api/`.
 Queries stay on this computer. Suggestions load after three characters and a
 350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
-loaded result. No routing geometry is sent to the search service, and unavailable
+loaded result. Results of the same name within 200 m (a square, its street and
+its stops) show once. No routing geometry is sent to the search service, and unavailable
 local search never falls back to `photon.komoot.io`.
 
 An address with a house number starts on its own street: the planner takes the
@@ -680,7 +686,8 @@ heights and surfaces, so its distance, climbing, surfaces, elevation profile and
 Street View can be inspected, and the map zooms to it; the other two stay faint.
 Selecting another card replaces it in place, without a further undo step;
 selecting it again returns to the start and all three loops. Pointing at a card
-highlights its loop. **Übernehmen** keeps the selected loop and closes the
+highlights its loop. On the map, pointing at a loop highlights its card and a click
+or tap selects it; while loops are offered, map clicks set no stops. **Übernehmen** keeps the selected loop and closes the
 suggestions; **Verwerfen** returns to the start alone. On a phone the sheet stays
 up while choosing. The last target is remembered in this browser.
 
@@ -728,9 +735,9 @@ deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
 
-**Herunterladen** under the list exports the current editable route, including its
+**Aktuelle Route sichern** under the list exports the current editable route, including its
 points, geometry, elevation, surfaces and routing revision, as `.richiroute.json`.
-**Importieren** validates that format and adds a new entry without
+**Sicherung einlesen** validates that format and adds a new entry without
 replacing the current draft or existing entries. Imports are limited to 64 MB.
 This imports RichiRoute backups, not GPX files. Changed routing rules still cause
 recalculation when opening a saved route, keeping its old geometry visible.
@@ -749,8 +756,8 @@ turn instructions. Physical cycling-computer imports have not been tested.
 ## Inspect the route elevation profile
 
 The planned route and imported GPX use the same interactive chart. The route's
-profile spans the width of the map below it and can be hidden with its arrow
-button; the GPX profile stays in the **Import** tab. Move the
+profile spans the width of the map below it, names the route's distance and
+climbing in its header, and can be hidden with its arrow button; the GPX profile stays in the **GPX** tab. Move the
 pointer or drag a finger across **Höhenprofil** to see distance, elevation and
 estimated gradient beside the cursor, with the corresponding position marked on
 the map. The line and a light tint beneath it are coloured by climb, with the
@@ -793,7 +800,7 @@ screenshots go to `.cache/profile-hover/`.
 
 ## Import a GPX track
 
-**GPX-Datei öffnen** (or dropping a file on the **Import** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
+**GPX-Datei öffnen** (or dropping a file on the **GPX** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
 separate reference layer for comparison. Importing leaves the editable route, its undo history,
 saved routes and GPX export unchanged. It sends no routing requests.
 
@@ -909,9 +916,11 @@ Reports go to `.cache/gpx-surfaces/`, `.cache/map-style/` and `.cache/imagery-re
 ## Inspect route surfaces
 
 After a route finishes calculating, **Untergrund** shows each material's share
-as a bar and lists its length; the colours match the route on the map. Select a
-material to see its sections along the route, and select it again to close
-them. Select a section to frame and highlight it on the map. **Weitere
+as a bar and lists its length and percentage; the colours match the route on the
+map: green for asphalt, blue for other paving, amber for rough paving and wood,
+magenta for unpaved and a light grey for unknown, told apart also with colour
+blindness. Select a material to see its sections along the route, with its part
+of the bar standing out, and select it again to close them. Select a section to frame and highlight it on the map. **Weitere
 Abschnitte** shows ten more entries; **Markierung aufheben** removes the
 highlight.
 

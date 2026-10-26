@@ -97,13 +97,14 @@ export async function forwardGeocode(query: string, signal: AbortSignal): Promis
     lang: 'de',
     limit: '8',
   }), signal)).map(parsePlace);
-  const seen = new Set<string>();
-  return places.filter((place) => {
-    const key = `${place.label.toLocaleLowerCase('de-AT')}|${place.coord.join(',')}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // One name close together (a square, its street and its stops, with or without a postcode) is one place; the first,
+  // best match stays.
+  const key = (place: Place) => place.label.replace(/, \d{4,5} /, ', ').toLocaleLowerCase('de-AT');
+  const kept: Place[] = [];
+  for (const place of places) {
+    if (!kept.some((other) => key(other) === key(place) && distanceMeters(other.coord, place.coord) < 200)) kept.push(place);
+  }
+  return kept;
 }
 
 // The street at a point set on the map, with the house number only when that house is right there,

@@ -43,7 +43,7 @@ try {
   });
   const chart = page.getByRole('slider', { name: 'Position in der Route', exact: true });
   await chart.waitFor();
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chart.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => !document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.isMoving());
   await waitDot(0);
@@ -96,7 +96,7 @@ try {
   assert.equal(await page.locator('input[type=range]').count(), 0);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chart.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => !document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.isMoving());
   const mobile = await chart.boundingBox();

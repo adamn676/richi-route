@@ -34,7 +34,7 @@ function initial(): CyclingOverlay[] {
     const value: unknown = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
     if (Array.isArray(value)) return cyclingOverlays.filter(item => value.includes(item.id)).map(item => item.id);
   } catch { /* Use defaults when browser storage is unavailable. */ }
-  return ['water', 'cycleways'];
+  return ['cycleways'];
 }
 const selected = ref<CyclingOverlay[]>(initial());
 const error = ref('');
@@ -74,7 +74,7 @@ function install() {
       paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3, 15, 5, 17, 6], 'circle-color': item.color,
         'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 15, 2] } }, 'map-labels-top');
     map.addLayer({ id: `${id}-labels`, type: 'symbol', ...source, minzoom: Math.max(14, item.minzoom), filter,
-      layout: { ...layout, 'text-field': ['coalesce', ['get', 'name'], item.label], 'text-font': ['Noto Sans Regular'],
+      layout: { ...layout, 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'],
         'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, .9], 'text-max-width': 12 },
       paint: { 'text-color': '#243b32', 'text-halo-color': '#ffffff', 'text-halo-width': 2 } }, 'map-labels-top');
   }
@@ -159,6 +159,8 @@ onBeforeUnmount(() => detach(props.map));
 </script>
 
 <style scoped>
+/* The badge reaches over the button's corner; the button's ripple clips itself. */
+.cycling-controls :deep(.map-menu__trigger) { overflow: visible; }
 .cycling-controls__label { display: inline-flex; align-items: center; gap: .5rem; }
 .cycling-controls__dot { width: .6rem; height: .6rem; border-radius: 50%; flex-shrink: 0; }
 </style>

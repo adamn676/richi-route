@@ -19,9 +19,13 @@ interface DragState {
   marker: Marker;
   moved: boolean;
   restorePan: boolean;
+  touch: boolean;
 }
 
 const suppressedClicks = new WeakMap<MaplibreMap, { x: number; y: number; until: number }>();
+const dragging = new WeakSet<MaplibreMap>();
+// MapLibre turns a finger held still into a contextmenu (Street View), also while it drags the route.
+export const isDraggingRoute = (map: MaplibreMap) => dragging.has(map);
 
 export function consumeRouteDragClick(map: MaplibreMap, point: { x: number; y: number }): boolean {
   const suppressed = suppressedClicks.get(map);
@@ -63,6 +67,7 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
     window.removeEventListener('mouseup', finish);
     window.removeEventListener('touchend', finish);
     if (drag?.restorePan) map?.dragPan.enable();
+    if (map) dragging.delete(map);
     drag?.marker.remove();
     drag = null;
   }
@@ -70,11 +75,12 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
   function finish(): void {
     const current = drag;
     const map = options.map.value;
-    if (current && map && current.moved) {
+    // A finger held on the route and lifted again sets no stop either.
+    if (current && map && (current.moved || current.touch)) {
       const position = current.marker.getLngLat();
       const pixel = map.project(position);
       suppressedClicks.set(map, { x: pixel.x, y: pixel.y, until: performance.now() + 700 });
-      try {
+      if (current.moved) try {
         routeStore.insertShapingPoint(current.fromId, current.toId, [position.lng, position.lat]);
       } catch (error) {
         console.error('Formpunkt konnte nicht gesetzt werden:', error);
@@ -84,26 +90,25 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
     cleanup();
   }
 
-  function start(event: MapLayerMouseEvent | MapLayerTouchEvent): void {
-    const map = options.map.value;
-    // While a Street View spot is being chosen, the route takes clicks instead of drags.
-    if (!map || drag || !routeStore.route || streetView.picking) return;
-    if (event.type === 'mousedown' && event.originalEvent instanceof MouseEvent && event.originalEvent.button !== 0) return;
-    const feature = event.features?.[0];
-    const { fromId, toId } = feature?.properties ?? {};
-    if (typeof fromId !== 'string' || typeof toId !== 'string') return;
-    if (event.originalEvent.target instanceof HTMLElement && event.originalEvent.target.closest('.maplibregl-marker')) return;
+  // The route section under the pointer, unless a marker lies on top or Street View, which takes clicks, is being placed.
+  function sectionAt(event: MapLayerMouseEvent | MapLayerTouchEvent) {
+    if (drag || !routeStore.route || streetView.picking) return null;
+    if (event.originalEvent.target instanceof HTMLElement && event.originalEvent.target.closest('.maplibregl-marker')) return null;
+    const { fromId, toId } = event.features?.[0]?.properties ?? {};
+    return typeof fromId === 'string' && typeof toId === 'string' ? { fromId, toId, point: event.point, lngLat: event.lngLat } : null;
+  }
 
-    event.preventDefault();
+  function start(map: MaplibreMap, section: NonNullable<ReturnType<typeof sectionAt>>, touch: boolean): void {
     const restorePan = map.dragPan.isEnabled();
     if (restorePan) map.dragPan.disable();
     drag = {
-      fromId,
-      toId,
-      start: { x: event.point.x, y: event.point.y },
-      marker: createPreviewMarker(map, [event.lngLat.lng, event.lngLat.lat]),
+      fromId: section.fromId,
+      toId: section.toId,
+      start: { x: section.point.x, y: section.point.y },
+      marker: createPreviewMarker(map, [section.lngLat.lng, section.lngLat.lat]),
       moved: false,
       restorePan,
+      touch,
     };
     map.on('mousemove', onMouseMove);
     map.on('touchmove', onTouchMove);
@@ -112,10 +117,31 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
     map.on('touchcancel', cleanup);
     window.addEventListener('mouseup', finish, { once: true });
     window.addEventListener('touchend', finish, { once: true });
+    dragging.add(map);
   }
 
-  function onMouseDown(event: MapLayerMouseEvent): void { start(event); }
-  function onTouchStart(event: MapLayerTouchEvent): void { start(event); }
+  function onMouseDown(event: MapLayerMouseEvent): void {
+    const map = options.map.value, section = sectionAt(event);
+    if (!map || !section || event.originalEvent.button !== 0) return;
+    event.preventDefault();
+    start(map, section, false);
+  }
+  // A finger on the route pans the map as anywhere else; held still for a moment, it picks the route up. A pan, a lift
+  // or a second finger before then cancels that, and so does a route changed meanwhile.
+  let press: ReturnType<typeof setTimeout> | undefined;
+  function onTouchStart(event: MapLayerTouchEvent): void {
+    const map = options.map.value, section = sectionAt(event);
+    if (!map || !section || event.points.length !== 1) return;
+    const timer = press = setTimeout(() => {
+      const current = routeStore.route?.features.some(({ properties }) => properties.fromId === section.fromId && properties.toId === section.toId);
+      if (map.isMoving() || drag || streetView.picking || !current) return;
+      navigator.vibrate?.(15);
+      start(map, section, true);
+    }, 400);
+    // On the element, unlike map.once, a listener added now misses the touch that is starting.
+    const cancel = () => clearTimeout(timer);
+    for (const type of ['touchstart', 'touchend', 'touchcancel']) map.getCanvasContainer().addEventListener(type, cancel, { once: true });
+  }
   function onHover(): void { if (options.map.value) options.map.value.getCanvas().style.cursor = 'grab'; }
   function onLeave(): void { if (options.map.value) options.map.value.getCanvas().style.cursor = ''; }
 
@@ -132,6 +158,7 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
   }, { immediate: true });
 
   onBeforeUnmount(() => {
+    clearTimeout(press);
     cleanup();
     const map = options.map.value;
     map?.off('mousedown', SEGMENTS_BASE_LAYER, onMouseDown);

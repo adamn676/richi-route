@@ -1,12 +1,13 @@
 export const routeStyle = {
   outlineColor: '#ffffff',
-  asphalt: '#187b5a',
+  // Smooth to rough, told apart also with colour-blindness; unknown stays a light grey that recedes.
+  asphalt: '#0b7d58',
   // A lighter asphalt: probably the same, less certain.
-  likelyAsphalt: '#62ad8f',
-  paved: '#2a78d6',
-  rough: '#b8620b',
-  unpaved: '#d9366f',
-  unknown: '#74818a',
+  likelyAsphalt: '#5fb393',
+  paved: '#3a86f0',
+  rough: '#ec9a12',
+  unpaved: '#d63384',
+  unknown: '#a7b0b8',
   air: '#b33c4b',
 };
 

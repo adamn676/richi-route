@@ -181,7 +181,8 @@ export const useRouteStore = defineStore('route', {
     surfaceFocus: null as SurfaceFocus | null,
     // Progress of looking up the surfaces of an imported GPX track.
     surfaceEstimate: null as { completed: number; total: number } | null,
-    // Counts routes opened as a whole (examples, saved routes, imports); the map then shows the route.
+    // Counts routes opened as a whole (examples, saved routes, imports) and the stops found by address that start or
+    // complete a route; the map then shows the route, or the first stop alone.
     fitRequest: 0,
   }),
 
@@ -520,7 +521,10 @@ export const useRouteStore = defineStore('route', {
       // Typed over or moved in the meantime: the newer input wins.
       const current = this.waypoints.find((point) => point.id === id);
       if (!current || current.coord !== before?.coord || current.userInput !== before?.userInput) return;
+      // Later edits keep the view, so a stop being added does not move the map or fold the phone sheet.
+      const complete = Boolean(this.route);
       this.updateWaypointCoord(id, coord, place.label);
+      if (!complete) this.fitRequest++;
     },
 
     async searchAndSetWaypointAddress(id: string, query: string): Promise<void> {

@@ -104,9 +104,9 @@ try {
   await page.getByText('Satellit', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'false');
   await chooseBasemap(page, 'street');
-  // Schummerung is a checkbox, so the menu stays open for further choices.
+  // Geländerelief is a switch, so the menu stays open for further choices.
   await basemapMenu.click();
-  await page.getByText('Schummerung', { exact: true }).click();
+  await page.getByText('Geländerelief', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'true');
   await closeMenus(page);
   await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map

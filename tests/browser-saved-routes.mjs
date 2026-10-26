@@ -72,7 +72,7 @@ try {
   await page.getByRole('button', { name: 'Route speichern', exact: true }).click();
   await waitRows(1);
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Sicherung herunterladen', exact: true }).click();
+  await page.getByRole('button', { name: 'Aktuelle Route sichern', exact: true }).click();
   const download = await downloadEvent;
   await download.saveAs(output + '/roundtrip.richiroute.json');
   const backup = JSON.parse(await readFile(output + '/roundtrip.richiroute.json', 'utf8'));
@@ -89,12 +89,16 @@ try {
     return (await routeLibrary.read(summary.id)).payload;
   });
   assert.deepEqual(JSON.parse(recovered), JSON.parse(changed));
+  // A new route starts on the Route tab.
+  assert.equal(await page.getByRole('tab', { name: 'Route', exact: true }).getAttribute('aria-selected'), 'true');
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await entry('Lange Runde').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await idle();
   assert.deepEqual(JSON.parse(await state()), JSON.parse(original));
   assert.equal(requests, 0, 'Opening current geometry makes no routing requests');
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await idle();
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   assert.equal(await list.getByRole('listitem').count(), 2, 'An unchanged saved route needs no recovery duplicate');
   await entry('Lange Runde').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await idle();
@@ -260,6 +264,7 @@ try {
   const rows = await list.getByRole('listitem').count();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await idle();
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   assert.equal(await list.getByRole('listitem').count(), rows, 'Filled-in street names need no recovery copy');
   assert.equal(await page.evaluate(async () => {
     const { routeLibrary } = await import('/src/services/route-library.service.ts');

@@ -32,7 +32,7 @@ try {
   assert.equal(ids.length, 6);
   assert.equal(await page.locator('.route-marker--shape').count(), 6);
   assert.ok(await page.getByText('Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.', { exact: true }).isVisible());
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   await page.screenshot({ path: 'experiments/routing/.local/western-example-editor.png' });
   await page.reload();

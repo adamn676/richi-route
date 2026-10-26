@@ -8,11 +8,12 @@ const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
 });
 const signal = () => new AbortController().signal;
 
-test('search stays on the local service, encodes text and keeps distinct places with identical names', async t => {
+test('search stays on the local service, encodes text and merges a name repeated nearby, not far away', async t => {
   let request;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     request = { url: new URL(url, 'http://127.0.0.1:5173'), options };
-    return Response.json({ features: [feature(), feature(), feature('Hauptplatz', [15.44, 47.07])] });
+    return Response.json({ features: [feature(), feature(), feature('Hauptplatz', [15.44, 47.07]),
+      { ...feature(), properties: { ...feature().properties, postcode: '8010' } }, feature('Hauptplatz', [15.47, 47.05])] });
   });
   const places = await forwardGeocode('  Graz & Hauptplatz  ', signal());
   assert.equal(request.url.origin, 'http://127.0.0.1:5173');

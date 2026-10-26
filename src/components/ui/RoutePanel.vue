@@ -3,13 +3,13 @@
     <section class="planner__section">
       <div class="planner__heading">
         <h2 class="text-title-medium">Streckenpunkte</h2>
-        <span class="planner__tools">
-          <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="routeStore.undo()"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
-          <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="routeStore.redo()"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>
-          <v-icon-button :disabled="!routeStore.route" aria-label="Gesamte Route optimieren"
-            v-tooltip:bottom="'Gesamte Route optimieren'" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></v-icon-button>
+        <span ref="tools" class="planner__tools">
+          <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="act(() => routeStore.undo())"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="act(() => routeStore.redo())"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button :disabled="!routeStore.route" aria-label="Route neu berechnen"
+            v-tooltip:bottom="'Route neu berechnen'" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
-            v-tooltip:bottom="'Formpunkte entfernen'" @click="run(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
+            v-tooltip:bottom="'Formpunkte entfernen: die weißen Punkte, die die Route formen'" @click="act(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
           <!-- On a wrapper, so the reason also shows while the button is disabled. -->
           <span v-tooltip:bottom="exportReason ?? 'Route als GPX herunterladen'"><v-icon-button :disabled="Boolean(exportReason)"
             aria-label="GPX herunterladen" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></v-icon-button></span>
@@ -21,18 +21,17 @@
           <span v-if="point.kind === 'via'" class="planner__stop-actions">
             <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === 0"
               :aria-label="`${stopLabel(point.kind, index)} nach oben verschieben`" v-tooltip:bottom="'Nach oben'"
-              @click="run(() => routeStore.moveWaypoint(point.id, -1))"><IconChevronUp :size="16" aria-hidden="true" /></v-icon-button>
+              @click="act(() => routeStore.moveWaypoint(point.id, -1))"><IconChevronUp :size="16" aria-hidden="true" /></v-icon-button>
             <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === viaIds.length - 1"
               :aria-label="`${stopLabel(point.kind, index)} nach unten verschieben`" v-tooltip:bottom="'Nach unten'"
-              @click="run(() => routeStore.moveWaypoint(point.id, 1))"><IconChevronDown :size="16" aria-hidden="true" /></v-icon-button>
+              @click="act(() => routeStore.moveWaypoint(point.id, 1))"><IconChevronDown :size="16" aria-hidden="true" /></v-icon-button>
             <v-icon-button size="x-small" :aria-label="`${stopLabel(point.kind, index)} löschen`" v-tooltip:bottom="'Stopp löschen'"
-              @click="run(() => routeStore.removeWaypoint(point.id))"><IconX :size="16" aria-hidden="true" /></v-icon-button>
+              @click="act(() => routeStore.removeWaypoint(point.id))"><IconX :size="16" aria-hidden="true" /></v-icon-button>
           </span>
           <div class="planner__stop-input">
             <AddressSearchInput
               :waypoint-id="point.id"
               :label="stopLabel(point.kind, index)"
-              :raised="Boolean(point.coord && !point.userInput)"
               :model-value="point.userInput"
               :placeholder="placeholderFor(point)"
               @update:model-value="(value) => routeStore.setWaypointQuery(point.id, value)"
@@ -47,6 +46,10 @@
         </li>
       </ol>
       <v-btn variant="text" class="planner__add" :prepend-icon="IconPlus" :disabled="!hasEndpoints" @click="addStop">Zwischenstopp hinzufügen</v-btn>
+      <!-- Until the route has been changed on the map, it says how; offered loops take the map's clicks instead. -->
+      <p v-if="routeStore.route && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
+        {{ touch ? 'Tipp: Route auf der Karte gedrückt halten und ziehen, um sie zu formen; Antippen setzt einen Zwischenstopp.'
+          : 'Tipp: Route auf der Karte ziehen, um sie zu formen; ein Klick darauf setzt einen Zwischenstopp.' }}</p>
     </section>
 
     <div v-if="routingNotices.length || routeStore.errorMessage || airHint" class="planner__notices">
@@ -70,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconChevronUp, IconDownload, IconEraser, IconPlus, IconWand, IconX } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
@@ -89,6 +92,7 @@ const routingNotices = computed(() => localRoutingNotices(Object.values(routeSto
   .filter(leg => leg.status === 'routed' && isRoutingPolicyCurrent(leg.routingPolicy))));
 const airHint = computed(() => routeStore.hasAirLines && !routeStore.routingPending);
 const exportReason = computed(() => gpxUnavailableReason(routeStore));
+const touch = matchMedia('(hover: none)').matches;
 
 function downloadGpx() {
   const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));
@@ -115,7 +119,7 @@ const ascentLabel = computed(() => routeStore.ascentMeters !== null ? formatMete
 // A point placed on the map without an address shows its position in the empty field.
 function placeholderFor(point: Waypoint): string {
   if (point.coord && !point.userInput) return `${point.coord[1].toFixed(5)}° N, ${point.coord[0].toFixed(5)}° E`;
-  return point.kind === 'start' ? 'Start suchen oder Karte anklicken' : 'Adresse suchen oder Karte anklicken';
+  return `${{ start: 'Start', via: 'Stopp', end: 'Ziel' }[point.kind]} suchen oder Karte ${touch ? 'antippen' : 'anklicken'}`;
 }
 
 async function run(action: () => void | Promise<void>): Promise<void> {
@@ -125,6 +129,15 @@ async function run(action: () => void | Promise<void>): Promise<void> {
     console.error('Editor-Aktion fehlgeschlagen:', error);
     routeStore.errorMessage = error instanceof Error ? error.message : 'Die Aktion konnte nicht ausgeführt werden.';
   }
+}
+
+// A button that disables, moves or removes itself (the last undo, a deleted stop) leaves the focus in the toolbar.
+const tools = ref<HTMLElement>();
+async function act(action: () => void): Promise<void> {
+  await run(action);
+  await nextTick();
+  const focused = document.activeElement;
+  if (!focused || focused === document.body || (focused as HTMLButtonElement).disabled) tools.value?.querySelector<HTMLElement>('button:enabled')?.focus();
 }
 
 async function addStop(): Promise<void> {

@@ -50,7 +50,7 @@ try {
   assert.equal(initial.distance, 4371);
   assert.equal(initial.error, null);
   assert.ok(initial.features > 0);
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.waitForFunction(() => {
@@ -96,7 +96,7 @@ try {
   await idle();
   const western = await state();
   assert.equal(western.error, null);
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   const marker = await page.locator('.route-marker--stop').nth(2).boundingBox();
   await page.mouse.move(marker.x + marker.width / 2, marker.y + marker.height / 2);

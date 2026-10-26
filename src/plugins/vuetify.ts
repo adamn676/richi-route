@@ -26,6 +26,8 @@ export const vuetify = createVuetify({
           primary: routeStyle.asphalt, secondary: '#4d6357', background: '#eef1f0', surface: '#fcfcfb', 'surface-variant': '#dde3e1',
           'on-background': '#17262a', 'on-surface': '#17262a', 'on-surface-variant': '#56676b', error: '#a3261b', warning: '#7a5200',
         },
+        // Field labels, hints and placeholders reach a contrast of 4.5:1; hover shows with Material 3's state layer.
+        variables: { 'medium-emphasis-opacity': 0.75, 'hover-opacity': 0.08 },
       },
     },
   },

@@ -6,14 +6,14 @@
     <template v-if="track">
       <div class="gpx__track">
         <div class="gpx__title">
-          <h3>{{ track.name }}</h3>
+          <h3 ref="title" tabindex="-1">{{ track.name }}</h3>
           <span class="gpx__file text-body-small text-medium-emphasis">{{ track.fileName }}<template v-if="track.segments.length > 1"> · {{ track.segments.length }} Abschnitte</template></span>
         </div>
         <div class="gpx__tools">
           <v-icon-button v-tooltip:bottom="reference.visible ? 'Track ausblenden' : 'Track einblenden'" role="switch"
             :aria-checked="reference.visible" aria-label="Track einblenden" @click="reference.visible = !reference.visible">
             <component :is="reference.visible ? IconEye : IconEyeOff" :size="18" aria-hidden="true" /></v-icon-button>
-          <v-icon-button v-tooltip:bottom="'Track zeigen'" aria-label="Track zeigen" @click="reference.show()"><IconFocus2 :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button v-tooltip:bottom="'Auf Track zoomen'" aria-label="Auf Track zoomen" @click="reference.show()"><IconFocus2 :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button v-tooltip:bottom="'Andere GPX-Datei öffnen'" :disabled="reference.loading" aria-label="Andere GPX-Datei öffnen"
             @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button v-tooltip:bottom="'Track entfernen'" aria-label="Track entfernen" @click="reference.remove()"><IconTrash :size="18" aria-hidden="true" /></v-icon-button>
@@ -23,8 +23,10 @@
         <div><dt>Distanz</dt><dd>{{ formatKm(track.distanceMeters) }} km</dd></div>
         <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : formatMeters(track.ascentMeters) }}</dd></div>
       </dl>
-      <v-btn v-tooltip:bottom="'Ersetzt die aktuelle Route; diese bleibt in „Meine Routen“'" variant="flat" block
-        :prepend-icon="IconRoute" @click="emit('open-route')">Als Route öffnen</v-btn>
+      <div class="gpx__open">
+        <v-btn variant="flat" block :prepend-icon="IconRoute" aria-describedby="gpx-open-note" @click="emit('open-route')">Als Route öffnen</v-btn>
+        <span id="gpx-open-note" class="text-body-small text-medium-emphasis">Ersetzt die aktuelle Route; diese bleibt in „Meine Routen“.</span>
+      </div>
       <!-- Material segmented buttons: four short choices are one tap away. -->
       <v-btn-toggle v-model="reference.colorMode" class="gpx__color" role="group" aria-label="Trackfarbe" mandatory divided
         variant="outlined" color="primary" density="compact" rounded="xl">
@@ -53,14 +55,14 @@
     </template>
     <div v-else-if="!reference.loading" class="gpx__empty">
       <IconFileImport :size="28" aria-hidden="true" />
-      <v-btn variant="flat" @click="fileInput?.click()">GPX-Datei öffnen</v-btn>
+      <v-btn ref="openButton" variant="flat" @click="fileInput?.click()">GPX-Datei öffnen</v-btn>
       <span class="text-body-small text-medium-emphasis">oder hierher ziehen</span>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconRoute, IconTrash } from '@/components/icons';
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
@@ -73,6 +75,12 @@ const emit = defineEmits<{ 'open-route': [] }>();
 const reference = useGpxReferenceStore();
 const { track } = storeToRefs(reference);
 const fileInput = ref<HTMLInputElement>();
+// A loaded track takes the place of the open button, and a removed one of its own buttons; the focus follows.
+const title = ref<HTMLElement>(), openButton = ref<{ $el: HTMLElement }>();
+watch(track, async () => {
+  await nextTick();
+  if (document.activeElement === document.body) (title.value ?? openButton.value?.$el)?.focus();
+});
 const colorModes = [
   { value: 'plain', label: 'Einfarbig', needsHeights: false }, { value: 'elevation', label: 'Höhe', needsHeights: true },
   { value: 'gradient', label: 'Steigung', needsHeights: true }, { value: 'surface', label: 'Belag', needsHeights: false },
@@ -109,6 +117,7 @@ async function importSelected(event: Event) {
 h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__tools { display: flex; flex-shrink: 0; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
+.gpx__open { display: grid; gap: .3rem; }
 .gpx__color { width: 100%; }
 .gpx__color .v-btn { flex: 1; }
 .gpx__surfaces { display: grid; gap: .5rem; }

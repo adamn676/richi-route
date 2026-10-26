@@ -1,6 +1,7 @@
 import { h, onBeforeUnmount, render, watch, type Ref } from 'vue';
 import { Marker, Popup, type Map as MaplibreMap, type MapMouseEvent, type PointLike } from 'maplibre-gl';
 import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
+import { isDraggingRoute } from '@/composables/useRouteDragging';
 import type { Coord } from '@/domain/route-model';
 import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
@@ -42,6 +43,7 @@ export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
 
   function offer(event: MapMouseEvent): void {
     event.originalEvent.preventDefault();
+    if (isDraggingRoute(event.target)) return;
     const coord: Coord = [event.lngLat.lng, event.lngLat.lat];
     const link = figure(Object.assign(document.createElement('a'), {
       href: streetViewUrl(coord), target: '_blank', rel: 'noopener noreferrer', className: 'street-view-link', title: 'Street View',

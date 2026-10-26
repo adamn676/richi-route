@@ -6,10 +6,11 @@
       <span v-if="!routeStore.draftError" class="sidebar__status" role="img" :aria-label="draft.label" v-tooltip:bottom="draft.label">
         <component :is="draft.icon" :size="18" aria-hidden="true" />
       </span>
-      <v-btn v-if="hasDraft" class="sidebar__new" variant="outlined" size="small" :prepend-icon="IconPlus" @click="library.newRoute()">Neue Route</v-btn>
+      <v-btn v-if="hasDraft" class="sidebar__new" variant="outlined" size="small" :prepend-icon="IconPlus" @click="newRoute">Neue Route</v-btn>
     </header>
     <v-tabs v-model="tab" class="sidebar__tabs" aria-label="Bereiche">
-      <v-tab v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" :value="item.id" :aria-controls="`panel-${item.id}`">{{ item.label }}</v-tab>
+      <v-tab v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" :value="item.id" :aria-controls="`panel-${item.id}`"
+        @click="emit('tab-click')">{{ item.label }}</v-tab>
     </v-tabs>
     <!-- Saving a draft before a route switch can report from any tab. -->
     <div class="sidebar__messages">
@@ -36,7 +37,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
+import { useDisplay } from 'vuetify';
 import { IconCloud, IconCloudCheck, IconCloudUpload, IconPlus, IconRoute } from '@/components/icons';
 import RoutePanel from '@/components/ui/RoutePanel.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
@@ -46,10 +48,12 @@ import { useRouteStore } from '@/stores/route.store';
 import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { saveDraftNow } from '@/services/draft.service';
 
+// A tab chosen on the folded phone sheet raises it (HomeView).
+const emit = defineEmits<{ 'tab-click': [] }>();
 const routeStore = useRouteStore();
 const library = useRouteLibrary();
 const { hasDraft, error, message } = library;
-const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'Import' }] as const;
+const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'GPX' }] as const;
 const tab = ref<typeof tabs[number]['id']>('route');
 // An imported track opened as the route no longer needs its comparison line.
 const reference = useGpxReferenceStore();
@@ -58,7 +62,20 @@ async function openTrack() {
   await library.openTrack(reference.track);
   if (error.value) return;
   reference.remove();
+  await showRoute();
+}
+// A new route starts in its Start field, except on phones, where the keyboard would cover the map.
+const { mobile } = useDisplay();
+async function newRoute() {
+  await library.newRoute();
+  if (error.value) return;
+  await showRoute(mobile.value ? undefined : `address-${routeStore.waypoints[0].id}`);
+}
+// The button that led here is gone, so the focus moves to the route.
+async function showRoute(focus = 'tab-route') {
   tab.value = 'route';
+  await nextTick();
+  if (document.activeElement === document.body) document.getElementById(focus)?.focus();
 }
 const draft = computed(() => ({
   idle: { icon: IconCloud, label: 'Die aktuelle Route wird automatisch in diesem Browser gespeichert' },
@@ -73,6 +90,8 @@ const draft = computed(() => ({
 <style scoped>
 .sidebar { display: flex; flex-direction: column; background: var(--surface); }
 .sidebar__header { display: flex; align-items: center; gap: .75rem; min-height: 3.5rem; padding: .6rem var(--gutter) .4rem; }
+/* On phones the sheet's handle above gives the space. */
+@media (max-width: 760px) { .sidebar__header { min-height: 3rem; padding-top: 0; } }
 .brand { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: 1.1rem; font-weight: 750; letter-spacing: -.02em; white-space: nowrap; }
 .brand__mark { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: var(--radius); background: var(--accent); color: #fff; }
 .brand__mark svg { stroke-width: 2.25; }

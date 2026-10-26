@@ -5,14 +5,15 @@
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
       <SurfaceFocusLayer v-if="map" :map="map" :focus="focusedSurface" />
-      <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected" />
+      <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected"
+        @highlight="index => loopSuggestions.highlighted = index" />
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
         <span v-if="surfaceEstimate" class="map-view__progress" role="status">
           Beläge werden ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
-          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte anklicken' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
+          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte wählen' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
         <v-alert v-if="mapError" type="error" variant="flat">
           {{ mapError }}
           <div><v-btn class="mt-2" @click="retryBasemap">Erneut laden</v-btn></div>
@@ -28,7 +29,7 @@
                 @click="(event: MouseEvent) => event.detail && close()" />
             </v-radio-group>
             <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }">
-              <v-switch v-model="hillshade" label="Schummerung" :disabled="basemap === 'aerial'" />
+              <v-switch v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
             </div>
           </template>
         </MapMenu>
@@ -37,7 +38,7 @@
           :aria-pressed="streetView.picking" aria-label="Street View" @click="streetView.picking = !streetView.picking">
           <IconMan :size="20" aria-hidden="true" />
         </v-map-button>
-        <v-map-button v-if="route" v-tooltip:start="'Route zeigen'" aria-label="Route zeigen" @click="fitRoute">
+        <v-map-button v-if="route" v-tooltip:start="'Auf Route zoomen'" aria-label="Auf Route zoomen" @click="fitRoute">
           <IconFocus2 :size="20" aria-hidden="true" />
         </v-map-button>
       </div>
@@ -85,7 +86,7 @@ const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
-const { route, routingPending, focusedSurface, surfaceEstimate, fitRequest } = storeToRefs(useRouteStore());
+const { route, waypoints, routingPending, focusedSurface, surfaceEstimate, fitRequest } = storeToRefs(useRouteStore());
 const loopSuggestions = useLoopSuggestionsStore();
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
@@ -117,6 +118,7 @@ watch(map, instance => {
 watch(fitRequest, () => { if (map.value) fitAndSettle(map.value, fitRoute); });
 function fitRoute() {
   const bounds = new LngLatBounds();
+  for (const stop of waypoints.value) if (stop.coord) bounds.extend(stop.coord);
   for (const feature of route.value?.features ?? []) {
     for (const coord of feature.geometry.coordinates) bounds.extend([coord[0], coord[1]]);
   }

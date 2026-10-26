@@ -20,7 +20,7 @@ try {
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').resetRoute([[15.397965, 47.103194], [15.397308, 47.102517]]));
   await idle();
   assert.ok(await notice.isVisible());
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   await page.screenshot({ path: 'experiments/routing/.local/weidweg-editor.png' });
   await page.reload();

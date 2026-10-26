@@ -45,7 +45,7 @@ npm run dev:local
 ```
 
 Open **http://127.0.0.1:5173/**. Click the map to place a start and destination,
-then drag the route to choose different roads. Ctrl+C stops the planner,
+then drag the route to choose different roads (on a phone, hold it briefly first). Ctrl+C stops the planner,
 routing engine, search and map services. The launcher is included in `scripts/start-local.sh`.
 
 Without the routing bundle, the frontend and unit tests can still be built
@@ -75,7 +75,7 @@ New detail imagery needs internet; cached tiles and explicitly saved areas work 
 [imagery and offline areas](docs/local-development.md#european-imagery).
 European map coverage does not extend BRouter's installed routing coverage.
 The map selector also offers **OpenTopoMap** (contour lines) online, local
-**Schummerung** (shaded relief) as a layer, and signed cycle routes from
+**Geländerelief** (shaded relief) as a layer, and signed cycle routes from
 Waymarked Trails under **Rad-Infos**. The online sources need no account or API
 key and are contacted only when selected; the local maps remain the default. See
 [map choices](docs/local-development.md#online-map-choices).

@@ -29,7 +29,7 @@ try {
   });
   assert.deepEqual(result, { distanceMeters: 4371, error: null, complete: true, webgl2: true });
   assert.ok(workers.some(url => /\/assets\/maplibre-gl-worker-[\w-]+\.js$/.test(url)), 'Production map worker loads as a built asset');
-  await page.getByRole('button', { name: 'Route zeigen', exact: true }).click();
+  await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await page.waitForFunction(() => {
     const bounds = document.querySelector('.maplibregl-canvas').getBoundingClientRect();
     const markers = [...document.querySelectorAll('.route-marker--stop')];
