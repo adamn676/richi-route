@@ -31,8 +31,8 @@
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   html, body, #app { width: 100%; height: 100%; }
 }
-/* Vuetify marks keyboard focus on its buttons and list items with a faint tint only. */
-.v-btn:focus-visible, .v-list-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Vuetify marks keyboard focus on its buttons, list items and choices with a faint tint only. */
+.v-btn:focus-visible, .v-list-item:focus-visible, .v-selection-control--focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Placeholders say what a field takes, such as a search or a point on the map, so they read like labels. */
 .v-field input::placeholder { opacity: var(--v-medium-emphasis-opacity); }
 .maplibregl-map { width: 100%; height: 100%; }

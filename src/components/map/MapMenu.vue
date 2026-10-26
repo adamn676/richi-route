@@ -33,6 +33,11 @@ const close = () => { open.value = false; };
 
 <style scoped>
 .map-menu__panel { width: min(18rem, calc(100vw - 5rem)); max-height: min(60dvh, 28rem); overflow-y: auto; }
+/* Each choice fills its row, which shows hover as a Material menu item does, instead of the control's small halo. */
+.map-menu__panel :deep(.v-selection-control) { border-radius: var(--radius); }
+.map-menu__panel :deep(.v-selection-control:hover) { background: rgba(var(--v-theme-on-surface), var(--v-hover-opacity)); }
+.map-menu__panel :deep(.v-selection-control__input:hover::before) { opacity: 0; }
+.map-menu__panel :deep(.v-selection-control .v-label) { flex: 1; align-self: stretch; }
 /* Stays within the map above the phone sheet. */
 @media (max-width: 760px) { .map-menu__panel { max-height: calc(50dvh - 7rem); } }
 </style>
