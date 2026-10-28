@@ -7,11 +7,11 @@
 //   node parity/loops.mjs java --as java-now   record under another name (e.g. to time Java again
 //                                              without replacing the baseline), compare with that name
 // Run from app/engine/. Paths: RICHIROUTE_SEGMENTS, RICHIROUTE_PROFILES, RICHIROUTE_JAVA, RICHIROUTE_BROUTER_JAR;
-// with RICHIROUTE_RULES (the prepared rule file) both engines apply the local rules, and the Java reference is
-// the planner's server: RICHIROUTE_RULES_JAR (the local-rules jar) ahead of the bundle's jar.
 // the Rust engine is built into CARGO_TARGET_DIR (default target/). The engine runs with the planner's
 // concurrency as its thread count unless RICHIROUTE_ENGINE_THREADS says otherwise; the planner still sends
-// that many requests at a time.
+// that many requests at a time. With RICHIROUTE_RULES (the prepared rule file) both engines apply the local
+// rules, and the Java reference is the planner's server: RICHIROUTE_RULES_JAR (the local-rules jar) ahead of
+// the bundle's jar.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';

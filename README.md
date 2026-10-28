@@ -14,7 +14,7 @@ Austria. The planner currently has a German interface.
 - Get three loop suggestions from your start for a distance and climbing target, inspect each with its profile and surfaces, and keep one as an editable route.
 - Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
 - Drag points or route sections, with undo and redo.
-- Inspect distance, ascent, elevation and surface types along the route.
+- Inspect distance, ascent, elevation and the surface along the route: paved, likely paved, cobblestones or wooden bridges, unpaved, or unknown.
 - Highlight individual surface sections on the map.
 - Choose the calm local map with shaded relief, or an aerial view with street names, or switch to OpenTopoMap online.
 - Switch on cycle paths, signed cycle routes, drinking-water sources, bicycle services, food stops and railway stations over any map.
@@ -22,17 +22,18 @@ Austria. The planner currently has a German interface.
 - Save, reopen, rename and duplicate routes in a local route collection.
 - Back up editable routes as RichiRoute files and download calculated tracks as GPX.
 - Import GPX tracks to compare, with direction arrows, a linked elevation profile, and height or gradient colours, or open them as an editable route.
-- Estimate GPX surface materials on demand, with unknown sections kept separate.
+- Estimate the surfaces of a GPX track on demand, with unknown sections kept separate.
 
-Routing uses a local BRouter engine with a road-cycling profile. It prefers paved
-roads, but unpaved sections can still occur. Missing surface information remains
-marked as unknown.
+Routing uses RichiRoute's own engine, a Rust port of BRouter, with a road-cycling
+profile. It prefers paved roads, but unpaved sections can still occur. Where
+OpenStreetMap records no surface, the road type often tells (residential streets
+are almost always paved, graded gravel tracks not); the rest is marked as unknown.
 
 ## Run locally
 
-The current planner uses Node.js 26.12.1, npm 12.2.1 and a local BRouter engine
-with shared routing rules. The native launcher supports Linux x64. Its verified
-engine, profiles and regional map tiles come from the separate
+The current planner uses Node.js 26.12.1, npm 12.2.1 and the routing engine in
+`engine/` (Rust) with shared routing rules. The native launcher supports Linux x64.
+Its verified routing data and profiles come from the separate
 `richiroute-ubuntu-benchmark/` bundle, placed next to this checkout. That bundle
 is required for routing and is not included in Git. The repository does not
 currently provide an automated download of that exact reviewed bundle.
@@ -74,7 +75,7 @@ detailed photographs in Austria, Switzerland and France, with regional detail
 from Graz and Styria. Dense screens request finer imagery where available.
 New detail imagery needs internet; cached tiles and explicitly saved areas work offline. See
 [imagery and offline areas](docs/local-development.md#european-imagery).
-European map coverage does not extend BRouter's installed routing coverage.
+European map coverage does not extend the installed routing coverage.
 The map selector also offers **OpenTopoMap** (contour lines) online, local
 **Geländerelief** (shaded relief) as a layer, and signed cycle routes from
 Waymarked Trails under **Rad-Infos**. The online sources need no account or API
@@ -89,6 +90,10 @@ covers Austria. See [cycling overlays](docs/local-development.md#cycling-overlay
 for setup and updates.
 
 ## Routing development
+
+The engine in [`engine/`](engine/PORTING.md) answers every request exactly as
+BRouter 1.7.10 with the planner's rules does; its parity checks compare the two
+answer for answer.
 
 Local passage exceptions, bicycle turns and avoidance preferences live in
 [`config/routing-rules.json`](config/routing-rules.json). The engine and browser
@@ -118,7 +123,7 @@ accounts, cloud sync or a hosted service. Browser storage holds the current draf
 and a named route collection. Download RichiRoute backups to keep editable copies
 outside the browser; clearing browser data removes locally stored routes.
 
-Built with Vue 3, Vuetify (Material Design 3), TypeScript, Pinia and MapLibre GL JS. Routing data comes from
+Built with Vue 3, Vuetify (Material Design 3), TypeScript, Pinia and MapLibre GL JS; the routing engine is Rust. Routing data comes from
 OpenStreetMap. The planner serves its own [Protomaps](https://protomaps.com/)
 vector tiles, fonts and symbols. Photon supplies local address search. Imagery
 comes from Copernicus Sentinel, basemap.at, swisstopo and IGN, with attribution

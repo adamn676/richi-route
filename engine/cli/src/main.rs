@@ -12,7 +12,8 @@
 //! server, as `LocalRulesServer` (BRouter's `RouteServer` with the local rules) answers: one request
 //! per connection, `GET /brouter?<query>`. 200 with the GeoJSON, 400 with the routing error or the
 //! rules version mismatch, 500 for any other exception, 404 without `lonlats` and `profile`. Unlike
-//! Java it queues requests beyond `<threads>` instead of stopping the oldest, never compresses, and
+//! Java it queues requests beyond `<threads>` instead of stopping the oldest (a search stops instead
+//! when its client goes away), never compresses, and
 //! answers GeoJSON whatever `format` asks for (`trackname` names only the file). It listens on
 //! 127.0.0.1 unless `<bindAddress>` says otherwise, and sends no `Access-Control-Allow-Origin`: the
 //! planner reaches it through its own server, so other web pages cannot read its answers.
@@ -23,11 +24,12 @@
 //! ceiling (`HEAP_CEILING`), so that a fault elsewhere ends the program, not the machine.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use brouter_router::{
@@ -49,7 +51,6 @@ static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
 static REPORTED: AtomicBool = AtomicBool::new(false);
 
 impl Ceiling {
-    /// Counts `size` more bytes and allocates them with `alloc`, if that stays below the ceiling.
     fn grow(size: usize, alloc: impl FnOnce() -> *mut u8) -> *mut u8 {
         if ALLOCATED.fetch_add(size, Relaxed) + size > HEAP_CEILING {
             ALLOCATED.fetch_sub(size, Relaxed);
@@ -140,7 +141,7 @@ fn main() {
             continue;
         };
         let id = quote(id);
-        pool.submit(query.to_string(), MAX_RUNNING_TIME_MS, move |outcome, time| {
+        pool.submit(query.to_string(), MAX_RUNNING_TIME_MS, None, move |outcome, time| {
             let result = answer(outcome, time.as_millis());
             let mut out = std::io::stdout().lock();
             // a closed stdout leaves nobody to answer
@@ -168,7 +169,7 @@ fn serve(listener: &TcpListener, pool: RouterPool) -> ! {
 
 /// `RouteServer.run` for one connection.
 fn respond(stream: TcpStream, pool: &RouterPool) {
-    // the request line, then the headers up to the first empty line; a client that stops sending ends
+    // a client that stops sending before the headers end is dropped
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let mut lines = BufReader::new(&stream).lines();
     let request = lines.next().and_then(Result::ok);
@@ -182,9 +183,20 @@ fn respond(stream: TcpStream, pool: &RouterPool) {
         Ok(_) => return send(stream, "404 Not Found", ""),
         Err(exception) => return internal_error(stream, exception),
     };
+    // Java's watchdog stops the oldest search once every thread is busy; here a search stops as soon as
+    // its client goes away, as the requests the planner abandons do
+    let terminated = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel();
-    pool.submit(query, MAX_RUNNING_TIME_MS, move |outcome, _| sender.send(outcome).unwrap_or_default());
-    let outcome: Outcome = receiver.recv().expect("the pool answers every request");
+    let reply = move |outcome, _| sender.send(outcome).unwrap_or_default();
+    pool.submit(query, MAX_RUNNING_TIME_MS, Some(terminated.clone()), reply);
+    let outcome: Outcome = loop {
+        match receiver.recv_timeout(Duration::from_millis(100)) {
+            Ok(outcome) => break outcome,
+            Err(RecvTimeoutError::Timeout) if !client_gone(&stream) => {}
+            // gone, or dropped by the pool after that
+            Err(_) => return terminated.store(true, Relaxed),
+        }
+    };
     match outcome {
         Ok(Ok(Answer::GeoJson(geojson))) => {
             let disposition = file_name.map(|name| format!("Content-Disposition: attachment; filename=\"{name}\"\r\n"));
@@ -203,6 +215,17 @@ fn respond(stream: TcpStream, pool: &RouterPool) {
         Ok(Err(exception)) => internal_error(stream, exception),
         Err(panic) => internal_error(stream, panic_message(&*panic)),
     }
+}
+
+/// Whether the client has closed its end. The request is read in full, so anything to read is its end.
+fn client_gone(stream: &TcpStream) -> bool {
+    let _ = stream.set_nonblocking(true);
+    let gone = match stream.peek(&mut [0; 1]) {
+        Ok(read) => read == 0,
+        Err(e) => e.kind() != ErrorKind::WouldBlock,
+    };
+    let _ = stream.set_nonblocking(false);
+    gone
 }
 
 /// `RouteServer`'s answer to any other exception.

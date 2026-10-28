@@ -8,6 +8,7 @@
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -51,9 +52,17 @@ impl RouterPool {
     }
 
     /// Answers the request (see `Router::answer`) on a free thread and hands the outcome and the time
-    /// taken to `reply`, on that thread.
-    pub fn submit(&self, query: String, max_running_time: i64, reply: impl FnOnce(Outcome, Duration) + Send + 'static) {
-        self.pool.queue().requests.push_back(Request { query, max_running_time, reply: Box::new(reply) });
+    /// taken to `reply`, on that thread. Once `terminated` is set, a running request ends with BRouter's
+    /// termination error, and one not started yet is dropped without a reply.
+    pub fn submit(
+        &self,
+        query: String,
+        max_running_time: i64,
+        terminated: Option<Arc<AtomicBool>>,
+        reply: impl FnOnce(Outcome, Duration) + Send + 'static,
+    ) {
+        let request = Request { query, max_running_time, terminated, reply: Box::new(reply) };
+        self.pool.queue().requests.push_back(request);
         self.pool.0.work.notify_one();
     }
 
@@ -90,6 +99,7 @@ struct Queue {
 struct Request {
     query: String,
     max_running_time: i64,
+    terminated: Option<Arc<AtomicBool>>,
     reply: Reply,
 }
 
@@ -119,7 +129,12 @@ impl Pool {
                 Task::Request(request) => {
                     let start = Instant::now();
                     let outcome = catch_unwind(AssertUnwindSafe(|| {
-                        router.answer_in(&request.query, request.max_running_time, Some(self))
+                        router.answer_in(
+                            &request.query,
+                            request.max_running_time,
+                            Some(self),
+                            request.terminated.clone(),
+                        )
                     }));
                     let time = start.elapsed();
                     // the request adds no more searches, whatever its reply does; the last one of a closed
@@ -144,6 +159,9 @@ impl Pool {
                 return Some(Task::Batch(batch));
             }
             if let Some(request) = queue.requests.pop_front() {
+                if request.terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
+                    continue;
+                }
                 queue.answering += 1;
                 return Some(Task::Request(request));
             }
@@ -170,7 +188,6 @@ impl Pool {
     }
 }
 
-/// The jobs of one request and their results.
 struct Batch {
     state: Mutex<BatchState>,
     changed: Condvar,

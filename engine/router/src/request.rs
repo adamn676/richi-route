@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use brouter_mapaccess::SegmentStore;
 
@@ -55,15 +56,17 @@ impl Router {
     /// 0; round trips run without a limit). `Err` is an exception BRouter throws to its caller, which
     /// the server answers with `exception: <toString()>`.
     pub fn answer(&mut self, query: &str, max_running_time: i64) -> Result<Answer, JavaException> {
-        self.answer_in(query, max_running_time, None)
+        self.answer_in(query, max_running_time, None, None)
     }
 
-    /// `answer`, with the request's independent searches on the pool's threads.
+    /// `answer`, with the request's independent searches on the pool's threads, ended early once
+    /// `terminated` is set.
     pub(crate) fn answer_in(
         &mut self,
         query: &str,
         max_running_time: i64,
         pool: Option<&Pool>,
+        terminated: Option<Arc<AtomicBool>>,
     ) -> Result<Answer, JavaException> {
         let mut params = get_url_params(&format!("/brouter?{query}"))?;
         let mut rc = RoutingContext::new();
@@ -77,6 +80,7 @@ impl Router {
         let mut engine =
             RoutingEngine::with_arenas(&self.segments, wplist, rc, engine_mode, &mut self.profiles, arenas)?;
         engine.set_pool(pool);
+        engine.set_terminated(terminated);
         let run = engine.do_run(max_running_time);
         let answer = match engine.error_message() {
             Some(message) => Answer::Error(message.to_string()),

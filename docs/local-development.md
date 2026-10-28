@@ -29,14 +29,12 @@ run unit tests and build both frontends without it; native route calculation
 and engine benchmarks require the separate bundle. Do not upload the large
 maps, runtime archives or private benchmark output to the source repository.
 
-From the checkout, install runtimes and build the engine integration:
+From the checkout, install the runtimes and data:
 
 ```sh
 node scripts/setup-native.mjs
 export PATH="$PWD/.cache/runtime/node/bin:$PATH"
 npm ci
-npm run bench:brouter:performance
-npm run routing:build
 npm run search:setup
 npm run maps:setup
 npm run terrain:setup
@@ -46,8 +44,8 @@ npm run dev:local
 `native:setup` downloads checksum-verified Node, GraalVM and Rust archives into
 `.cache/runtime/`. It is specific to Linux x64. Rust builds the routing engine
 in `engine/`, a port of BRouter 1.7.10 with the local rules (see [its porting
-notes](../engine/PORTING.md)). `npm run routing:build` builds the Java rules
-integration that the engine's parity checks compare against. `.nvmrc` records the Node version
+notes](../engine/PORTING.md)). Its parity checks compare it with the Java rules
+integration, built by `npm run bench:brouter:performance` and then `npm run routing:build`. `.nvmrc` records the Node version
 for other development environments. Use an existing Node 22 or newer
 to run the installer. In the prepared workspace, the equivalent bootstrap is
 `../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs`.
@@ -81,7 +79,7 @@ npm run dev:local
 ```
 
 In another terminal, run `npm run routing:check`. Preparing data and restarting
-the service activates new locations without rebuilding Java. The preparation
+the service activates new locations without rebuilding the engine. The preparation
 step generates both engine data and browser notices. It rejects conflicting
 rules, invalid guards and changed reviewed map tiles before writing the result.
 Review geometry and tags before updating a tile checksum. A missing match never
@@ -285,7 +283,7 @@ Downloaded assets and generated graphs remain on disk.
 25°W–45°E and 34°N–72°N, through zoom 14. The archive is about 25 GB; zooming
 closer keeps vector lines and labels sharp but cannot add details omitted from
 the source tiles. The archive does not cover the whole world. Routing still
-uses the separately installed BRouter data, currently a regional Austrian setup.
+uses the separately installed routing data, currently a regional Austrian setup.
 
 Tiles, font glyphs, symbols and the generated German street style are served
 from `.cache/maps/` by `npm run maps:start`. The planner requests them through
@@ -676,7 +674,7 @@ An explicitly configured Photon service can still be selected with
 `.env` loading is disabled. Absolute URLs need CORS on that service. Choosing an
 external URL sends search queries there. Local search is the default.
 
-`node tests/browser-search.mjs` checks real local suggestions, BRouter routing,
+`node tests/browser-search.mjs` checks real local suggestions, local routing,
 keyboard and touch interaction, cancellation and controlled failure responses.
 It blocks external requests. Reports and screenshots go to `.cache/search/`.
 `node tests/browser-local-services.mjs` additionally checks real search and

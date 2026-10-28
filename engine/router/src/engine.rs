@@ -12,6 +12,7 @@
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::time::Instant;
 
 use brouter_expressions::{ExpressionError, Profile, WayContext};
@@ -122,7 +123,6 @@ pub struct RoutingEngine {
     matched_waypoints: Option<Vec<MatchedWaypoint>>,
     found_track: OsmTrack,
     error_message: Option<String>,
-    /// The state of the searches the request runs on its own thread.
     search: Searcher,
     /// Where the request's island checks and sections run side by side, while that gives Java's
     /// results: see `parallel_allowed`.
@@ -138,6 +138,7 @@ pub(crate) struct Job {
     max_running_time: i64,
     /// The request's clock: Java times all searches of a request from its start.
     start_time: Instant,
+    terminated: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Clone, Copy)]
@@ -204,6 +205,8 @@ struct Searcher {
     start_time: Instant,
     max_running_time: i64,
     direct_segment: i32,
+    /// Java's `terminated`: set from another thread to end the request's searches (`terminate()`).
+    terminated: Option<Arc<AtomicBool>>,
 }
 
 /// Runs a decoding step of the cache, failing with the profile error the decoder swallowed, if any
@@ -321,7 +324,11 @@ impl RoutingEngine {
         self.search.release(profiles)
     }
 
-    /// Lets the request run its island checks and sections on the pool's threads.
+    /// `terminate()` once `terminated` is set: the request's searches end at their next check.
+    pub(crate) fn set_terminated(&mut self, terminated: Option<Arc<AtomicBool>>) {
+        self.search.terminated = terminated;
+    }
+
     pub(crate) fn set_pool(&mut self, pool: Option<&Pool>) {
         self.pool = pool.cloned();
     }
@@ -340,7 +347,6 @@ impl RoutingEngine {
         })
     }
 
-    /// A job for the pool, from the request's current state.
     fn job(&self, kind: JobKind) -> Job {
         let search = &self.search;
         let mut rc = search.rc.clone();
@@ -353,6 +359,7 @@ impl RoutingEngine {
             island_node_pairs: search.island_node_pairs.clone(),
             max_running_time: search.max_running_time,
             start_time: search.start_time,
+            terminated: search.terminated.clone(),
         }
     }
 
@@ -677,6 +684,7 @@ impl Searcher {
             start_time: Instant::now(),
             max_running_time,
             direct_segment: 1,
+            terminated: None,
         }
     }
 
@@ -731,7 +739,6 @@ impl Searcher {
         }
     }
 
-    /// Runs one of the request's jobs on its own searcher.
     fn run_local(&mut self, job: Job) -> JobResult {
         let inverse_direction = std::mem::replace(&mut self.rc.inverse_direction, job.rc.inverse_direction);
         let result = self.run_job(job.kind, job.start_time);
@@ -1005,6 +1012,7 @@ impl Searcher {
             start_time,
             max_running_time,
             direct_segment,
+            terminated,
             ..
         } = self;
         let cache = nodes_cache.as_mut().expect("cache was reset");
@@ -1026,10 +1034,14 @@ impl Searcher {
 
         let mut iterations = 0u32;
         loop {
-            // the watchdog never terminates this engine; the clock is read every 256 steps (Java: every
-            // step), which delays a timeout by well under a millisecond
+            // termination and the clock are checked every 256 steps (Java: every step), which delays
+            // them by well under a millisecond
             iterations = iterations.wrapping_add(1);
             if iterations.is_multiple_of(256) {
+                if terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
+                    let seconds = start_time.elapsed().as_secs();
+                    return Err(error(format!("operation killed by thread-priority-watchdog after {seconds} seconds")));
+                }
                 if paths.len() > MAX_SEARCH_PATHS {
                     return Err(error("memory limit reached"));
                 }
@@ -1623,8 +1635,9 @@ pub(crate) fn run_pool_job(
         }
         Err(_) => return Err(Box::new(job)),
     };
-    let Job { kind, rc, island_node_pairs, max_running_time, start_time } = job;
+    let Job { kind, rc, island_node_pairs, max_running_time, start_time, terminated } = job;
     let mut search = Searcher::new(segments, rc, profile, std::mem::take(arenas), island_node_pairs, max_running_time);
+    search.terminated = terminated;
     let mut result = search.run_job(kind, start_time);
     result.outcome = match result.outcome {
         Ok(JobOutput::Section(track)) => Ok(JobOutput::Detached(track.detach(&search.elements))),
