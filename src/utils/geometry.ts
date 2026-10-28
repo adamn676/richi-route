@@ -7,6 +7,9 @@ export interface RouteSegmentProperties {
   fromId: string;
   toId: string;
   status: 'routed' | 'air';
+  waiting: boolean;
+  // Just calculated, fading in.
+  arriving?: boolean;
   surface: Surface;
 }
 

@@ -9,7 +9,7 @@ export function useMarkerWatches(mapRef: Ref<MaplibreMap | null>): void {
   const { createWaypointMarkers, createShapingMarkers, clearAllMarkers } = useMapMarkers(mapRef);
 
   watch(
-    [mapRef, () => routeStore.waypoints.map((point) => ({ ...point, coord: point.coord && [...point.coord] }))],
+    [mapRef, () => routeStore.waypoints.map((point) => ({ ...point, coord: point.coord && [...point.coord] })), () => routeStore.errorMessage],
     ([map]) => {
       if (!map) return;
       const placed = routeStore.waypoints.filter((point): point is Waypoint & { coord: Coord } => point.coord !== null);

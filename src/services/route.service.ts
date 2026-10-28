@@ -1,10 +1,10 @@
-import { distanceMeters, routingConcurrency, type Coord, type RoutingEngine } from '../domain/route-model.ts';
+import { distanceMeters, PlacementError, routingConcurrency, SectionError, type Coord, type RoutingEngine } from '../domain/route-model.ts';
 import { parseBRouterLeg, parseBRouterLine } from '../domain/route-response.ts';
 import { routingProfile, routingParameters, routingPolicyVersion } from '../config/routing-policy.ts';
 
 const maxSnapDistance = 250;
 const unavailableMessage = 'Der lokale Routing-Dienst ist nicht erreichbar. Bitte den Routing-Dienst starten und erneut versuchen.';
-const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.';
+const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenstopp dazwischen setzen.';
 const waiting: (() => void)[] = [];
 const backgroundWaiting: (() => void)[] = [];
 let active = 0;
@@ -49,16 +49,17 @@ async function request(points: Coord[], signal: AbortSignal, background = false,
       });
     } catch (error) {
       if (signal.aborted) throw error;
-      throw new Error(error instanceof Error && error.name === 'TimeoutError' ? timeoutMessage : unavailableMessage, { cause: error });
+      if (error instanceof Error && error.name === 'TimeoutError') throw new SectionError(timeoutMessage, { cause: error });
+      throw new Error(unavailableMessage, { cause: error });
     }
     if (!response.ok) {
       const detail = (await response.text()).trim();
       if (detail === 'local routing rules version mismatch') throw new Error('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.');
       const missingTile = /^datafile ([EW]\d+_[NS]\d+\.rd5) not found$/.exec(detail);
       if (missingTile) throw new Error(`Für diese Gegend fehlen lokale Kartendaten (${missingTile[1]}). Bitte die Kartendaten ergänzen und den Routing-Dienst neu starten.`);
-      if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new Error(timeoutMessage);
-      if (detail === 'memory limit reached') throw new Error('Die Routenberechnung hat das Speicherlimit erreicht. Bitte einen Zwischenpunkt setzen und erneut versuchen.');
-      if (/^no track found\b|position not mapped in existing datafile/.test(detail)) throw new Error('Keine passende Fahrradverbindung gefunden. Bitte Start, Ziel oder Zwischenpunkte verschieben.');
+      if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new SectionError(timeoutMessage);
+      if (detail === 'memory limit reached') throw new SectionError('Die Routenberechnung hat das Speicherlimit erreicht, der Abschnitt ist zu weit. Bitte einen Zwischenstopp dazwischen setzen.');
+      if (/^no track found\b|position not mapped in existing datafile/.test(detail)) throw new PlacementError('Keine passende Fahrradverbindung gefunden. Bitte Start, Ziel oder Zwischenpunkte verschieben.');
       if (response.status === 502 || response.status === 503) throw new Error(unavailableMessage);
       throw new Error(`Die Route konnte nicht berechnet werden (HTTP ${response.status}). Bitte erneut versuchen.`);
     }
@@ -78,7 +79,7 @@ export async function traceRoundTrip(start: Coord, radiusMeters: number, directi
 
 function checkSnap(requested: Coord, snapped: Coord): void {
   if (distanceMeters(requested, snapped) > maxSnapDistance) {
-    throw new Error('Kein geeigneter Radweg innerhalb von 250 m. Bitte den Punkt näher an eine Straße setzen.');
+    throw new PlacementError('Kein geeigneter Radweg innerhalb von 250\u00a0m. Bitte den Punkt näher an eine Straße setzen.');
   }
 }
 

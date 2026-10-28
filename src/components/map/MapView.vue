@@ -2,7 +2,7 @@
   <div class="map-view">
     <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking || surfaceReporting, 'map-view__stage--overview': overview }">
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
-      <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" />
+      <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" :former="routeStore.formerRoute" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
       <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? focusedSurface" :frame="!surfacePreview" />
       <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected"
@@ -98,7 +98,7 @@ const basemapTitle = computed(() =>
 const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
 const routeStore = useRouteStore();
 const { route, legs, waypoints, routingPending, focusedSurface, surfaceReporting, surfacePicking, surfacePreview, surfaceSelection,
-  surfaceEstimate, fitRequest } = storeToRefs(routeStore);
+  surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);
 const partLength = computed(() => formatLength(pathMeters(surfacePreview.value?.coordinates ?? [])));
 const loopSuggestions = useLoopSuggestionsStore();
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
@@ -146,6 +146,13 @@ watch(map, instance => {
 });
 // On phones the sheet makes way for an opened route, so the map grows before the fit holds.
 watch(fitRequest, () => { if (map.value) fitAndSettle(map.value, fitRoute); });
+watch(shownSection, shown => {
+  const leg = shown && routeStore.legs[shown.legId];
+  if (!map.value || !leg) return;
+  const bounds = new LngLatBounds();
+  for (const coord of leg.coordinates) bounds.extend([coord[0], coord[1]]);
+  fitAndSettle(map.value, () => map.value?.fitBounds(bounds, { padding: 80, maxZoom: 15, maxDuration: 1500 }));
+});
 function fitRoute() {
   const bounds = new LngLatBounds();
   for (const stop of waypoints.value) if (stop.coord) bounds.extend(stop.coord);

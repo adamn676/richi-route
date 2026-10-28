@@ -425,6 +425,17 @@ the empty start. Tooltips appear after the pointer has rested half a second on a
 control, and at once while it moves on to the next one; on touch screens a tap
 only acts, and a long press shows the control's label instead.
 
+While an edit is calculated, the route it replaced stays on the map, faded, and
+the new sections show as grey running dots once the answer takes longer than 0.3
+s; each calculated section then fades in. A section that cannot be calculated
+stays a red dashed straight line. Each problem is reported once: a stop with no
+way within 250 m shows it in its row, in red there and on the map, and moving
+the point fixes it. A section's own problem, such as one too far for a single
+calculation, shows above the route figures with **Abschnitt zeigen**, which
+frames it on the map; a stop set on its red line splits it. Problems of the
+whole route, such as an unreachable routing service, offer **Erneut versuchen**
+there instead. On phones the sheet opens for them.
+
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway
 stations over all base maps. Only cycle paths are on at first; points are labelled

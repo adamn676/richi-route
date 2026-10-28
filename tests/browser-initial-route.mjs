@@ -46,7 +46,7 @@ try {
       return Object.values(store.legs).filter(leg => leg.status === 'routed').length === 7 && store.pendingLegCount === 1;
     });
     assert.ok(await progress.isVisible(), 'Loading is explicit while the last section waits');
-    assert.equal(await page.getByText('Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.').count(), 0, 'Pending work is not described as a missing road connection');
+    assert.equal(await page.getByText('Rot gestrichelte Abschnitte konnten nicht berechnet werden.').count(), 0, 'Pending work is not described as a missing road connection');
     assert.equal(await drawnFeatures(), 0, 'No partial initial line is displayed');
     if (!failure) await page.screenshot({ path: 'experiments/routing/.local/initial-route-loading.png' });
     release();

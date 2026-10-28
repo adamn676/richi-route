@@ -9,7 +9,9 @@ import {
   legId,
   LegScheduler,
   pathMeters,
+  PlacementError,
   reconcileLegs,
+  SectionError,
   sameEndpoints,
   type Coord,
   type LegGeometry,
@@ -41,6 +43,8 @@ interface RouteFeatureProperties {
   fromId: string;
   toId: string;
   status: RouteLeg['status'];
+  // A straight leg still being calculated, rather than one that failed.
+  waiting: boolean;
   surfaces: SurfaceSpan[];
 }
 
@@ -78,7 +82,26 @@ interface PendingOperations {
 const pending = new WeakMap<object, PendingOperations>();
 // Legs are replaced as a unit, so one feature per leg lets the map skip unchanged legs by identity.
 const legFeatures = new WeakMap<RouteLeg, RouteFeature>();
-const routeFailureMessage = 'Routing fehlgeschlagen. Betroffene Abschnitte bleiben als gestrichelte Luftlinie sichtbar.';
+const routeFailureMessage = 'Routing fehlgeschlagen. Betroffene Abschnitte bleiben als rot gestrichelte Luftlinie sichtbar.';
+
+// Straight legs the engine is still to answer: neither failed nor waiting for a stop that found no street.
+function waitingTest(points: RoutePoint[]): (leg: RouteLeg) => boolean {
+  const unsnapped = new Set(points.filter(point => point.snapError).map(point => point.id));
+  return leg => leg.status === 'air' && !leg.error && !unsnapped.has(leg.fromId) && !unsnapped.has(leg.toId);
+}
+
+function legFeature(leg: RouteLeg, waiting: boolean): RouteFeature {
+  let feature = legFeatures.get(leg);
+  if (!feature || feature.properties.waiting !== waiting) {
+    feature = {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: leg.coordinates },
+      properties: { legId: leg.id, fromId: leg.fromId, toId: leg.toId, status: leg.status, waiting, surfaces: leg.surfaces },
+    };
+    legFeatures.set(leg, feature);
+  }
+  return feature;
+}
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -148,6 +171,8 @@ function operationsFor(store: RouteStore): PendingOperations {
               const message = 'Ein Abschnitt erreicht den Zwischenpunkt auf einem anderen Weg. Bitte diesen Punkt verschieben.';
               store.legs = { ...store.legs, [request.id]: airLeg(request, message) };
               store.errorMessage = message;
+              store.errorSection = { message, legId: request.id };
+              store._settleFormerLegs();
               return;
             }
             // Match outer endpoints in route context, preserving the user's original click.
@@ -158,10 +183,12 @@ function operationsFor(store: RouteStore): PendingOperations {
           }
           // Completed legs are replaced as a unit; their geometry stays immutable.
           store.legs = { ...store.legs, [request.id]: markRaw(leg) };
+          store._settleFormerLegs();
         },
-        (_request, error) => {
+        (request, error) => {
           console.error('Streckenabschnitt konnte nicht berechnet werden:', error);
           store.errorMessage = error instanceof Error ? error.message : routeFailureMessage;
+          if (error instanceof SectionError) store.errorSection = { message: error.message, legId: request.id };
         },
         (count) => { store.pendingLegCount = count; },
       ),
@@ -173,6 +200,7 @@ function operationsFor(store: RouteStore): PendingOperations {
 
 function cancelRequests(store: RouteStore): void {
   const operations = operationsFor(store);
+  store.formerLegs = [];
   for (const controller of operations.snaps.values()) controller.abort();
   for (const controller of operations.geocodes.values()) controller.abort();
   operations.snaps.clear();
@@ -187,10 +215,16 @@ export const useRouteStore = defineStore('route', {
   state: () => ({
     points: [waypoint('start'), waypoint('end')] as RoutePoint[],
     legs: {} as Record<string, RouteLeg>,
+    // The routed legs an edit replaced, shown faded while their successors are calculated.
+    formerLegs: [] as RouteLeg[],
     undoStack: [] as HistoryEntry[],
     redoStack: [] as HistoryEntry[],
     pendingLegCount: 0,
     errorMessage: null as string | null,
+    // The section a routing error belongs to, while that error shows.
+    errorSection: null as { message: string; legId: string } | null,
+    // The section the map frames, on request.
+    shownSection: null as { legId: string } | null,
     draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
     // Set once the saved draft has been looked for, whether one was found or not.
     draftLoaded: false,
@@ -250,34 +284,35 @@ export const useRouteStore = defineStore('route', {
     route: (state): EditorRoute | null => {
       const placed = state.points.filter(isPlaced);
       if (placed.length < 2) return null;
+      const waiting = waitingTest(state.points);
       return {
         type: 'FeatureCollection',
         features: placed.slice(0, -1).flatMap((from, index) => {
-          const to = placed[index + 1];
-          const leg = state.legs[legId(from.id, to.id)];
-          if (!leg) return [];
-          let feature = legFeatures.get(leg);
-          if (!feature) {
-            feature = {
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates: leg.coordinates },
-              properties: {
-                legId: leg.id,
-                fromId: leg.fromId,
-                toId: leg.toId,
-                status: leg.status,
-                surfaces: leg.surfaces,
-              },
-            };
-            legFeatures.set(leg, feature);
-          }
-          return [feature];
+          const leg = state.legs[legId(from.id, placed[index + 1].id)];
+          return leg ? [legFeature(leg, waiting(leg))] : [];
         }),
       };
     },
+    formerRoute: (state): RouteFeature[] => state.formerLegs.map(leg => legFeature(leg, false)),
+    // What the panel reports for the whole route: an error, or sections that failed before; a section's own problem
+    // offers to show it, any other a retry.
+    routeProblem(): { message: string; section: string | null; retry: boolean } | null {
+      if (this.errorMessage) {
+        const legId = this.errorSection?.message === this.errorMessage ? this.errorSection.legId : null;
+        const section = legId && this.legs[legId]?.error ? legId : null;
+        return { message: this.errorMessage, section, retry: !section };
+      }
+      const failed = Object.values(this.legs).find(leg => leg.error);
+      return failed && !this.routingPending ? { message: 'Rot gestrichelte Abschnitte konnten nicht berechnet werden.', section: failed.id, retry: true } : null;
+    },
+    // Why a stop has no street, unless the panel says so already.
+    stopError: (state) => (point: RoutePoint): string | undefined => point.snapError !== state.errorMessage ? point.snapError : undefined,
   },
 
   actions: {
+    showSection(legId: string) {
+      this.shownSection = { legId };
+    },
     inspectSurface(legId: string, fromIndex: number, toIndex: number, surface: Surface) {
       const leg = this.legs[legId];
       if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
@@ -329,7 +364,7 @@ export const useRouteStore = defineStore('route', {
       this.legs = draft.legs;
       this.undoStack = [];
       this.redoStack = [];
-      this.errorMessage = this.points.find(p => p.snapError)?.snapError ??
+      this.errorMessage = this.points.find(p => p.type === 'shape' && p.snapError)?.snapError ??
         Object.values(this.legs).find(l => l.error)?.error ?? null;
       this._resumePendingSnaps();
       this._reconcile();
@@ -426,10 +461,18 @@ export const useRouteStore = defineStore('route', {
       this.errorMessage = null;
     },
 
+    _settleFormerLegs() {
+      if (this.formerLegs.length && !Object.values(this.legs).some(waitingTest(this.points))) this.formerLegs = [];
+    },
+
     _reconcile(optimize = false) {
       const operations = operationsFor(this);
       const result = reconcileLegs(this.points, this.legs, optimize);
+      const kept = new Set(Object.values(result.legs));
+      const replaced = Object.values(this.legs).filter(leg => leg.status === 'routed' && !kept.has(leg));
+      this.formerLegs = [...this.formerLegs.filter(leg => !kept.has(leg)), ...replaced];
       this.legs = result.legs;
+      this._settleFormerLegs();
       const candidates: LegRequest[] = optimize
         ? result.requests
         : Object.values(result.legs)
@@ -493,7 +536,9 @@ export const useRouteStore = defineStore('route', {
           console.error('Straßen-Snapping fehlgeschlagen:', error);
           const message = error instanceof Error ? error.message : 'Kein geeigneter Straßenpunkt gefunden.';
           this.points = this.points.map(point => point.id === id ? { ...point, snapError: message } : point);
-          this.errorMessage = message;
+          // A stop shows its own problem in its row; the service's problems, and a shaping point's, which has no row, show
+          // in the panel.
+          if (!(error instanceof PlacementError) || this.points.find(point => point.id === id)?.type === 'shape') this.errorMessage = message;
         })
         .finally(() => {
           if (operations.snaps.get(id) !== controller) return;

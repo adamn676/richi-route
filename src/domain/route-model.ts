@@ -67,6 +67,11 @@ export interface LegGeometry {
   surfaces: SurfaceSpan[];
 }
 
+// A section's own problem, such as its length, which a retry does not solve but another point does.
+export class SectionError extends Error {}
+// A point's own problem, such as no way near it, rather than one of the routing service.
+export class PlacementError extends SectionError {}
+
 export interface RoutingEngine {
   snap(coord: Coord, signal: AbortSignal): Promise<Coord>;
   routeLeg(from: Coord, to: Coord, signal: AbortSignal): Promise<LegGeometry>;

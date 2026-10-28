@@ -60,7 +60,7 @@ try {
 
   wrongRevision = true;
   await reset();
-  await page.getByText('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.', { exact: true }).first().waitFor();
+  await page.locator('.planner__error', { hasText: 'Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.' }).waitFor();
   assert.equal(await notice.count(), 0);
   wrongRevision = false;
   await page.getByRole('button', { name: 'Erneut versuchen', exact: true }).click();

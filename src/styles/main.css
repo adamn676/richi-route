@@ -69,6 +69,7 @@ svg.tabler-icon { stroke-width: 1.75; }
   background: #fff;
 }
 .route-marker--preview { border-color: var(--text); pointer-events: none; }
+.route-marker--error { background: var(--danger); }
 .route-marker:active { cursor: grabbing; }
 /* MapLibre's popups as Material menus. */
 .maplibregl-popup-content { border-radius: var(--radius-lg); box-shadow: var(--shadow); }

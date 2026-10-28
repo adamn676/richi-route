@@ -10,9 +10,11 @@ function markerElement(kind: 'stop' | 'shape' | 'preview'): HTMLElement {
   return element;
 }
 
+// A stop that found no street shows red, as its row does.
 function labelStop(element: HTMLElement, point: Waypoint, index: number): HTMLElement {
   element.textContent = stopBadge(point.kind, index);
   element.setAttribute('aria-label', `${stopLabel(point.kind, index)} verschieben`);
+  element.classList.toggle('route-marker--error', Boolean(useRouteStore().stopError(point)));
   return element;
 }
 

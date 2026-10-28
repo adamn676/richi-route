@@ -7,7 +7,9 @@ export const routeStyle = {
   rough: '#ec9a12',
   unpaved: '#d63384',
   unknown: '#a7b0b8',
+  // A straight leg: red when it failed, the panel's ink while it is being calculated.
   air: '#b33c4b',
+  waiting: '#4d5753',
 };
 
 // Suggested loops, told apart on the map and in their cards (checked for colour-blind separation).

@@ -32,7 +32,7 @@
               @pointerdown="startDrag($event, point.id, viaIds)" @keydown.up.prevent="nudge(point.id, -1)" @keydown.down.prevent="nudge(point.id, 1)">
               <IconGripVertical :size="14" aria-hidden="true" />
             </button>
-            <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
+            <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord, 'planner__badge--error': routeStore.stopError(point) }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
             <div class="planner__stop-input">
               <AddressSearchInput
                 :waypoint-id="point.id"
@@ -48,7 +48,7 @@
               <small v-if="point.isGeocoding">Adresse wird ermittelt …</small>
               <small v-else-if="point.address && point.address !== point.userInput">Bisher: {{ point.address }}</small>
               <small v-if="point.snapPending">Straßenpunkt wird gesucht …</small>
-              <small v-if="point.snapError" class="planner__stop-error" role="alert">{{ point.snapError }}</small>
+              <small v-if="routeStore.stopError(point)" class="planner__stop-error" role="alert">{{ routeStore.stopError(point) }}</small>
             </div>
             <!-- The field's × empties a stop; an intermediate stop goes with its own button, filled or not. -->
             <v-icon-button v-if="point.kind === 'via'" class="planner__remove" size="x-small" :aria-label="`${stopLabel(point.kind, index)} entfernen`"
@@ -64,13 +64,16 @@
           : 'Tipp: Route auf der Karte ziehen, um sie zu formen; ein Klick darauf setzt einen Zwischenstopp.' }}</p>
     </section>
 
-    <div v-if="routingNotices.length || routeStore.errorMessage || airHint" class="planner__notices">
+    <!-- Errors of the whole route; a stop shows its own in its row. -->
+    <div v-if="routingNotices.length || problem" class="planner__notices">
       <v-alert v-for="notice in routingNotices" :key="notice.id" type="warning" role="status">{{ notice.text }}</v-alert>
-      <v-alert v-if="routeStore.errorMessage" type="error" class="planner__error">
-        {{ routeStore.errorMessage }}
-        <div><v-btn class="mt-2" @click="routeStore.retryRouting()">Erneut versuchen</v-btn></div>
+      <v-alert v-if="problem" type="error" class="planner__error">
+        {{ problem.message }}
+        <div class="planner__error-actions">
+          <v-btn v-if="problem.section" @click="routeStore.showSection(problem.section)">Abschnitt zeigen</v-btn>
+          <v-btn v-if="problem.retry" @click="routeStore.retryRouting()">Erneut versuchen</v-btn>
+        </div>
       </v-alert>
-      <v-alert v-else-if="airHint" type="warning" role="status">Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.</v-alert>
     </div>
 
     <LoopSuggestions v-if="routeStore.draftLoaded && (!hasEndpoints || loops.suggestions)" />
@@ -109,7 +112,7 @@ const routeStore = useRouteStore();
 const loops = useLoopSuggestionsStore();
 const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
   .filter(leg => leg.status === 'routed' && isRoutingPolicyCurrent(leg.routingPolicy))));
-const airHint = computed(() => routeStore.hasAirLines && !routeStore.routingPending);
+const problem = computed(() => routeStore.routeProblem);
 const exportReason = computed(() => gpxUnavailableReason(routeStore));
 const touch = matchMedia('(hover: none)').matches;
 const shapedKey = 'richiroute.route-shaped';
@@ -234,6 +237,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__badge { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 22px; border-radius: 50%; background: var(--accent);
   color: #fff; font-size: .72rem; font-weight: 700; }
 .planner__badge--empty { border: 2px dashed var(--border-input); background: none; color: var(--text-muted); }
+.planner__badge--error { background: var(--danger); }
 .planner__stop-input { grid-column: 2; grid-row: 1; display: grid; gap: .3rem; }
 /* Vuetify's input adds 8 px above the address line: 14 + 8 put it 22 px below the row's padding, level with the marker. */
 .planner__stop-input :deep(.v-field--variant-plain) { --v-field-padding-top: 14px; --v-field-padding-bottom: 2px; }
@@ -262,6 +266,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__add:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
 .planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }
 .planner__notices { display: grid; gap: var(--space-2); padding: var(--space-4) var(--gutter) 0; }
+.planner__error-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 .planner__stats dt { margin-bottom: var(--space-1); }
 .planner__stats dd { font-size: 1.5rem; }
 .planner__stat-skeleton { width: 5rem; height: 1.6rem; margin-top: var(--space-1); }
