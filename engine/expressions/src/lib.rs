@@ -66,6 +66,12 @@
 //! contents match Java step by step. Key values may come in any order: only variable numbering
 //! depends on it, never a value. [`java::parse_float`] and [`java::float_to_string`] are public for
 //! the router's own Java-compatible number handling.
+//!
+//! Not in Java: a context without a result cache (the node context) keeps the results of the
+//! descriptions it evaluated when its section reads nothing but the description (no `way:`
+//! variables, no variable before the section assigns it), and restores them, variables included,
+//! instead of evaluating again. The values cannot differ; only the lookup data that
+//! [`ExpressionContext::lookup_value`] reads stays at the last description actually evaluated.
 
 mod context;
 mod error;

@@ -26,6 +26,10 @@ the defaults from `PORTING.md`. Modes that need the segments are skipped when th
 | `decode-real` | The `decode` dump on 12 positions (Graz, Vienna, random) with the planner's profile `richi-local-v1.brf`: pristine `BExpressionContextWay` loaded via `ProfileCache` (classpath `pristine:brouter.jar:data`, without the test double) against the Rust `brouter-expressions` profile. This is the only mode that runs the real profile through the decoders. |
 | `match` | `matchWaypointsToNodes` for 542 waypoints in groups of 1-3, with range 250 and the round-trip mode's -60000. It includes beeline (direct) waypoints, island node pairs (re-matched after freezing a pair), points outside the data, at its edges and in the sea. For each waypoint it dumps the cross point, node1/node2, radius, directions and the `wayNearest` list. |
 
+The Rust side reads the segments through a `SegmentStore` with a 4 MB cell cache, so the `decode`,
+`match` and `decode-real` dumps weave cells both from the cache and freshly decoded, against Java,
+which decodes every time.
+
 Each section ends with `D <section> lines=<n> fnv=<digest>` over its canonical text. Sections are
 printed in full for a sample (every 20th position, every 10th group) unless `full` is given. On a
 mismatch, rerun the mode with `full` and diff the two files.
@@ -85,16 +89,18 @@ reachable through BRouter's `disableExpressionCache` debug switch); the port kee
 ## Router (router, cli)
 
 ```sh
-cargo build --release -p richi-engine   # target/release/richi-engine, which loops.mjs runs
+cargo build --release -p richi-engine   # $CARGO_TARGET_DIR/release/richi-engine (default target/), which loops.mjs runs
 node parity/loops.mjs rust              # the planner's loop suggestions: 20 starts × 36 round trips, 6 workers
 node parity/loops.mjs compare java rust # every answer's sha256 against the recorded Java baseline
 parity/route.sh                         # routes and number formats, Java against Rust, byte for byte
 parity/route.sh routes                  # (or: formats) one part only
 ```
 
-Use the Node at `../.cache/runtime/node/bin/node`. `richi-engine lines <segmentDir> <profileDir> <threads>`
-speaks the line protocol of `parity/java/router/RouteReference.java` (BRouter's server without the socket):
-`id<TAB>query` lines in, one JSON line `{"id","ms","error"|"geojson"}` out per request, in completion order.
+Use the Node at `../.cache/runtime/node/bin/node`. `richi-engine lines <segmentDir> <profileDir> <threads>
+[cellCacheMB]` speaks the line protocol of `parity/java/router/RouteReference.java` (BRouter's server without
+the socket): `id<TAB>query` lines in, one JSON line `{"id","ms","error"|"geojson"}` out per request, in
+completion order. The workers share decoded map cells up to `cellCacheMB` (default 64, 0 to decode every
+cell for every search as BRouter does); answers are the same either way.
 
 **Loops.** `loops.mjs` drives the planner's own loop-suggestion code against an engine process and records
 every answer in `target/parity/loops/<engine>.json`; `compare` counts different answers and suggestions and
@@ -139,3 +145,18 @@ answering like Java: engine modes 2 and 3, round trips without `direction` (BRou
 turn instructions (`timode`/`turnInstructionMode` > 0), beeline segments (`d` waypoints, `straight`,
 `add_beeline`), nogos and pois (when the parameters hold any), kinematic models, `correctMisplacedViaPoints`
 and `continueStraight`. The output is always GeoJSON, whatever `format` asks for, as in `RouteReference`.
+
+## Benchmark
+
+```sh
+parity/bench.sh                                   # build, then answer the workload 3 times
+parity/bench.sh old/richi-engine new/richi-engine # A/B builds: run in turn, best of each, answers compared
+```
+
+The workload is the 108 recorded loop queries of three starts (Graz, Feldbach, St. Pölten) from
+`target/parity/loops/java.json`, answered single-threaded; it prints the best time and peak RSS per
+binary, and fails if a binary's answers differ from the first one's. Settings: `RICHIROUTE_BENCH_RUNS`
+(3), `RICHIROUTE_BENCH_THREADS` (1), `RICHIROUTE_BENCH_CELL_CACHE_MB`, `RICHIROUTE_BENCH_STARTS` (comma
+separated) and `RICHIROUTE_BENCH_CPUS` (a `taskset` CPU list, to pin the runs on a shared machine). For
+an A/B decision, build both binaries from the same sources apart from the change, take the best of 3 or
+more runs and keep the change only if it is a clear win. Outputs go to `target/parity/bench/`.

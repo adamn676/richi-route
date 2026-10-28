@@ -60,7 +60,7 @@ pub fn destination(lon1: i32, lat1: i32, distance: f64, angle: f64) -> [i32; 2] 
 }
 
 /// Port of `CheapAngleMeter`: the angle defined by three points, with its cosine on the fly.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CheapAngleMeter {
     cosangle: f64,
 }

@@ -1,12 +1,11 @@
 //! Ports of `OsmNode`, `OsmLink`, `TurnRestriction` and `OsmNodesMap`: the router's graph, stored in
 //! arenas inside `OsmNodesMap`.
 
-use crate::MapError;
 use crate::node_hash::NodeHashMap;
 use crate::pos::OsmPos;
+use crate::{Geometry, MapError};
 use brouter_util::{ByteArrayCache, ByteArrayUnifier, ByteDataReader, Description};
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 macro_rules! arena_index {
     ($(#[$doc:meta])* $name:ident) => {
@@ -152,7 +151,7 @@ pub struct OsmLink {
     /// The way tags (valid for both directions).
     pub description_bitmap: Option<Description>,
     /// Intermediate nodes in forward direction, `None` for none (see `GeometryDecoder`).
-    pub geometry: Option<Rc<[u8]>>,
+    pub geometry: Option<Geometry>,
     n1: Option<NodeIdx>,
     n2: Option<NodeIdx>,
     previous: Option<LinkIdx>,
@@ -182,6 +181,11 @@ impl OsmLink {
     pub fn target(&self, source: impl Into<Option<NodeIdx>>) -> Option<NodeIdx> {
         let source = source.into();
         if self.n2 != source && self.n2.is_some() { self.n2 } else { self.n1 }
+    }
+
+    /// `target(source)` and `next(source)` together.
+    pub(crate) fn target_and_next(&self, source: NodeIdx) -> (Option<NodeIdx>, Option<LinkIdx>) {
+        if self.n2 != Some(source) && self.n2.is_some() { (self.n2, self.next) } else { (self.n1, self.previous) }
     }
 
     /// The next link in `source`'s chain.
@@ -318,11 +322,23 @@ impl Default for OsmNodesMap {
 
 impl OsmNodesMap {
     pub fn new() -> Self {
+        Self::with_storage(Vec::new(), Vec::new(), Vec::new(), NodeHashMap::new(), Vec::new(), Vec::new())
+    }
+
+    /// `new OsmNodesMap()` with these (empty) allocations.
+    fn with_storage(
+        nodes: Vec<OsmNode>,
+        links: Vec<OsmLink>,
+        restrictions: Vec<TurnRestriction>,
+        hmap: NodeHashMap,
+        nodes2check: Vec<NodeIdx>,
+        subtree_stack: Vec<SubtreeFrame>,
+    ) -> Self {
         Self {
-            nodes: Vec::new(),
-            links: Vec::new(),
-            restrictions: Vec::new(),
-            hmap: NodeHashMap::new(),
+            nodes,
+            links,
+            restrictions,
+            hmap,
             ab_unifier: ByteArrayCache::new(16_384),
             nodes_created: 0,
             maxmem: 0,
@@ -335,9 +351,19 @@ impl OsmNodesMap {
             end_node1: None,
             end_node2: None,
             cleanup_mode: 0,
-            nodes2check: Vec::new(),
-            subtree_stack: Vec::new(),
+            nodes2check,
+            subtree_stack,
         }
+    }
+
+    /// A new, empty map (`new OsmNodesMap()`) that reuses this one's allocations.
+    pub(crate) fn recycle(mut self) -> Self {
+        self.nodes.clear();
+        self.links.clear();
+        self.restrictions.clear();
+        self.hmap.clear();
+        self.nodes2check.clear();
+        Self::with_storage(self.nodes, self.links, self.restrictions, self.hmap, self.nodes2check, self.subtree_stack)
     }
 
     /// `new OsmNode(ilon, ilat)`: a node with unknown elevation, not yet in the index.
@@ -399,6 +425,22 @@ impl OsmNodesMap {
     /// The links in `n`'s chain, for read-only walks (loops that change the graph need `next_link`).
     pub fn links(&self, n: NodeIdx) -> impl Iterator<Item = LinkIdx> + '_ {
         std::iter::successors(self.node(n).firstlink, move |&l| self.next_link(l, n))
+    }
+
+    /// The links in `n`'s chain with their targets.
+    fn link_targets(&self, n: NodeIdx) -> impl Iterator<Item = (LinkIdx, NodeIdx)> + '_ {
+        let mut l = self.node(n).firstlink;
+        std::iter::from_fn(move || {
+            let link = l?;
+            let (t, next) = self.links[link.index()].target_and_next(n);
+            l = next;
+            Some((link, t.expect("link in the source's chain has a target")))
+        })
+    }
+
+    /// True if any link target of the node is hollow.
+    pub(crate) fn has_hollow_link_targets(&self, n: NodeIdx) -> bool {
+        self.link_targets(n).any(|(_, t)| self.is_hollow(t))
     }
 
     /// The link the decoder uses for a new link between two nodes: `node`'s own link if unused, else
@@ -508,7 +550,7 @@ impl OsmNodesMap {
         linklon: i32,
         linklat: i32,
         description: Option<Description>,
-        geometry: Option<Rc<[u8]>>,
+        geometry: Option<Geometry>,
         is_reverse: bool,
     ) {
         let (ilon, ilat) = (self.node(node).ilon, self.node(node).ilat);
@@ -520,9 +562,7 @@ impl OsmNodesMap {
         let mut link = None;
 
         // ...in our known links
-        let mut l = self.node(node).firstlink;
-        while let Some(li) = l {
-            let t = self.target(li, node);
+        for (li, t) in self.link_targets(node) {
             let tnode = self.node(t);
             if tnode.ilon == linklon && tnode.ilat == linklat {
                 tn = Some(t);
@@ -532,7 +572,6 @@ impl OsmNodesMap {
                     break;
                 }
             }
-            l = self.next_link(li, node);
         }
         // .. not found, then check the hollow nodes
         let tn = match tn.or_else(|| self.get(linklon, linklat)) {
@@ -656,7 +695,7 @@ impl OsmNodesMap {
                 let len = desc_size as usize;
                 exp_ctx_way.unify(mc.read_bytes(len), 0, len)
             });
-            let geometry = mc.read_data_until(end_pointer).map(Rc::from);
+            let geometry = mc.read_data_until(end_pointer).map(Geometry::from);
 
             self.add_link_to(node, linklon, linklat, description, geometry, is_reverse);
         }
@@ -696,38 +735,24 @@ impl OsmNodesMap {
     /// port cannot reproduce, so it always completes.
     fn min_visit_id_in_subtree(&mut self, n: NodeIdx) {
         let mut stack = std::mem::take(&mut self.subtree_stack);
-        stack.push(self.enter_subtree(None, n));
-        let mut child_result: Option<i32> = None;
+        // the frame being worked on stays out of the stack, which holds its ancestors
+        let mut frame = self.enter_subtree(None, n);
         loop {
-            let top = stack.len() - 1;
-            let n = stack[top].n;
-            if let Some(min_id_sub) = child_result.take() {
-                let (l, t, nodes_created_until_here) = stack[top].pending.take().expect("pending descent");
-                if min_id_sub > self.node(n).visit_id {
-                    // peninsula?
-                    self.nodes_created = nodes_created_until_here;
-                    self.unlink_link(n, l);
-                    self.unlink_link(t, l);
-                }
-                if min_id_sub < stack[top].min_id {
-                    stack[top].min_id = min_id_sub;
-                }
-            }
-
             let mut descend = None;
-            while let Some(l) = stack[top].next_link {
-                stack[top].next_link = self.next_link(l, n);
-
-                let t = self.target(l, n);
-                if Some(t) == stack[top].source || self.is_hollow(t) {
+            while let Some(l) = frame.next_link {
+                let (t, next_link) = self.links[l.index()].target_and_next(frame.n);
+                frame.next_link = next_link;
+                let t = t.expect("link in the source's chain has a target");
+                let target = &self.nodes[t.index()];
+                if Some(t) == frame.source || target.is_hollow() {
                     continue;
                 }
 
-                let mut min_id_sub = self.node(t).visit_id;
+                let mut min_id_sub = target.visit_id;
                 if min_id_sub == 1 {
                     min_id_sub = self.base_id;
                 } else if min_id_sub == 0 {
-                    stack[top].pending = Some((l, t, self.nodes_created));
+                    frame.pending = Some((l, t, self.nodes_created));
                     descend = Some(t);
                     break;
                 } else if min_id_sub < self.base_id {
@@ -735,22 +760,28 @@ impl OsmNodesMap {
                 } else if self.cleanup_mode == 2 {
                     min_id_sub = self.base_id; // in tree-mode, hitting anything is like a gateway
                 }
-                if min_id_sub < stack[top].min_id {
-                    stack[top].min_id = min_id_sub;
-                }
+                frame.min_id = frame.min_id.min(min_id_sub);
             }
             if let Some(t) = descend {
-                let frame = self.enter_subtree(Some(n), t);
-                stack.push(frame);
+                let child = self.enter_subtree(Some(frame.n), t);
+                stack.push(std::mem::replace(&mut frame, child));
                 continue;
             }
-            let done = stack.pop().expect("frame");
-            if stack.is_empty() {
-                self.subtree_stack = stack; // keep the allocation for the next cell
-                return;
+
+            // return to the parent
+            let min_id_sub = frame.min_id;
+            let Some(parent) = stack.pop() else { break };
+            frame = parent;
+            let (l, t, nodes_created_until_here) = frame.pending.take().expect("pending descent");
+            if min_id_sub > self.nodes[frame.n.index()].visit_id {
+                // peninsula?
+                self.nodes_created = nodes_created_until_here;
+                self.unlink_link(frame.n, l);
+                self.unlink_link(t, l);
             }
-            child_result = Some(done.min_id);
+            frame.min_id = frame.min_id.min(min_id_sub);
         }
+        self.subtree_stack = stack; // keep the allocation for the next cell
     }
 
     /// The entry of `minVisitIdInSubtree`: assigns the visit id and counts the node.

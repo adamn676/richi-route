@@ -6,7 +6,10 @@
 //   node parity/loops.mjs compare java rust
 //   node parity/loops.mjs java --as java-now   record under another name (e.g. to time Java again
 //                                              without replacing the baseline), compare with that name
-// Run from app/engine/. Paths: RICHIROUTE_SEGMENTS, RICHIROUTE_PROFILES, RICHIROUTE_JAVA, RICHIROUTE_BROUTER_JAR.
+// Run from app/engine/. Paths: RICHIROUTE_SEGMENTS, RICHIROUTE_PROFILES, RICHIROUTE_JAVA, RICHIROUTE_BROUTER_JAR;
+// the Rust engine is built into CARGO_TARGET_DIR (default target/). The engine runs with the planner's
+// concurrency as its thread count unless RICHIROUTE_ENGINE_THREADS says otherwise; the planner still sends
+// that many requests at a time.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -21,6 +24,7 @@ const app = path.join(engineDir, '..');
 const segments = process.env.RICHIROUTE_SEGMENTS ?? path.join(app, '../richiroute-ubuntu-benchmark/data');
 const profiles = process.env.RICHIROUTE_PROFILES ?? path.join(app, 'experiments/routing/.local/local-routing-rules/profiles');
 const output = path.join(engineDir, 'target/parity/loops');
+const engineThreads = process.env.RICHIROUTE_ENGINE_THREADS ?? String(routingConcurrency);
 
 // Starts across the routing data (10–20° E, 45–50° N): towns, hills and Alpine valleys.
 const starts = [
@@ -42,9 +46,10 @@ function engineCommand(engine) {
     const jar = process.env.RICHIROUTE_BROUTER_JAR ?? path.join(app, '../richiroute-ubuntu-benchmark/brouter.jar');
     const classes = path.join(engineDir, 'target/parity/classes');
     const classpath = [path.join(classes, 'pristine'), jar, path.join(classes, 'router')].join(path.delimiter);
-    return [java, ['-Xmx1g', '-cp', classpath, 'RouteReference', segments, profiles, String(routingConcurrency)]];
+    return [java, ['-Xmx1g', '-cp', classpath, 'RouteReference', segments, profiles, engineThreads]];
   }
-  if (engine === 'rust') return [path.join(engineDir, 'target/release/richi-engine'), ['lines', segments, profiles, String(routingConcurrency)]];
+  const release = path.join(process.env.CARGO_TARGET_DIR ?? path.join(engineDir, 'target'), 'release');
+  if (engine === 'rust') return [path.join(release, 'richi-engine'), ['lines', segments, profiles, engineThreads]];
   throw new Error(`Unknown engine ${engine}`);
 }
 
@@ -54,6 +59,12 @@ async function record(engine, name = engine) {
   const [command, args] = engineCommand(engine);
   const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
   const pending = new Map();
+  child.on('close', (code, signal) => {
+    if (pending.size) {
+      console.error(`${engine} stopped (${signal ?? `exit code ${code}`}) with ${pending.size} requests unanswered`);
+      process.exit(1);
+    }
+  });
   createInterface({ input: child.stdout }).on('line', line => {
     const answer = JSON.parse(line);
     pending.get(answer.id)(answer);

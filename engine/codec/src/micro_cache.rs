@@ -45,28 +45,14 @@ pub fn expand_id32(id32: i32) -> i64 {
         + ID32_TABLES[2][((id32 >> 20) & 1023) as usize]
 }
 
-/// The transfer nodes of a forward link, decoded alike by `MicroCache2` and `DirectWeaver` (Java
-/// repeats this code in both): written to `w` if the way is kept, and fed to the waypoint matcher if
-/// the way is usable for matching.
-#[allow(clippy::too_many_arguments)]
+/// The transfer nodes of a forward link (`decodeTransferNodes` without the matcher), written to `w` as
+/// `OsmLink.geometry` encodes them (lon, lat and elevation differences), or only read past.
 pub fn decode_transfer_nodes(
     bc: &mut StatCoderContext,
     trans_ele_diff: &NoisyDiffCoder,
-    w: &mut ByteDataWriter,
-    way_tags: Option<&TagValueWrapper>,
-    way_validator: &mut dyn TagValueValidator,
-    waypoint_matcher: Option<&mut (dyn WaypointMatcher + '_)>,
-    (ilon, ilat): (i32, i32),
+    mut w: Option<&mut ByteDataWriter>,
     (mut dlon_remaining, mut dlat_remaining): (i32, i32),
 ) {
-    let ilontarget = ilon.wrapping_add(dlon_remaining);
-    let ilattarget = ilat.wrapping_add(dlat_remaining);
-    let mut matcher = way_tags.filter(|tags| tags.access_type >= 2).and_then(|tags| {
-        let m = waypoint_matcher?;
-        let use_as_start_way = way_validator.check_start_way(&tags.data);
-        m.start(ilon, ilat, ilontarget, ilattarget, use_as_start_way).then_some(m)
-    });
-
     let transcount = bc.decode_var_bits();
     let mut count = transcount + 1;
     for _ in 0..transcount {
@@ -76,19 +62,40 @@ pub fn decode_transfer_nodes(
         dlat_remaining = dlat_remaining.wrapping_sub(dlat);
         count -= 1;
         let elediff = trans_ele_diff.decode_signed_value(bc);
-        if way_tags.is_some() {
+        if let Some(w) = &mut w {
             w.write_var_length_signed(dlon);
             w.write_var_length_signed(dlat);
             w.write_var_length_signed(elediff);
         }
+    }
+}
 
-        if let Some(m) = &mut matcher {
-            m.transfer_node(ilontarget.wrapping_sub(dlon_remaining), ilattarget.wrapping_sub(dlat_remaining));
-        }
+/// The waypoint matcher's part of `decodeTransferNodes`, for a forward link from `(ilon, ilat)` by
+/// `(dlon, dlat)` with these transfer nodes. Java feeds the matcher while it decodes them; reading the
+/// bits has no other effect, so feeding it afterwards makes the same calls. (The geometry format keeps
+/// differences below 2^30, more than any two positions on earth differ by.)
+pub fn match_transfer_nodes(
+    geometry: &[u8],
+    way_tags: Option<&TagValueWrapper>,
+    way_validator: &mut dyn TagValueValidator,
+    waypoint_matcher: Option<&mut (dyn WaypointMatcher + '_)>,
+    (ilon, ilat): (i32, i32),
+    (dlon, dlat): (i32, i32),
+) {
+    let (Some(tags), Some(m)) = (way_tags.filter(|tags| tags.access_type >= 2), waypoint_matcher) else { return };
+    let use_as_start_way = way_validator.check_start_way(&tags.data);
+    if !m.start(ilon, ilat, ilon.wrapping_add(dlon), ilat.wrapping_add(dlat), use_as_start_way) {
+        return;
     }
-    if let Some(m) = &mut matcher {
-        m.end();
+    let mut r = ByteDataReader::new(geometry);
+    let (mut lon, mut lat) = (ilon, ilat);
+    while r.has_more_data() {
+        lon = lon.wrapping_add(r.read_var_length_signed());
+        lat = lat.wrapping_add(r.read_var_length_signed());
+        r.read_var_length_signed(); // elevation
+        m.transfer_node(lon, lat);
     }
+    m.end();
 }
 
 /// Port of `MicroCache` and its subclass `MicroCache2`: the decoded nodes of one cell of a segment
@@ -414,16 +421,12 @@ impl MicroCache {
 
                 if !is_reverse {
                     // write geometry for forward links only
-                    decode_transfer_nodes(
-                        bc,
-                        &trans_ele_diff,
-                        &mut w,
-                        way_tags,
-                        way_validator,
-                        waypoint_matcher.as_deref_mut(),
-                        (ilon, ilat),
-                        (dlon_remaining, dlat_remaining),
-                    );
+                    let start = w.aboffset;
+                    let delta = (dlon_remaining, dlat_remaining);
+                    decode_transfer_nodes(bc, &trans_ele_diff, way_tags.is_some().then_some(&mut w), delta);
+                    let geometry = &w.data()[start..w.aboffset];
+                    let matcher = waypoint_matcher.as_deref_mut();
+                    match_transfer_nodes(geometry, way_tags, way_validator, matcher, (ilon, ilat), delta);
                 }
                 if let Some(sizeoffset) = sizeoffset {
                     w.inject_size(sizeoffset);

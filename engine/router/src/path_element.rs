@@ -2,14 +2,22 @@
 //! search paths and the guide track share elements and change them in place (times, costs,
 //! elevations), so they live in an arena per routing request and are addressed by `ElemIdx`.
 
+use std::num::NonZeroU32;
 use std::ops::{Index, IndexMut};
 
 use brouter_mapaccess::OsmPos;
 
 use crate::message_data::MessageData;
 
+/// The arena position plus one, so that `Option<ElemIdx>` takes four bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ElemIdx(u32);
+pub struct ElemIdx(NonZeroU32);
+
+impl ElemIdx {
+    fn index(self) -> usize {
+        (self.0.get() - 1) as usize
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct OsmPathElement {
@@ -74,7 +82,8 @@ impl PathElements {
     }
 
     pub fn push(&mut self, element: OsmPathElement) -> ElemIdx {
-        let idx = ElemIdx(u32::try_from(self.0.len()).expect("path element arena overflow"));
+        let idx = u32::try_from(self.0.len() + 1).ok().and_then(NonZeroU32::new).expect("path element arena overflow");
+        let idx = ElemIdx(idx);
         self.0.push(element);
         idx
     }
@@ -83,12 +92,12 @@ impl PathElements {
 impl Index<ElemIdx> for PathElements {
     type Output = OsmPathElement;
     fn index(&self, i: ElemIdx) -> &OsmPathElement {
-        &self.0[i.0 as usize]
+        &self.0[i.index()]
     }
 }
 
 impl IndexMut<ElemIdx> for PathElements {
     fn index_mut(&mut self, i: ElemIdx) -> &mut OsmPathElement {
-        &mut self.0[i.0 as usize]
+        &mut self.0[i.index()]
     }
 }

@@ -1,6 +1,43 @@
 use crate::OsmNode;
 use brouter_util::ByteDataReader;
+use std::ops::Deref;
 use std::rc::Rc;
+use std::sync::Arc;
+
+/// A link's transfer nodes in the forward direction (`OsmLink::geometry`, Java's `byte[] geometry`):
+/// a slice of the geometry of the cell it was decoded from, shared by the links woven from that cell.
+/// Two `Geometry`s are the same array in Java's sense when `same` says so.
+#[derive(Clone, Debug)]
+pub struct Geometry {
+    cell: Rc<Arc<[u8]>>,
+    start: u32,
+    end: u32,
+}
+
+impl Geometry {
+    /// The links of one woven cell share `cell`.
+    pub(crate) fn new(cell: &Rc<Arc<[u8]>>, start: usize, end: usize) -> Self {
+        Self { cell: cell.clone(), start: start as u32, end: end as u32 }
+    }
+
+    /// Java's reference comparison.
+    pub fn same(&self, other: &Geometry) -> bool {
+        Rc::ptr_eq(&self.cell, &other.cell) && self.start == other.start
+    }
+}
+
+impl From<&[u8]> for Geometry {
+    fn from(ab: &[u8]) -> Self {
+        Self::new(&Rc::new(Arc::from(ab)), 0, ab.len())
+    }
+}
+
+impl Deref for Geometry {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.cell[self.start as usize..self.end as usize]
+    }
+}
 
 /// Port of `OsmTransferNode`: an intermediate point of a link's geometry.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -16,7 +53,7 @@ pub struct OsmTransferNode {
 #[derive(Default)]
 pub struct GeometryDecoder {
     nodes: Vec<OsmTransferNode>,
-    last: Option<(Rc<[u8]>, bool)>,
+    last: Option<(Geometry, bool)>,
 }
 
 impl GeometryDecoder {
@@ -29,13 +66,13 @@ impl GeometryDecoder {
     /// the nodes in reverse order.
     pub fn decode_geometry(
         &mut self,
-        geometry: &Rc<[u8]>,
+        geometry: &Geometry,
         source_node: &OsmNode,
         target_node: &OsmNode,
         reverse_link: bool,
     ) -> &[OsmTransferNode] {
         if let Some((last_geometry, last_reverse)) = &self.last
-            && Rc::ptr_eq(last_geometry, geometry)
+            && last_geometry.same(geometry)
             && *last_reverse == reverse_link
         {
             return &self.nodes;

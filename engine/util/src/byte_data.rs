@@ -114,7 +114,13 @@ impl ByteDataWriter {
     }
 
     fn put(&mut self, b: u8) {
-        self.write(&[b]);
+        // aboffset never passes the end
+        if self.aboffset == self.ab.len() {
+            self.ab.push(b);
+        } else {
+            self.ab[self.aboffset] = b;
+        }
+        self.aboffset += 1;
     }
 
     pub fn write(&mut self, sa: &[u8]) {

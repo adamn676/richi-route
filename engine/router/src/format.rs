@@ -15,15 +15,27 @@ pub const VERSION: &str = "1.7.10";
 const MESSAGES_HEADER: &str = "Longitude\tLatitude\tElevation\tDistance\tCostPerKm\tElevCost\tTurnCost\tNodeCost\tInitialCost\tWayTags\tNodeTags\tTime\tEnergy";
 
 pub fn format_ilon(ilon: i32) -> String {
-    format_pos(ilon.wrapping_sub(180_000_000))
+    let mut s = String::new();
+    push_ilon(&mut s, ilon);
+    s
 }
 
 pub fn format_ilat(ilat: i32) -> String {
-    format_pos(ilat.wrapping_sub(90_000_000))
+    let mut s = String::new();
+    push_ilat(&mut s, ilat);
+    s
+}
+
+fn push_ilon(sb: &mut String, ilon: i32) {
+    push_pos(sb, ilon.wrapping_sub(180_000_000));
+}
+
+fn push_ilat(sb: &mut String, ilat: i32) {
+    push_pos(sb, ilat.wrapping_sub(90_000_000));
 }
 
 /// Six decimals, at least one integer digit.
-fn format_pos(mut p: i32) -> String {
+fn push_pos(sb: &mut String, mut p: i32) {
     let negative = p < 0;
     if negative {
         p = p.wrapping_neg();
@@ -43,7 +55,7 @@ fn format_pos(mut p: i32) -> String {
         ac[i] = b'-';
         i -= 1;
     }
-    String::from_utf8_lossy(&ac[i + 1..12]).into_owned()
+    sb.extend(ac[i + 1..12].iter().map(|&b| char::from(b)));
 }
 
 /// `String.replaceAll("\t", "\", \"")` on a table line.
@@ -113,7 +125,11 @@ pub fn format_json(t: &OsmTrack, elements: &PathElements) -> String {
     let mut nn = None;
     for &i in &t.nodes {
         let n = &elements[i];
-        let sele = if t.showspeed {
+        sb.push_str("          [");
+        push_ilon(&mut sb, n.ilon);
+        sb.push_str(", ");
+        push_ilat(&mut sb, n.ilat);
+        if t.showspeed {
             // hack: show speed instead of elevation
             let mut speed = 0.0;
             if let Some(nn) = nn.map(|j| &elements[j]) {
@@ -123,13 +139,13 @@ pub fn format_json(t: &OsmTrack, elements: &PathElements) -> String {
                     speed = f64::from((3.6 * dist as f32) / dt) + 0.5;
                 }
             }
-            format!(", {}", float_to_string((speed * 10.0) as i32 as f32 / 10.0))
-        } else if n.selev == i16::MIN {
-            String::new()
-        } else {
-            format!(", {}", double_to_string(n.elev()))
-        };
-        let _ = writeln!(sb, "          [{}, {}{sele}],", format_ilon(n.ilon), format_ilat(n.ilat));
+            sb.push_str(", ");
+            sb.push_str(&float_to_string((speed * 10.0) as i32 as f32 / 10.0));
+        } else if n.selev != i16::MIN {
+            sb.push_str(", ");
+            sb.push_str(&double_to_string(n.elev()));
+        }
+        sb.push_str("],\n");
         nn = Some(i);
     }
     delete_last_comma(&mut sb);

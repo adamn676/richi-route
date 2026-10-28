@@ -57,6 +57,29 @@ either depending on the other.
 - **Phone memory.** Map data is read from the files on demand, as BRouter does. Never load a whole
   segment file.
 
+## Speed without changing results
+
+Speed work keeps every answer identical; `parity/bench.sh` measures it (see `parity/README.md`).
+- **Share only what the request cannot influence.** The `SegmentStore` keeps the segment files open
+  and caches decoded cells for all searches, requests and threads: a decoded cell is a function of
+  the file's bytes alone. Everything that depends on the profile or the search happens per search,
+  when the cell is woven into the search's graph: the validator's `unify`, `accessType` and
+  `checkStartWay`, the waypoint matcher and the graph changes.
+- **Replay side effects in Java's order, don't skip them.** Weaving a cached cell makes the same
+  `unify`, `accessType` and `checkStartWay` calls in the same order as Java's decoder, so the
+  profile's result cache holds the same entries in the same order. Skipping calls would change what it
+  holds, and with it the results of a profile that reads a variable before assigning it. Queries
+  without side effects (`isLookupIdxUsed`) may be asked differently.
+- **Per-search checks stay per search.** Each search checks the files as Java opens them (missing
+  file, replaced file, lookup table version), so the same errors come up at the same time.
+- **No new identities.** Shared data must not make two things identical that Java keeps apart: a
+  link's geometry is a slice of the cell woven for this search (`Geometry::same`).
+- **Recycled allocations start like Java's fresh objects.** Graph arenas are reused between the
+  searches of a request; the node index then starts again with Java's 4096 buckets, because its
+  iteration order feeds the memory checks.
+- **Bounded memory.** Cached cells stay within a byte budget (least recently used out); a budget of 0
+  decodes every cell for every search, as BRouter does.
+
 ## Parity checks
 
 Each layer has a Java dump tool and a Rust counterpart that produce the same canonical text. The check

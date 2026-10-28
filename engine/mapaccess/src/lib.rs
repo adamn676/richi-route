@@ -19,8 +19,9 @@
 //!   stays usable from the other node, and once both directions are gone, `is_link_unused()` is true.
 //!   The source arguments take `impl Into<Option<NodeIdx>>`, so pass `n`, or `None` where Java passes
 //!   `null` (the start link from `map.create_link(None, Some(start))`).
-//! - **Geometry.** `link.geometry` holds the transfer nodes in the forward direction, and
-//!   `link.description_bitmap` the way tags (both are `Rc`s, compared by identity like Java's arrays).
+//! - **Geometry.** `link.geometry` holds the transfer nodes in the forward direction (a `Geometry`, a
+//!   slice of its cell's data that derefs to Java's bytes), and `link.description_bitmap` the way tags.
+//!   Both compare by identity like Java's arrays (`Geometry::same`, `Rc::ptr_eq`).
 //!   `GeometryDecoder::decode_geometry` returns the transfer nodes with elevations for either direction.
 //! - **Turn restrictions.** `map.restrictions(node)` lists them in Java's order, for
 //!   `TurnRestriction::is_turn_forbidden`.
@@ -37,16 +38,20 @@
 //!
 //! # Cache lifetime
 //!
-//! Create a `NodesCache` per search, passing the previous one (`&mut Option`, taken on success) to
-//! reuse its open files and still-virgin cells, as `RoutingEngine.resetCache` does. Afterwards call
-//! `clean(false)` (or `clean(true)` after an island). Methods that may decode take the way profile as
-//! `&mut dyn TagValueValidator`. Decoding errors come back as `MapError`, carrying BRouter's message
-//! and exception kind. Java's internal-error exceptions on inconsistent link state ("unknown source",
-//! "UUUUPS") are panics here: they only happen if the graph is used against its contract.
+//! A `SegmentStore` (in an `Arc`, shared by all threads) holds the segment directory, the open files
+//! and a bounded cache of decoded cells. Create a `NodesCache` from it per search, passing the
+//! previous one (`&mut Option`, taken on success) to reuse its files and still-virgin cells, as
+//! `RoutingEngine.resetCache` does. Afterwards call `clean(false)` (or `clean(true)` after an island).
+//! Methods that may decode take the way profile as `&mut dyn TagValueValidator`. Decoding errors come
+//! back as `MapError`, carrying BRouter's message and exception kind. Java's internal-error exceptions
+//! on inconsistent link state ("unknown source", "UUUUPS") are panics here: they only happen if the
+//! graph is used against its contract.
 //!
-//! The arenas only grow: where Java's garbage collector frees nodes that `vanish` and the memory checks
-//! cut off, they stay allocated here until the cache is dropped. `nodes_created` follows Java's
-//! accounting, not the memory in use.
+//! What the store shares between searches never changes a result; see `SegmentStore`.
+//!
+//! The arenas only grow during a search: where Java's garbage collector frees nodes that `vanish` and
+//! the memory checks cut off, they stay allocated until the next search of the chain reuses them.
+//! `nodes_created` follows Java's accounting, not the memory in use.
 
 mod direct_weaver;
 mod files;
@@ -55,12 +60,14 @@ mod graph;
 mod node_hash;
 mod nodes_cache;
 mod pos;
+mod store;
 mod waypoints;
 
-pub use geometry::{GeometryDecoder, OsmTransferNode};
+pub use geometry::{Geometry, GeometryDecoder, OsmTransferNode};
 pub use graph::{LinkIdx, NodeIdx, OsmLink, OsmNode, OsmNodesMap, RestrictionIdx, TurnRestriction};
-pub use nodes_cache::NodesCache;
+pub use nodes_cache::{ElevationTypes, NodesCache};
 pub use pos::{OsmPos, Pos};
+pub use store::SegmentStore;
 pub use waypoints::{MatchedWaypoint, OsmNodePairSet, WaypointMatcherImpl};
 
 use std::fmt;

@@ -19,10 +19,13 @@ use crate::track::OsmTrack;
 
 pub type PathIdx = u32;
 
-const PATH_START_BIT: i32 = 1;
-const CAN_LEAVE_DESTINATION_BIT: i32 = 2;
-const IS_ON_DESTINATION_BIT: i32 = 4;
-const HAD_DESTINATION_START_BIT: i32 = 8;
+/// `next_for_link` without a next path (the graph's link holders use the same mark).
+const NO_PATH: PathIdx = u32::MAX;
+
+const PATH_START_BIT: u8 = 1;
+const CAN_LEAVE_DESTINATION_BIT: u8 = 2;
+const IS_ON_DESTINATION_BIT: u8 = 4;
+const HAD_DESTINATION_START_BIT: u8 = 8;
 
 pub(crate) const GRAVITY: f64 = 9.81; // in meters per second^(-2)
 
@@ -37,9 +40,14 @@ pub struct OsmPath {
     pub source_node: Option<NodeIdx>,
     pub target_node: NodeIdx,
     pub link: LinkIdx,
-    pub origin_element: Option<ElemIdx>,
-    pub my_element: Option<ElemIdx>,
-    pub next_for_link: Option<PathIdx>,
+    /// Java's `originElement` in the final (detail) pass. The search passes leave elements out until a
+    /// track needs them: there, the origin element is always `origin_path`'s, made by `element_index`.
+    origin_element: Option<ElemIdx>,
+    origin_path: PathIdx,
+    /// The path's element once made (Java's `myElement`), shared by its successors.
+    my_element: Option<ElemIdx>,
+    /// The next path of the same link holder list, `NO_PATH` at the end (see `next_for_link()`).
+    next_for_link: PathIdx,
     pub treedepth: i32,
     /// The position of the waypoint just before this path position (for angle calculation).
     pub origin_lon: i32,
@@ -47,7 +55,7 @@ pub struct OsmPath {
     last_classifier: f32,
     last_initial_cost: f32,
     priorityclassifier: i32,
-    bitfield: i32,
+    bitfield: u8,
     pub message: Option<Box<MessageData>>,
 
     // StdPath: the elevation hysteresis buffers (0-10 m, in micrometers), travel time (s), energy (J)
@@ -92,8 +100,9 @@ impl OsmPath {
             target_node,
             link,
             origin_element: None,
+            origin_path: NO_PATH,
             my_element: None,
-            next_for_link: None,
+            next_for_link: NO_PATH,
             treedepth: 0,
             origin_lon: 0,
             origin_lat: 0,
@@ -112,17 +121,44 @@ impl OsmPath {
         }
     }
 
-    /// `OsmPathElement.create(path)`: an element at the path's target, carrying `message`.
-    pub fn element(&self, map: &OsmNodesMap, message: Option<Box<MessageData>>) -> OsmPathElement {
-        let n = map.node(self.target_node);
-        OsmPathElement {
-            ilat: n.ilat,
-            ilon: n.ilon,
-            selev: n.selev,
-            message,
-            cost: self.cost,
-            origin: self.origin_element,
+    /// `OsmPathElement.create(path)`: a new element at the path's target, carrying `message`, after
+    /// the elements of the path's origins.
+    pub fn new_element(
+        paths: &mut [OsmPath],
+        idx: PathIdx,
+        message: Option<Box<MessageData>>,
+        map: &OsmNodesMap,
+        elements: &mut PathElements,
+    ) -> ElemIdx {
+        let origin = match paths[idx as usize].origin_path {
+            NO_PATH => paths[idx as usize].origin_element,
+            origin_path => Some(Self::element_index(paths, origin_path, map, elements)),
+        };
+        elements.push(paths[idx as usize].element(map, message, origin))
+    }
+
+    /// The path's own element (`myElement`), made once with the path's message.
+    fn element_index(paths: &mut [OsmPath], idx: PathIdx, map: &OsmNodesMap, elements: &mut PathElements) -> ElemIdx {
+        if let Some(e) = paths[idx as usize].my_element {
+            return e;
         }
+        // the origins the search passes left without an element, made oldest first
+        let mut missing = Vec::new();
+        let mut i = paths[idx as usize].origin_path;
+        while i != NO_PATH && paths[i as usize].my_element.is_none() {
+            missing.push(i);
+            i = paths[i as usize].origin_path;
+        }
+        for &i in missing.iter().rev().chain([&idx]) {
+            let message = paths[i as usize].message.take();
+            paths[i as usize].my_element = Some(Self::new_element(paths, i, message, map, elements));
+        }
+        paths[idx as usize].my_element.expect("made above")
+    }
+
+    fn element(&self, map: &OsmNodesMap, message: Option<Box<MessageData>>, origin: Option<ElemIdx>) -> OsmPathElement {
+        let n = map.node(self.target_node);
+        OsmPathElement { ilat: n.ilat, ilon: n.ilon, selev: n.selev, message, cost: self.cost, origin }
     }
 
     /// `RoutingContext.createPath(origin, link, refTrack, detailMode)`: extends the path `origin` by
@@ -135,17 +171,18 @@ impl OsmPath {
         detail_mode: bool,
         env: &mut PathEnv,
     ) -> Result<OsmPath, ExpressionError> {
-        let o = &mut paths[origin as usize];
-        if o.my_element.is_none() {
-            let message = o.message.take();
-            o.my_element = Some(env.elements.push(o.element(env.map, message)));
-        }
+        let (origin_element, origin_path) = if detail_mode {
+            (Some(Self::element_index(paths, origin, env.map, env.elements)), NO_PATH)
+        } else {
+            (None, origin)
+        };
         let o = &paths[origin as usize];
         let source = o.target_node;
         let target = env.map.target(link, source);
         let mut p = Self {
             cost: o.cost,
-            origin_element: o.my_element,
+            origin_element,
+            origin_path,
             last_classifier: o.last_classifier,
             last_initial_cost: o.last_initial_cost,
             bitfield: o.bitfield,
@@ -161,11 +198,20 @@ impl OsmPath {
         Ok(p)
     }
 
-    fn get_bit(&self, mask: i32) -> bool {
+    pub fn next_for_link(&self) -> Option<PathIdx> {
+        (self.next_for_link != NO_PATH).then_some(self.next_for_link)
+    }
+
+    /// `setNextForLink`, with the holder the graph returned when this path was added.
+    pub fn set_next_for_link(&mut self, next: PathIdx) {
+        self.next_for_link = next;
+    }
+
+    fn get_bit(&self, mask: u8) -> bool {
         self.bitfield & mask != 0
     }
 
-    fn set_bit(&mut self, mask: i32, bit: bool) {
+    fn set_bit(&mut self, mask: u8, bit: bool) {
         if self.get_bit(mask) != bit {
             self.bitfield ^= mask;
         }

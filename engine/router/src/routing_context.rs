@@ -13,7 +13,7 @@ use brouter_util::{CheapAngleMeter, cheap_ruler, jmath};
 use crate::java::{JavaException, string_hash};
 use crate::param_collector::UrlParams;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct RoutingContext {
     pub alternative_idx: i32,
     pub local_function: Option<String>,
@@ -201,7 +201,7 @@ enum Entry {
 /// The nogo list and `calcDistance`'s matching state. Java puts the waypoint objects themselves into
 /// the list (as `OsmNodeNamed`s with a radius, which a match shrinks to the distance found) and reads
 /// their radius back; here the two points and their radii live in this struct.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Nogos {
     waypoint: Pos,
     waypoint_radius: f64,

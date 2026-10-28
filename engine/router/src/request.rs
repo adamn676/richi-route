@@ -2,11 +2,15 @@
 //! `ServerHandler`, as `parity/java/router/RouteReference.java` mirrors them).
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::engine::{Arenas, RoutingEngine};
+use brouter_mapaccess::SegmentStore;
+
+use crate::engine::{self, Arenas, Job, JobResult, RoutingEngine};
 use crate::format::format_json;
 use crate::java::{self, JavaException};
 use crate::param_collector::{get_url_params, get_way_point_list, set_params};
+use crate::pool::Pool;
 use crate::profile_cache::ProfileCache;
 use crate::routing_context::RoutingContext;
 
@@ -17,23 +21,27 @@ pub enum Answer {
     Error(String),
 }
 
-/// Answers requests on one thread: keeps its profile cache and search arenas between requests.
+/// Answers requests on one thread: keeps its profile cache and search arenas between requests. Routers
+/// on several threads can share one `SegmentStore` (open segment files and decoded cells).
 pub struct Router {
-    segment_dir: PathBuf,
+    segments: Arc<SegmentStore>,
     profiles: ProfileCache,
     arenas: Option<Arenas>,
 }
 
 impl Router {
     /// Segments come from `<segment_dir>/*.rd5`, profiles from `<profile_dir>/<name>.brf` with
-    /// `<profile_dir>/lookups.dat`.
+    /// `<profile_dir>/lookups.dat`. The router gets its own `SegmentStore` with the default cell
+    /// budget; routers on several threads, or with a tighter memory budget, use `with_segments`.
     pub fn new(segment_dir: impl Into<PathBuf>, profile_dir: impl Into<PathBuf>) -> Self {
+        let segments = SegmentStore::new(segment_dir, SegmentStore::DEFAULT_CELL_CACHE_BYTES);
+        Self::with_segments(Arc::new(segments), profile_dir)
+    }
+
+    /// A router reading its segments through `segments`.
+    pub fn with_segments(segments: Arc<SegmentStore>, profile_dir: impl Into<PathBuf>) -> Self {
         // BRouter shares 2 × threads profile slots among its worker threads; a router keeps 2
-        Self {
-            segment_dir: segment_dir.into(),
-            profiles: ProfileCache::new(profile_dir, 2),
-            arenas: Some(Arenas::default()),
-        }
+        Self { segments, profiles: ProfileCache::new(profile_dir, 2), arenas: Some(Arenas::default()) }
     }
 
     /// `RouteReference.answer`: the server's memory class (128), the profile named by `profile`, the
@@ -42,6 +50,16 @@ impl Router {
     /// 0; round trips run without a limit). `Err` is an exception BRouter throws to its caller, which
     /// the server answers with `exception: <toString()>`.
     pub fn answer(&mut self, query: &str, max_running_time: i64) -> Result<Answer, JavaException> {
+        self.answer_in(query, max_running_time, None)
+    }
+
+    /// `answer`, with the request's independent searches on the pool's threads.
+    pub(crate) fn answer_in(
+        &mut self,
+        query: &str,
+        max_running_time: i64,
+        pool: Option<&Pool>,
+    ) -> Result<Answer, JavaException> {
         let mut params = get_url_params(&format!("/brouter?{query}"))?;
         let mut rc = RoutingContext::new();
         rc.memoryclass = 128;
@@ -52,7 +70,8 @@ impl Router {
         set_params(&mut rc, &mut wplist, &mut params)?;
         let arenas = self.arenas.take().unwrap_or_default();
         let mut engine =
-            RoutingEngine::with_arenas(&self.segment_dir, wplist, rc, engine_mode, &mut self.profiles, arenas)?;
+            RoutingEngine::with_arenas(&self.segments, wplist, rc, engine_mode, &mut self.profiles, arenas)?;
+        engine.set_pool(pool);
         let run = engine.do_run(max_running_time);
         let answer = match engine.error_message() {
             Some(message) => Answer::Error(message.to_string()),
@@ -63,5 +82,14 @@ impl Router {
         self.arenas = Some(engine.finish(&mut self.profiles));
         run?;
         Ok(answer)
+    }
+
+    /// Runs another request's search with this router's profile cache and arenas (see
+    /// `engine::run_pool_job`).
+    pub(crate) fn run_job(&mut self, job: Job) -> Result<JobResult, Box<Job>> {
+        let mut arenas = self.arenas.take().unwrap_or_default();
+        let result = engine::run_pool_job(job, &self.segments, &mut self.profiles, &mut arenas);
+        self.arenas = Some(arenas);
+        result
     }
 }

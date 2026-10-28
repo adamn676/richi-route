@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -109,11 +110,116 @@ struct EvalCache {
     result_var_cache: LruMap<Rc<[f32]>>,
     /// Filled on each miss; kept in the result set cache when its values are new.
     probe_vars: Option<Rc<[f32]>>,
-    /// The node `unify` found last; `evaluate` checks it by reference before hashing.
-    last_cache_node: Option<u32>,
     /// The copy `unify` made last. Java's decoder passes that very array to `accessType`, and a cache
     /// miss then stores the caller's array; keeping it lets later `unify` calls share it the same way.
     last_unified: Option<Description>,
+    /// Cache nodes by the address of their description array, which the decoder's ways share. Java
+    /// checks only the node `unify` found last by reference. A node whose array is the very one asked
+    /// for is the only node with that content (a miss inserts only new content), so it is the node the
+    /// CRC lookup would find.
+    by_address: Box<[u32]>,
+}
+
+impl EvalCache {
+    const BY_ADDRESS_BITS: u32 = 12;
+
+    /// The node holding this very array, if it is the one remembered for its address.
+    fn node_by_address(&self, ab: &[u8]) -> Option<u32> {
+        let idx = self.by_address[address_slot(ab, 0, Self::BY_ADDRESS_BITS)];
+        (idx != u32::MAX && same_slice(&self.cache.value(idx).ab, ab)).then_some(idx)
+    }
+
+    fn remember_address(&mut self, idx: u32, ab: &[u8]) {
+        if same_slice(&self.cache.value(idx).ab, ab) {
+            self.by_address[address_slot(ab, 0, Self::BY_ADDRESS_BITS)] = idx;
+        }
+    }
+}
+
+/// A slot of a table with `2^bits` entries for the address of `ab`, mixed with `salt`.
+fn address_slot(ab: &[u8], salt: u64, bits: u32) -> usize {
+    let hash = (ab.as_ptr() as usize as u64 ^ salt).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    (hash >> (64 - bits)) as usize
+}
+
+/// The results of a context without a result cache whose evaluation depends on the description alone
+/// (`expression::depends_on_lookups_only`): the context's own variables after evaluating a description,
+/// per direction. Evaluating that description again would give exactly these values, so a hit restores
+/// them instead. Java has no cache here and evaluates every (node) description afresh.
+struct ResultMemo {
+    by_direction: [VariablesByDescription; 2],
+    /// The entries found last, by the address of the description asked for, which saves the hashing
+    /// when the decoder's nodes share their description arrays.
+    by_address: Box<[Option<AddressedEntry>]>,
+}
+
+type VariablesByDescription = HashMap<Description, Rc<[f32]>, BuildHasherDefault<FxHasher>>;
+
+struct AddressedEntry {
+    inverse_direction: bool,
+    ab: Description,
+    vars: Rc<[f32]>,
+}
+
+impl Default for ResultMemo {
+    fn default() -> Self {
+        Self { by_direction: Default::default(), by_address: (0..1 << Self::BY_ADDRESS_BITS).map(|_| None).collect() }
+    }
+}
+
+impl ResultMemo {
+    /// More descriptions than a routing area has distinct node tag sets; beyond that, start over.
+    const LIMIT: usize = 1 << 14;
+    const BY_ADDRESS_BITS: u32 = 10;
+
+    fn get(&mut self, inverse_direction: bool, ab: &[u8]) -> Option<&[f32]> {
+        let slot = address_slot(ab, u64::from(inverse_direction), Self::BY_ADDRESS_BITS);
+        // (the content decides; the address only finds the entry faster)
+        let hit =
+            self.by_address[slot].as_ref().is_some_and(|e| e.inverse_direction == inverse_direction && *e.ab == *ab);
+        if !hit {
+            let (ab, vars) = self.by_direction[usize::from(inverse_direction)].get_key_value(ab)?;
+            let entry = AddressedEntry { inverse_direction, ab: Rc::clone(ab), vars: Rc::clone(vars) };
+            self.by_address[slot] = Some(entry);
+        }
+        self.by_address[slot].as_ref().map(|e| &*e.vars)
+    }
+
+    fn insert(&mut self, inverse_direction: bool, ab: &[u8], vars: &[f32]) {
+        let map = &mut self.by_direction[usize::from(inverse_direction)];
+        if map.len() >= Self::LIMIT {
+            map.clear();
+            self.by_address.fill_with(|| None);
+        }
+        map.insert(ab.into(), vars.into());
+    }
+}
+
+/// A fast hash for short byte strings (descriptions are a few bytes).
+#[derive(Default)]
+struct FxHasher(u64);
+
+impl Hasher for FxHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0u8; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.write_u64(u64::from_le_bytes(word));
+        }
+    }
+
+    fn write_u64(&mut self, v: u64) {
+        self.0 = (self.0.rotate_left(5) ^ v).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+
+    fn write_usize(&mut self, v: usize) {
+        self.write_u64(v as u64);
+    }
+
+    fn finish(&self) -> u64 {
+        // the table picks buckets by the low bits, which the multiplication fills from low bits only
+        self.0.rotate_left(26)
+    }
 }
 
 /// The state and code the way and node contexts share (`BExpressionContext`). Use it through
@@ -150,6 +256,9 @@ pub struct ExpressionContext {
     current_vars: Option<Rc<[f32]>>,
     current_var_offset: usize,
     cache: Option<Box<EvalCache>>,
+    memo: Option<Box<ResultMemo>>,
+    /// See `depends_on_description_only`.
+    description_only: bool,
 
     pub(crate) no_start_ways: Vec<(usize, i32)>,
     pub(crate) linenr: i32,
@@ -164,8 +273,8 @@ impl ExpressionContext {
                 cache: LruMap::new(4 * size, size),
                 result_var_cache: LruMap::new(4096, 4096),
                 probe_vars: None,
-                last_cache_node: None,
                 last_unified: None,
+                by_address: vec![u32::MAX; 1 << EvalCache::BY_ADDRESS_BITS].into(),
             })
         });
         Self {
@@ -193,6 +302,8 @@ impl ExpressionContext {
             current_vars: None,
             current_var_offset: 0,
             cache,
+            memo: None,
+            description_only: false,
             no_start_ways: Vec::new(),
             linenr: 0,
         }
@@ -351,7 +462,8 @@ impl ExpressionContext {
         decode(&self.lookup_values, &mut self.lookup_data, false, ab);
     }
 
-    /// `getLookupValue(int)`: the number behind the current value of a lookup key (NaN when unset).
+    /// `getLookupValue(int)`: the number behind the current value of a lookup key (NaN when unset),
+    /// as the last `decode` or evaluation that ran left it.
     pub fn lookup_value(&self, key: usize) -> f32 {
         let env = Env { lookup_data: &self.lookup_data, lookup_values: &self.lookup_values, foreign: None };
         expression::lookup_value(&env, key as i32).expect("valid lookup key")
@@ -416,8 +528,9 @@ impl ExpressionContext {
         if let Some(idx) = cache.cache.get(crc(ab, offset, len), |_| true)
             && *cache.cache.value(idx).ab == *bytes
         {
-            cache.last_cache_node = Some(idx);
-            return Rc::clone(&cache.cache.value(idx).ab);
+            let unified = Rc::clone(&cache.cache.value(idx).ab);
+            cache.remember_address(idx, &unified); // the decoder evaluates it next (Java: lastCacheNode)
+            return unified;
         }
         let copy: Description = Rc::from(bytes);
         cache.last_unified = Some(Rc::clone(&copy));
@@ -484,7 +597,21 @@ impl ExpressionContext {
         let mut variable_data = vec![0.0; self.variable_numbers.len()];
         variable_data[..self.min_write_idx].copy_from_slice(&self.variable_data[..self.min_write_idx]);
         self.variable_data = variable_data;
+        self.description_only = expression::depends_on_lookups_only(
+            &self.exprs,
+            &self.expression_list,
+            self.variable_data.len(),
+            self.min_write_idx,
+        );
+        self.memo = (self.cache.is_none() && self.description_only).then(Box::default);
         Ok(())
+    }
+
+    /// Whether an evaluation's results depend on the description and direction alone: the section
+    /// reads no foreign (`way:`) variable and none of its own variables before assigning it. Then
+    /// neither the evaluation order nor the result cache's contents can change a value.
+    pub fn depends_on_description_only(&self) -> bool {
+        self.description_only
     }
 
     /// `getVariableIdx(name, false)`: -1 for unknown variables.
@@ -606,10 +733,14 @@ impl ExpressionContext {
 
     fn evaluate_into(&mut self, vars: &mut [f32], offset: usize, foreign: Option<&[f32]>) -> Result<(), EvalError> {
         self.evaluate_expressions(foreign)?;
+        self.store_build_ins(vars, offset);
+        Ok(())
+    }
+
+    fn store_build_ins(&self, vars: &mut [f32], offset: usize) {
         for (vi, &idx) in self.build_in_variable_idx.iter().enumerate() {
             vars[vi + offset] = if idx == -1 { 0.0 } else { self.variable_data[idx as usize] };
         }
-        Ok(())
     }
 
     /// `evaluate(boolean, byte[])`: evaluates a description. With a cache, both directions are
@@ -635,11 +766,27 @@ impl ExpressionContext {
         ab: &[u8],
         foreign: Option<&[f32]>,
     ) -> Result<(), EvalError> {
-        decode(&self.lookup_values, &mut self.lookup_data, inverse_direction, ab);
         let n = self.build_in_variable_idx.len();
         // Java reuses the array; nothing else holds it in a context without a cache.
         let mut vars = self.current_vars.take().unwrap_or_else(|| zeros(n));
-        let result = self.evaluate_into(Rc::get_mut(&mut vars).expect("uniquely owned"), 0, foreign);
+        let values = Rc::get_mut(&mut vars).expect("uniquely owned");
+        let own = self.min_write_idx;
+        let result = match self.memo.as_deref_mut().and_then(|memo| memo.get(inverse_direction, ab)) {
+            // (the lookup data stays at an earlier description; only `decode` users read it)
+            Some(memoized) => {
+                self.variable_data[own..].copy_from_slice(memoized);
+                self.store_build_ins(values, 0);
+                Ok(())
+            }
+            None => {
+                decode(&self.lookup_values, &mut self.lookup_data, inverse_direction, ab);
+                let result = self.evaluate_into(values, 0, foreign);
+                if let (Ok(()), Some(memo)) = (&result, self.memo.as_deref_mut()) {
+                    memo.insert(inverse_direction, ab, &self.variable_data[own..]);
+                }
+                result
+            }
+        };
         self.current_vars = Some(vars);
         result?; // Java throws before resetting the offset
         self.current_var_offset = 0;
@@ -655,9 +802,9 @@ impl ExpressionContext {
     ) -> Result<(), EvalError> {
         let n = self.build_in_variable_idx.len();
         // Java compares the last unified node's array by reference first.
-        let last = cache.last_cache_node.filter(|&idx| same_slice(&cache.cache.value(idx).ab, ab));
-        let hash = if last.is_some() { 0 } else { crc(ab, 0, ab.len()) };
-        let found = last.or_else(|| cache.cache.get(hash, |entry| *entry.ab == *ab));
+        let by_address = cache.node_by_address(ab);
+        let hash = if by_address.is_some() { 0 } else { crc(ab, 0, ab.len()) };
+        let found = by_address.or_else(|| cache.cache.get(hash, |entry| *entry.ab == *ab));
 
         let idx = match found {
             Some(idx) => {
@@ -696,6 +843,9 @@ impl ExpressionContext {
                 cache.cache.insert(hash, CacheEntry { ab: stored, vars })
             }
         };
+        if by_address.is_none() {
+            cache.remember_address(idx, ab);
+        }
         self.current_vars = Some(Rc::clone(&cache.cache.value(idx).vars));
         self.current_var_offset = if inverse_direction { n } else { 0 };
         Ok(())

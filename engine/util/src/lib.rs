@@ -16,7 +16,7 @@ pub use byte_array_cache::ByteArrayCache;
 pub use byte_data::{ByteDataReader, ByteDataWriter};
 pub use cheap_ruler::CheapAngleMeter;
 pub use crc32::crc;
-pub use long_map::{CompactLongMap, FrozenLongMap};
+pub use long_map::CompactLongMap;
 pub use sorted_heap::SortedHeap;
 
 use std::rc::Rc;

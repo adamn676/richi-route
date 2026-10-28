@@ -305,6 +305,7 @@ impl WaypointMatcher for WaypointMatcherImpl<'_> {
 
 /// Port of `OsmNodePairSet`: node pairs the router found to lead into islands, collected per search
 /// and frozen when the search fails. `CompactLongMap` with chained pairs becomes a map of pair lists.
+#[derive(Clone)]
 pub struct OsmNodePairSet {
     temp_pairs: Vec<(i64, i64)>,
     max_temp_nodes: usize,

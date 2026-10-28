@@ -1,61 +1,102 @@
-//! `richi-engine lines <segmentDir> <profileDir> <threads>`: answers BRouter requests the way
-//! BRouter's server does, without a socket (the protocol of `parity/java/router/RouteReference.java`).
+//! `richi-engine lines <segmentDir> <profileDir> [threads] [cellCacheMB]`: answers BRouter requests the
+//! way BRouter's server does, without a socket (the protocol of `parity/java/router/RouteReference.java`).
 //!
 //! Input: one request per line, `id<TAB>query`, with the query string the planner sends to `/brouter`.
 //! Output: one JSON line per request, `{"id":…,"ms":…,"error":…}` or `{"id":…,"ms":…,"geojson":…}`,
-//! in completion order. Requests run on a pool of `<threads>` workers; the program exits when stdin is
-//! closed and every request is answered.
+//! in completion order. Requests run on a pool of `<threads>` threads (default 1), which also run the
+//! searches of one request side by side; the program exits when stdin is closed and every request is
+//! answered. The threads share the decoded map cells, up to `<cellCacheMB>` megabytes (default
+//! `SegmentStore::DEFAULT_CELL_CACHE_BYTES`, 0 to decode every cell for every search as BRouter does).
+//! Like the Java reference's `-Xmx`, the heap has a ceiling (`HEAP_CEILING`): a search that runs away
+//! ends the program, not the machine.
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::io::{BufRead, Write};
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 
-use brouter_router::{Answer, Router, panic_message};
+use brouter_router::{Answer, Outcome, RouterPool, SegmentStore, panic_message};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 const MAX_RUNNING_TIME_MS: i64 = 60_000;
 
+/// About four times what the planner's loop suggestions take with 6 threads.
+const HEAP_CEILING: usize = 4 << 30;
+
+/// The system allocator, refusing allocations beyond `HEAP_CEILING`.
+struct Ceiling;
+
+#[global_allocator]
+static HEAP: Ceiling = Ceiling;
+static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+static REPORTED: AtomicBool = AtomicBool::new(false);
+
+impl Ceiling {
+    /// Counts `size` more bytes and allocates them with `alloc`, if that stays below the ceiling.
+    fn grow(size: usize, alloc: impl FnOnce() -> *mut u8) -> *mut u8 {
+        if ALLOCATED.fetch_add(size, Relaxed) + size > HEAP_CEILING {
+            ALLOCATED.fetch_sub(size, Relaxed);
+            // once (the write may allocate); the program aborts right after with "memory allocation
+            // of … bytes failed"
+            if !REPORTED.swap(true, Relaxed) {
+                let _ = std::io::stderr().write_all(b"richi-engine: heap ceiling reached\n");
+            }
+            return std::ptr::null_mut();
+        }
+        let ptr = alloc();
+        if ptr.is_null() {
+            ALLOCATED.fetch_sub(size, Relaxed);
+        }
+        ptr
+    }
+}
+
+unsafe impl GlobalAlloc for Ceiling {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        Self::grow(layout.size(), || unsafe { System.alloc(layout) })
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        Self::grow(layout.size(), || unsafe { System.alloc_zeroed(layout) })
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) };
+        ALLOCATED.fetch_sub(layout.size(), Relaxed);
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        if new_size <= layout.size() {
+            let new = unsafe { System.realloc(ptr, layout, new_size) };
+            if !new.is_null() {
+                ALLOCATED.fetch_sub(layout.size() - new_size, Relaxed);
+            }
+            return new;
+        }
+        Self::grow(new_size - layout.size(), || unsafe { System.realloc(ptr, layout, new_size) })
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 || args[1] != "lines" {
-        eprintln!("usage: richi-engine lines <segmentDir> <profileDir> [threads]");
+        eprintln!("usage: richi-engine lines <segmentDir> <profileDir> [threads] [cellCacheMB]");
         std::process::exit(2);
     }
-    let segment_dir = PathBuf::from(&args[2]);
     let profile_dir = PathBuf::from(&args[3]);
-    let threads = match args.get(4).map(|t| t.parse::<usize>()) {
-        None => 1,
-        Some(Ok(n)) if n > 0 => n,
+    let number = |i: usize, default: usize, min: usize, name: &str| match args.get(i).map(|a| a.parse::<usize>()) {
+        None => default,
+        Some(Ok(n)) if n >= min => n,
         Some(_) => {
-            eprintln!("threads must be a positive number");
+            eprintln!("{name} must be a number of at least {min}");
             std::process::exit(2);
         }
     };
-
-    let (sender, receiver) = mpsc::channel::<(String, String)>();
-    let receiver = Arc::new(Mutex::new(receiver));
-    let workers: Vec<_> = (0..threads)
-        .map(|_| {
-            let receiver = Arc::clone(&receiver);
-            let (segment_dir, profile_dir) = (segment_dir.clone(), profile_dir.clone());
-            std::thread::spawn(move || {
-                let mut router = Router::new(segment_dir, profile_dir);
-                loop {
-                    let job = receiver.lock().expect("job queue").recv();
-                    let Ok((id, query)) = job else { break };
-                    let result = answer(&mut router, &query);
-                    let mut out = std::io::stdout().lock();
-                    // a closed stdout leaves nobody to answer
-                    if writeln!(out, "{{\"id\":{},{result}}}", quote(&id)).and_then(|()| out.flush()).is_err() {
-                        std::process::exit(1);
-                    }
-                }
-            })
-        })
-        .collect();
+    let threads = number(4, 1, 1, "threads");
+    let cell_cache_bytes = number(5, SegmentStore::DEFAULT_CELL_CACHE_BYTES >> 20, 0, "cellCacheMB") << 20;
+    let segments = Arc::new(SegmentStore::new(&args[2], cell_cache_bytes));
+    let pool = RouterPool::new(segments, profile_dir, threads);
 
     // like Java's UTF-8 reader, malformed bytes become U+FFFD instead of ending the input
     for line in std::io::stdin().lock().split(b'\n') {
@@ -68,21 +109,23 @@ fn main() {
             eprintln!("ignoring a line without a tab: {line}");
             continue;
         };
-        sender.send((id.to_string(), query.to_string())).expect("workers are running");
+        let id = quote(id);
+        pool.submit(query.to_string(), MAX_RUNNING_TIME_MS, move |outcome, time| {
+            let result = answer(outcome, time.as_millis());
+            let mut out = std::io::stdout().lock();
+            // a closed stdout leaves nobody to answer
+            if writeln!(out, "{{\"id\":{id},{result}}}").and_then(|()| out.flush()).is_err() {
+                std::process::exit(1);
+            }
+        });
     }
-    drop(sender);
-    for worker in workers {
-        worker.join().expect("worker thread");
-    }
+    pool.finish();
 }
 
-/// `RouteReference.answer`: the JSON members after `"id"`.
-fn answer(router: &mut Router, query: &str) -> String {
-    let start = Instant::now();
-    // the engine turns the data layer's internal errors into error answers itself; this catches the rest
-    let result = catch_unwind(AssertUnwindSafe(|| router.answer(query, MAX_RUNNING_TIME_MS)));
-    let ms = start.elapsed().as_millis();
-    let (member, text) = match result {
+/// `RouteReference.answer`: the JSON members after `"id"`. The engine turns the data layer's internal
+/// errors into error answers itself; a panic here is any other one.
+fn answer(outcome: Outcome, ms: u128) -> String {
+    let (member, text) = match outcome {
         Ok(Ok(Answer::GeoJson(geojson))) => ("geojson", geojson),
         Ok(Ok(Answer::Error(message))) => ("error", message),
         Ok(Err(exception)) => ("error", format!("exception: {exception}")),

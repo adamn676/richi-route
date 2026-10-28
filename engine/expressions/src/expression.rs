@@ -158,6 +158,37 @@ pub(crate) fn evaluate(exprs: &[Expr], id: ExprId, vars: &mut [f32], env: &Env) 
     })
 }
 
+/// Whether evaluating the top-level `list` in order depends on the lookup data alone: no foreign
+/// variable is read, and no variable at or above `min_write_idx` (the context's own) is read before
+/// the list assigns it, so nothing carries over from an earlier evaluation.
+pub(crate) fn depends_on_lookups_only(
+    exprs: &[Expr],
+    list: &[ExprId],
+    variable_count: usize,
+    min_write_idx: usize,
+) -> bool {
+    fn reads_only(exprs: &[Expr], id: ExprId, assigned: &[bool]) -> bool {
+        let e = &exprs[id as usize];
+        let own = match e.op {
+            Op::Variable => assigned[e.variable_idx],
+            Op::ForeignVariable | Op::Assign => false,
+            _ => true,
+        };
+        own && [e.op1, e.op2, e.op3].into_iter().flatten().all(|op| reads_only(exprs, op, assigned))
+    }
+    // the read-only variables of the global section never change while evaluating
+    let mut assigned: Vec<bool> = (0..variable_count).map(|i| i < min_write_idx).collect();
+    list.iter().all(|&id| {
+        let e = &exprs[id as usize];
+        if e.op != Op::Assign {
+            return reads_only(exprs, id, &assigned);
+        }
+        let ok = e.op1.is_some_and(|op| reads_only(exprs, op, &assigned));
+        assigned[e.variable_idx] = true;
+        ok
+    })
+}
+
 /// `BExpressionContext.getLookupValue(int)`: the number behind a lookup value, for `v:` expressions.
 pub(crate) fn lookup_value(env: &Env, key: i32) -> Result<f32, EvalError> {
     let Some(&val) = usize::try_from(key).ok().and_then(|k| env.lookup_data.get(k)) else {

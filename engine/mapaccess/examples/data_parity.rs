@@ -8,7 +8,7 @@
 use brouter_codec::TagValueValidator;
 use brouter_expressions::Profile;
 use brouter_mapaccess::{
-    GeometryDecoder, LinkIdx, MapError, MatchedWaypoint, NodeIdx, NodesCache, OsmNodePairSet, OsmPos, Pos,
+    GeometryDecoder, LinkIdx, MapError, MatchedWaypoint, NodeIdx, NodesCache, OsmNodePairSet, OsmPos, Pos, SegmentStore,
 };
 use brouter_util::{ByteArrayUnifier, CheapAngleMeter, Description, SortedHeap, cheap_ruler, crc};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -16,8 +16,15 @@ use std::fmt::Write as _;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 const MAXMEM: i64 = 128 * 1024 * 1024;
+
+/// The segments behind every `NodesCache` of a mode. Its cell cache is small, so cells are woven both
+/// from the cache and freshly decoded (Java decodes each time).
+fn segment_store(seg_dir: &Path) -> Arc<SegmentStore> {
+    Arc::new(SegmentStore::new(seg_dir, 4 << 20))
+}
 
 /// `java.util.Random`.
 struct JavaRandom {
@@ -497,6 +504,7 @@ fn decode(
     mc: bool,
     positions: &[(i32, i32)],
 ) -> Result<(), MapError> {
+    let store = segment_store(seg_dir);
     let mut cache: Option<NodesCache> = None;
     let (mut total_nodes, mut total_links) = (0, 0);
     let mut treeified = 0;
@@ -505,7 +513,7 @@ fn decode(
         let cleanup_mode = (i % 3) as i32;
         let maxmem = if mc && i % 2 == 1 { 200_000 } else { MAXMEM };
 
-        let mut nc = NodesCache::new(seg_dir, ctx, maxmem, &mut cache, detailed)?;
+        let mut nc = NodesCache::new(&store, ctx, maxmem, &mut cache, detailed)?;
         nc.direct_weaving = !mc;
         nc.nodes_map.cleanup_mode = cleanup_mode;
         out.begin(full || i % 20 == 0);
@@ -627,7 +635,7 @@ fn decode(
             let r = real[real.len() / 2];
             let rid = nc.nodes_map.id_from_pos(r);
             let rpos = node_pos(&nc, r);
-            let mut nc2 = NodesCache::new(seg_dir, ctx, maxmem, &mut Some(nc), detailed)?;
+            let mut nc2 = NodesCache::new(&store, ctx, maxmem, &mut Some(nc), detailed)?;
             nc2.direct_weaving = !mc;
             let s = nc2.get_start_node(rid, ctx)?;
             out.line(&format!("startNode {rpos} {}", s.map_or("null".into(), |s| node_line(&nc2, s))));
@@ -684,12 +692,12 @@ fn waypoints(g: usize, pts: &[(i32, i32)]) -> Vec<MatchedWaypoint> {
         .collect()
 }
 
-struct Matcher<'a> {
-    seg_dir: &'a Path,
+struct Matcher {
+    store: Arc<SegmentStore>,
     cache: Option<NodesCache>,
 }
 
-impl Matcher<'_> {
+impl Matcher {
     fn run(
         &mut self,
         out: &mut Out,
@@ -699,7 +707,7 @@ impl Matcher<'_> {
         range: f64,
         islands: &OsmNodePairSet,
     ) -> Result<bool, MapError> {
-        let mut nc = NodesCache::new(self.seg_dir, ctx, MAXMEM, &mut self.cache, false)?;
+        let mut nc = NodesCache::new(&self.store, ctx, MAXMEM, &mut self.cache, false)?;
         let ok = match nc.match_waypoints_to_nodes(wps, range, islands, ctx) {
             Ok(ok) => {
                 out.line(&format!("{tag} ok={ok}"));
@@ -725,7 +733,7 @@ impl Matcher<'_> {
 fn match_waypoints(out: &mut Out, seg_dir: &Path, ctx: &mut TestValidator, full: bool) -> Result<(), MapError> {
     let mut rnd = JavaRandom::new(98765);
     let mut islands = OsmNodePairSet::new(1000);
-    let mut matcher = Matcher { seg_dir, cache: None };
+    let mut matcher = Matcher { store: segment_store(seg_dir), cache: None };
     let mut total = 0;
     let mut matched = 0;
     let mut g = 0;

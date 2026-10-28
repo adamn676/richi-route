@@ -11,21 +11,25 @@
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use brouter_expressions::{ExpressionError, Profile, WayContext};
-use brouter_mapaccess::{GeometryDecoder, MapError, MatchedWaypoint, NodeIdx, NodesCache, OsmNodePairSet, OsmPos, Pos};
+use brouter_mapaccess::{
+    ElevationTypes, GeometryDecoder, MapError, MatchedWaypoint, NodeIdx, NodesCache, OsmNodePairSet, OsmPos, Pos,
+    SegmentStore,
+};
 use brouter_util::{SortedHeap, cheap_ruler};
 
 use crate::java::{JavaException, min_f32, parse_double};
 use crate::libm;
 use crate::param_collector::OsmNodeNamed;
+use crate::pool::Pool;
 use crate::path::{GRAVITY, OsmPath, PathEnv, PathIdx};
 use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
 use crate::profile_cache::ProfileCache;
 use crate::routing_context::RoutingContext;
-use crate::track::OsmTrack;
+use crate::track::{DetachedTrack, OsmTrack};
 
 pub const BROUTER_ENGINEMODE_ROUTING: i32 = 0;
 pub const BROUTER_ENGINEMODE_ROUNDTRIP: i32 = 4;
@@ -71,16 +75,19 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
 }
 
 /// The search arenas. A worker keeps them between requests: they grow to tens of megabytes, which
-/// would otherwise be allocated and faulted in again for every request.
+/// would otherwise be allocated and faulted in again for every request. The nodes cache keeps only
+/// its allocations: each request opens its files again.
 #[derive(Default)]
 pub(crate) struct Arenas {
     paths: Vec<OsmPath>,
     elements: PathElements,
+    nodes_cache: Option<NodesCache>,
+    open_set: SortedHeap<PathIdx>,
 }
 
 /// What a search needs of a matched waypoint: its way section and the cross point on it.
 #[derive(Clone, Copy)]
-struct SearchEnd {
+pub(crate) struct SearchEnd {
     node1: Pos,
     node2: Pos,
     crosspoint: Pos,
@@ -94,11 +101,75 @@ impl SearchEnd {
 }
 
 pub struct RoutingEngine {
-    segment_dir: PathBuf,
     waypoints: Vec<OsmNodeNamed>,
+    engine_mode: i32,
+    matched_waypoints: Option<Vec<MatchedWaypoint>>,
+    found_track: OsmTrack,
+    error_message: Option<String>,
+    /// The state of the searches the request runs on its own thread.
+    search: Searcher,
+    /// Where the request's island checks and sections run side by side, while that gives Java's
+    /// results: see `parallel_allowed`.
+    pool: Option<Pool>,
+}
+
+/// A search a request hands to the pool: one island check, or one section's searches.
+pub(crate) struct Job {
+    kind: JobKind,
+    /// The request's context, with the search direction set.
+    rc: RoutingContext,
+    island_node_pairs: OsmNodePairSet,
+    max_running_time: i64,
+    /// The request's clock: Java times all searches of a request from its start.
+    start_time: Instant,
+}
+
+#[derive(Clone, Copy)]
+enum JobKind {
+    IslandCheck { start: SearchEnd, end: SearchEnd },
+    Section { start: SearchEnd, end: SearchEnd },
+}
+
+/// What a request needs of a search that ran apart from it.
+pub(crate) struct JobResult {
+    outcome: Result<JobOutput, Abort>,
+    /// The island pairs and cost factors as the search left them, which an island restart goes on from.
+    island_node_pairs: OsmNodePairSet,
+    air_distance_cost_factor: f64,
+    last_air_distance_cost_factor: f64,
+    /// Whether a beeline path moved `OsmPath.seg`, which the following sections would have continued.
+    segment_counter_moved: bool,
+    /// The search's last cache, as `recalcTrack` reads it after the last section.
+    elevation_types: ElevationTypes,
+}
+
+impl JobResult {
+    /// A job that ended with an internal error (a panic) outside its search, which ends the request.
+    pub(crate) fn panicked(panic: &(dyn Any + Send)) -> Self {
+        Self {
+            outcome: Err(Abort::Error(panic_message(panic))),
+            island_node_pairs: OsmNodePairSet::new(MAXNODES_ISLAND_CHECK as usize),
+            air_distance_cost_factor: 0.0,
+            last_air_distance_cost_factor: 0.0,
+            segment_counter_moved: false,
+            elevation_types: ElevationTypes::default(),
+        }
+    }
+}
+
+enum JobOutput {
+    /// Whether the check found an island.
+    IslandCheck(bool),
+    /// A section's track, in the arena of the searcher that ran it, or detached from another thread's.
+    Section(OsmTrack),
+    Detached(DetachedTrack),
+}
+
+/// What the searches of a request read and change: Java's `RoutingEngine` fields below `_findTrack`.
+struct Searcher {
+    segments: Arc<SegmentStore>,
     rc: RoutingContext,
     profile: Profile,
-    engine_mode: i32,
 
     nodes_cache: Option<NodesCache>,
     geometry: GeometryDecoder,
@@ -107,12 +178,8 @@ pub struct RoutingEngine {
     paths: Vec<OsmPath>,
     elements: PathElements,
 
-    matched_waypoints: Option<Vec<MatchedWaypoint>>,
     island_node_pairs: OsmNodePairSet,
     node_limit: i32, // used for target island search
-
-    found_track: OsmTrack,
-    error_message: Option<String>,
 
     air_distance_cost_factor: f64,
     last_air_distance_cost_factor: f64,
@@ -155,53 +222,37 @@ fn destination(lon1: i32, lat1: i32, distance: f64, angle: f64) -> (i32, i32) {
 impl RoutingEngine {
     /// Like Java's constructor, parses (or reuses) the profile named by `rc.local_function`.
     pub fn new(
-        segment_dir: &Path,
+        segments: &Arc<SegmentStore>,
         waypoints: Vec<OsmNodeNamed>,
         rc: RoutingContext,
         engine_mode: i32,
         profiles: &mut ProfileCache,
     ) -> Result<Self, JavaException> {
-        Self::with_arenas(segment_dir, waypoints, rc, engine_mode, profiles, Arenas::default())
+        Self::with_arenas(segments, waypoints, rc, engine_mode, profiles, Arenas::default())
     }
 
     pub(crate) fn with_arenas(
-        segment_dir: &Path,
+        segments: &Arc<SegmentStore>,
         waypoints: Vec<OsmNodeNamed>,
         mut rc: RoutingContext,
         engine_mode: i32,
         profiles: &mut ProfileCache,
-        mut arenas: Arenas,
+        arenas: Arenas,
     ) -> Result<Self, JavaException> {
         if rc.local_function.is_none() {
             // new File(routingContext.localFunction)
             return Err(JavaException { class: "java.lang.NullPointerException", message: None });
         }
         let profile = profiles.parse_profile(&mut rc)?;
-        arenas.paths.clear();
-        arenas.elements.clear();
+        let island_node_pairs = OsmNodePairSet::new(MAXNODES_ISLAND_CHECK as usize);
         Ok(Self {
-            segment_dir: segment_dir.to_path_buf(),
             waypoints,
-            rc,
-            profile,
             engine_mode,
-            nodes_cache: None,
-            geometry: GeometryDecoder::new(),
-            open_set: SortedHeap::new(),
-            paths: arenas.paths,
-            elements: arenas.elements,
             matched_waypoints: None,
-            island_node_pairs: OsmNodePairSet::new(MAXNODES_ISLAND_CHECK as usize),
-            node_limit: 0,
             found_track: OsmTrack::new(),
             error_message: None,
-            air_distance_cost_factor: 0.0,
-            last_air_distance_cost_factor: 0.0,
-            guide_track: None,
-            match_path: None,
-            start_time: Instant::now(),
-            max_running_time: 0,
-            direct_segment: 1,
+            pool: None,
+            search: Searcher::new(segments, rc, profile, arenas, island_node_pairs, 0),
         })
     }
 
@@ -241,7 +292,7 @@ impl RoutingEngine {
     }
 
     pub fn elements(&self) -> &PathElements {
-        &self.elements
+        &self.search.elements
     }
 
     /// Ends the request: returns the profile to the cache (Java's `ProfileCache.releaseProfile`).
@@ -251,8 +302,53 @@ impl RoutingEngine {
 
     /// `release_profile`, handing back the arenas for the next request.
     pub(crate) fn finish(self, profiles: &mut ProfileCache) -> Arenas {
-        profiles.release_profile(self.profile, &self.rc);
-        Arenas { paths: self.paths, elements: self.elements }
+        self.search.release(profiles)
+    }
+
+    /// Lets the request run its island checks and sections on the pool's threads.
+    pub(crate) fn set_pool(&mut self, pool: Option<&Pool>) {
+        self.pool = pool.cloned();
+    }
+
+    /// Whether searches may run apart from each other and from the request's thread. They give
+    /// Java's results when no search depends on another: the profile's results depend on the
+    /// descriptions alone (so neither the evaluation order nor the result caches matter), and the
+    /// request has not restarted after an island (Java's restart goes on with the stale cost factors
+    /// of the failed search).
+    fn parallel_allowed(&self) -> Option<&Pool> {
+        let profile = &self.search.profile;
+        self.pool.as_ref().filter(|pool| {
+            pool.threads() > 1
+                && profile.way.depends_on_description_only()
+                && profile.node.depends_on_description_only()
+        })
+    }
+
+    /// A job for the pool, from the request's current state.
+    fn job(&self, kind: JobKind) -> Job {
+        let search = &self.search;
+        let mut rc = search.rc.clone();
+        if let JobKind::Section { .. } = kind {
+            rc.inverse_direction = rc.inverse_routing;
+        }
+        Job {
+            kind,
+            rc,
+            island_node_pairs: search.island_node_pairs.clone(),
+            max_running_time: search.max_running_time,
+            start_time: search.start_time,
+        }
+    }
+
+    /// The outcome of a job. On failure the request goes on, as after Java's failed search, with the
+    /// job's island pairs and cost factors: an island restart reads them.
+    fn adopt(&mut self, result: JobResult) -> Result<JobOutput, Abort> {
+        if result.outcome.is_err() {
+            self.search.island_node_pairs = result.island_node_pairs;
+            self.search.air_distance_cost_factor = result.air_distance_cost_factor;
+            self.search.last_air_distance_cost_factor = result.last_air_distance_cost_factor;
+        }
+        result.outcome
     }
 
     /// `logException`: the message of the exception that ended the routing.
@@ -271,21 +367,21 @@ impl RoutingEngine {
             Ok(Err(e)) => self.fail(e),
             Err(panic) => self.error_message = Some(panic_message(&*panic)),
         }
-        // finally: close the cache and the open set (the profile is released by the caller)
-        self.nodes_cache = None;
-        self.open_set.clear();
-        self.paths.clear();
+        // finally: close the open set (the profile is released by the caller, and the cache kept for
+        // its allocations only)
+        self.search.open_set.clear();
+        self.search.paths.clear();
     }
 
     fn try_routing(&mut self, max_running_time: i64) -> Result<(), Abort> {
-        self.start_time = Instant::now();
-        self.max_running_time = max_running_time;
+        self.search.start_time = Instant::now();
+        self.search.max_running_time = max_running_time;
 
-        if let Some(feature) = self.rc.unsupported_feature() {
+        if let Some(feature) = self.search.rc.unsupported_feature() {
             return Err(unsupported(&feature));
         }
 
-        if self.rc.allow_samewayback {
+        if self.search.rc.allow_samewayback {
             let wps = &mut self.waypoints;
             if wps.len() == 2 {
                 let first = &wps[0];
@@ -305,10 +401,10 @@ impl RoutingEngine {
         let nsections = self.waypoints.len() - 1;
         let mut ref_tracks: Vec<Option<OsmTrack>> = (0..nsections).map(|_| None).collect(); // used ways for alternatives
         let mut last_tracks: Vec<Option<OsmTrack>> = (0..nsections).map(|_| None).collect();
-        let alternative = self.rc.get_alternative_idx(0, 3);
+        let alternative = self.search.rc.get_alternative_idx(0, 3);
         for i in 0.. {
             let mut track = self.find_track_retrying(&mut ref_tracks, &mut last_tracks)?;
-            track.name = format!("brouter_{}_{i}", self.rc.get_profile_name());
+            track.name = format!("brouter_{}_{i}", self.search.rc.get_profile_name());
             if i == alternative {
                 self.found_track = track;
                 break;
@@ -318,23 +414,23 @@ impl RoutingEngine {
     }
 
     fn do_round_trip(&mut self) {
-        self.rc.use_dynamic_distance = true;
-        let search_radius = self.rc.round_trip_distance.map_or(1500.0, f64::from);
-        let direction = self.rc.start_direction.map_or(-1.0, f64::from);
+        self.search.rc.use_dynamic_distance = true;
+        let search_radius = self.search.rc.round_trip_distance.map_or(1500.0, f64::from);
+        let direction = self.search.rc.start_direction.map_or(-1.0, f64::from);
         if direction == -1.0 {
             self.fail(unsupported("round trips without a direction (BRouter picks a random one)"));
             return;
         }
 
-        if self.rc.allow_samewayback {
+        if self.search.rc.allow_samewayback {
             let start = &self.waypoints[0];
             let (lon, lat) = destination(start.ilon, start.ilat, search_radius, direction);
             self.waypoints.push(OsmNodeNamed::new(lon, lat, "rt1"));
         } else {
-            self.build_points_from_circle(direction, search_radius, self.rc.round_trip_points.unwrap_or(5));
+            self.build_points_from_circle(direction, search_radius, self.search.rc.round_trip_points.unwrap_or(5));
         }
 
-        self.rc.waypoint_catching_range = 250.0;
+        self.search.rc.waypoint_catching_range = 250.0;
 
         self.do_routing(0);
     }
@@ -358,20 +454,22 @@ impl RoutingEngine {
         loop {
             match self.try_find_track(ref_tracks, last_tracks) {
                 Err(Abort::Island) => {
-                    if self.rc.use_dynamic_distance {
+                    if self.search.rc.use_dynamic_distance {
                         for mwp in self.matched_waypoints.iter().flatten() {
                             if mwp.name.contains("_add")
                                 && let (Some(n1), Some(n2)) = (mwp.node1, mwp.node2)
                             {
-                                self.island_node_pairs.add_temp_pair(n1.id_from_pos(), n2.id_from_pos());
+                                self.search.island_node_pairs.add_temp_pair(n1.id_from_pos(), n2.id_from_pos());
                             }
                         }
                     }
-                    self.island_node_pairs.freeze_temp_pairs();
-                    if let Some(cache) = &mut self.nodes_cache {
+                    self.search.island_node_pairs.freeze_temp_pairs();
+                    if let Some(cache) = &mut self.search.nodes_cache {
                         cache.clean(true);
                     }
                     self.matched_waypoints = None;
+                    // Java's restart goes on with the failed search's cost factors: one search at a time
+                    self.pool = None;
                 }
                 result => return result,
             }
@@ -388,6 +486,10 @@ impl RoutingEngine {
     ) -> Result<OsmTrack, Abort> {
         let mut totaltrack = OsmTrack::new();
         let has_direct_routing = self.waypoints.iter().any(|wp| wp.wpttype == MatchedWaypoint::WAYPOINT_TYPE_DIRECT);
+        let inverse_routing = self.search.rc.inverse_routing;
+        // The sections side by side, unless alternatives make them depend on earlier tracks.
+        let sections_side_by_side = !has_direct_routing && last_tracks.iter().all(Option::is_none);
+        let start_time = self.search.start_time;
 
         // without a raw track file there is never a nearby track for the target
         if self.matched_waypoints.is_none() {
@@ -401,85 +503,221 @@ impl RoutingEngine {
                     mwp
                 })
                 .collect();
-            let matching = self.match_waypoints_to_nodes(&mut mwps);
+            let matching = self.search.match_waypoints_to_nodes(&mut mwps);
             self.matched_waypoints = Some(mwps); // the island restart reads them
             matching?;
             let sections: Vec<(SearchEnd, i8)> =
                 self.matched_waypoints.iter().flatten().map(|mwp| (SearchEnd::of(mwp), mwp.wpttype)).collect();
 
             // detect target islands: restricted search in inverse direction
-            self.rc.inverse_direction = !self.rc.inverse_routing;
-            self.air_distance_cost_factor = 0.0;
-            for i in 0..sections.len() - 1 {
-                self.node_limit = MAXNODES_ISLAND_CHECK;
-                if sections[i].1 == MatchedWaypoint::WAYPOINT_TYPE_DIRECT {
-                    continue;
-                }
-                let (start, end) = (sections[i].0, sections[i + 1].0);
-                if self.rc.inverse_routing {
-                    let seg = self.find_track("start-island-check", start, end, None, None)?;
-                    if seg.is_none() && self.node_limit > 0 {
-                        return Err(error(format!("start island detected for section {i}")));
-                    }
-                } else {
-                    let seg = self.find_track("target-island-check", end, start, None, None)?;
-                    if seg.is_none() && self.node_limit > 0 {
-                        return Err(error(format!("target island detected for section {i}")));
-                    }
+            self.search.rc.inverse_direction = !self.search.rc.inverse_routing;
+            self.search.air_distance_cost_factor = 0.0;
+            let checks: Vec<(usize, JobKind)> = (0..sections.len() - 1)
+                .filter(|&i| sections[i].1 != MatchedWaypoint::WAYPOINT_TYPE_DIRECT)
+                .map(|i| (i, JobKind::IslandCheck { start: sections[i].0, end: sections[i + 1].0 }))
+                .collect();
+            // The sections wait for the checks: a section into an island would search the whole map.
+            let kinds: Vec<JobKind> = checks.iter().map(|&(_, kind)| kind).collect();
+            let mut side_by_side = self.run_side_by_side(&kinds).map(Vec::into_iter);
+            for &(i, kind) in &checks {
+                let checked = match side_by_side.as_mut() {
+                    Some(results) => self.adopt(results.next().expect("a result per job"))?,
+                    None => self.search.run(kind)?,
+                };
+                let JobOutput::IslandCheck(island) = checked else { unreachable!("an island check") };
+                if island {
+                    let side = if self.search.rc.inverse_routing { "start" } else { "target" };
+                    return Err(error(format!("{side} island detected for section {i}")));
                 }
             }
-            self.rc.inverse_direction = false;
-            self.node_limit = 0;
+            self.search.rc.inverse_direction = false;
+            self.search.node_limit = 0;
         }
 
         if has_direct_routing {
             return Err(unsupported("beeline (direct) routing"));
         }
 
-        self.direct_segment = 1; // OsmPath.seg = 1
         let mwps = self.matched_waypoints.as_deref().expect("matched above");
         let ends: Vec<SearchEnd> = mwps.iter().map(SearchEnd::of).collect();
         // where correctMisplacedViaPoints would snap the connection at a via point (snapPathConnection)
         let snaps: Vec<bool> = (0..ends.len() - 1)
             .map(|i| {
-                let start = &mwps[if self.rc.inverse_routing { i + 1 } else { i }];
-                self.rc.correct_misplaced_via_points
+                let start = &mwps[if self.search.rc.inverse_routing { i + 1 } else { i }];
+                self.search.rc.correct_misplaced_via_points
                     && mwps[i].wpttype != MatchedWaypoint::WAYPOINT_TYPE_DIRECT
                     && mwps[i].wpttype != MatchedWaypoint::WAYPOINT_TYPE_MEETING
-                    && !self.rc.allow_samewayback
+                    && !self.search.rc.allow_samewayback
                     && (start.name.starts_with("via") || start.name.starts_with("rt"))
             })
             .collect();
+
+        let mut section_results = None;
+        if sections_side_by_side {
+            let kinds: Vec<JobKind> = (0..ends.len() - 1)
+                .map(|i| {
+                    let (start, end) = if inverse_routing { (ends[i + 1], ends[i]) } else { (ends[i], ends[i + 1]) };
+                    JobKind::Section { start, end }
+                })
+                .collect();
+            section_results = self.run_side_by_side(&kinds);
+        }
+        // A moved segment counter would have carried over into the following sections: one at a time
+        // then, from the state of a first attempt's sections (side by side only runs in one).
+        if section_results.as_ref().is_some_and(|results| results.iter().any(|r| r.segment_counter_moved)) {
+            section_results = None;
+            let search = &mut self.search;
+            (search.air_distance_cost_factor, search.last_air_distance_cost_factor) = (0.0, 0.0);
+            search.start_time = start_time;
+        }
+        let mut side_by_side = section_results.map(Vec::into_iter);
+        let mut last_cache = None; // the elevation types of the last section's last search
+
+        self.search.direct_segment = 1; // OsmPath.seg = 1
         for i in 0..ends.len() - 1 {
             if let Some(last) = &last_tracks[i] {
-                ref_tracks[i].get_or_insert_with(OsmTrack::new).add_nodes(last, &self.elements);
+                ref_tracks[i].get_or_insert_with(OsmTrack::new).add_nodes(last, &self.search.elements);
             }
 
-            let seg = if self.rc.inverse_routing {
-                self.rc.inverse_direction = true;
-                let seg = self.search_track(ends[i + 1], ends[i], ref_tracks[i].as_ref());
-                self.rc.inverse_direction = false;
-                seg?
-            } else {
-                let seg = self.search_track(ends[i], ends[i + 1], ref_tracks[i].as_ref())?;
-                if self.rc.continue_straight && i < ends.len() - 2 {
-                    return Err(unsupported("continueStraight"));
+            let seg = match side_by_side.as_mut() {
+                Some(results) => {
+                    let result = results.next().expect("a result per section");
+                    last_cache = Some(result.elevation_types.clone());
+                    match self.adopt(result)? {
+                        JobOutput::Section(track) => track,
+                        JobOutput::Detached(track) => OsmTrack::attach(track, &mut self.search.elements),
+                        JobOutput::IslandCheck(_) => unreachable!("a section"),
+                    }
                 }
-                seg
+                None if inverse_routing => {
+                    self.search.rc.inverse_direction = true;
+                    let seg = self.search.search_track(ends[i + 1], ends[i], ref_tracks[i].as_ref());
+                    self.search.rc.inverse_direction = false;
+                    seg?
+                }
+                None => self.search.search_track(ends[i], ends[i + 1], ref_tracks[i].as_ref())?,
             };
+            if !inverse_routing && self.search.rc.continue_straight && i < ends.len() - 2 {
+                return Err(unsupported("continueStraight"));
+            }
 
             if snaps[i] && !totaltrack.nodes.is_empty() {
                 return Err(unsupported("correctMisplacedViaPoints"));
             }
 
-            totaltrack.append_track(&seg, &mut self.elements);
+            totaltrack.append_track(&seg, &mut self.search.elements);
             last_tracks[i] = Some(seg);
         }
 
-        self.post_elevation_check(&totaltrack)?;
-        self.recalc_track(&mut totaltrack);
+        self.search.post_elevation_check(&totaltrack)?;
+        let last_cache = last_cache
+            .unwrap_or_else(|| self.search.nodes_cache.as_ref().map(NodesCache::elevation_types).unwrap_or_default());
+        self.search.recalc_track(&mut totaltrack, &last_cache);
         // processVoiceHints: without a detour map and direct routing it returns an empty list
         Ok(totaltrack)
+    }
+
+    /// Runs the jobs side by side on the pool (and this thread), if that gives Java's results; their
+    /// results in order, else `None` to run them one by one.
+    fn run_side_by_side(&mut self, kinds: &[JobKind]) -> Option<Vec<JobResult>> {
+        let pool = self.parallel_allowed()?.clone();
+        if kinds.len() < 2 {
+            return None;
+        }
+        let jobs = kinds.iter().map(|&kind| self.job(kind)).collect();
+        let search = &mut self.search;
+        Some(pool.run(jobs, |job| search.run_local(job)))
+    }
+}
+
+impl Searcher {
+    /// A searcher in the arenas of earlier searches.
+    fn new(
+        segments: &Arc<SegmentStore>,
+        rc: RoutingContext,
+        profile: Profile,
+        mut arenas: Arenas,
+        island_node_pairs: OsmNodePairSet,
+        max_running_time: i64,
+    ) -> Self {
+        arenas.paths.clear();
+        arenas.elements.clear();
+        arenas.open_set.clear();
+        Self {
+            segments: segments.clone(),
+            rc,
+            profile,
+            nodes_cache: arenas.nodes_cache,
+            geometry: GeometryDecoder::new(),
+            open_set: arenas.open_set,
+            paths: arenas.paths,
+            elements: arenas.elements,
+            island_node_pairs,
+            node_limit: 0,
+            air_distance_cost_factor: 0.0,
+            last_air_distance_cost_factor: 0.0,
+            guide_track: None,
+            match_path: None,
+            start_time: Instant::now(),
+            max_running_time,
+            direct_segment: 1,
+        }
+    }
+
+    /// Returns the profile to the cache (Java's `ProfileCache.releaseProfile`) and the arenas for the
+    /// next searcher, with the nodes cache's files and cells dropped.
+    fn release(self, profiles: &mut ProfileCache) -> Arenas {
+        profiles.release_profile(self.profile, &self.rc);
+        let mut nodes_cache = self.nodes_cache;
+        if let Some(cache) = &mut nodes_cache {
+            cache.forget_files();
+        }
+        Arenas { paths: self.paths, elements: self.elements, nodes_cache, open_set: self.open_set }
+    }
+
+    /// The searches of a job, run in turn by the request or apart as a job.
+    fn run(&mut self, kind: JobKind) -> Result<JobOutput, Abort> {
+        match kind {
+            JobKind::IslandCheck { start, end } => {
+                self.node_limit = MAXNODES_ISLAND_CHECK;
+                let seg = if self.rc.inverse_routing {
+                    self.find_track("start-island-check", start, end, None, None)?
+                } else {
+                    self.find_track("target-island-check", end, start, None, None)?
+                };
+                Ok(JobOutput::IslandCheck(seg.is_none() && self.node_limit > 0))
+            }
+            JobKind::Section { start, end } => self.search_track(start, end, None).map(JobOutput::Section),
+        }
+    }
+
+    /// Runs a job as the request runs that step in a first attempt: with the cost factors at 0 (as
+    /// the island checks and every section start) and the segment counter at 1 (as the first section
+    /// starts; whether it moved is reported), on the request's clock. Java's internal errors (panics)
+    /// end the job with their message, as they would end the request.
+    fn run_job(&mut self, kind: JobKind, start_time: Instant) -> JobResult {
+        self.air_distance_cost_factor = 0.0;
+        self.last_air_distance_cost_factor = 0.0;
+        self.direct_segment = 1;
+        self.start_time = start_time;
+        let outcome = catch_unwind(AssertUnwindSafe(|| self.run(kind)))
+            .unwrap_or_else(|panic| Err(Abort::Error(panic_message(&*panic))));
+        JobResult {
+            outcome,
+            island_node_pairs: self.island_node_pairs.clone(),
+            air_distance_cost_factor: self.air_distance_cost_factor,
+            last_air_distance_cost_factor: self.last_air_distance_cost_factor,
+            segment_counter_moved: self.direct_segment != 1,
+            elevation_types: self.nodes_cache.as_ref().map(NodesCache::elevation_types).unwrap_or_default(),
+        }
+    }
+
+    /// Runs one of the request's jobs on its own searcher.
+    fn run_local(&mut self, job: Job) -> JobResult {
+        let inverse_direction = std::mem::replace(&mut self.rc.inverse_direction, job.rc.inverse_direction);
+        let result = self.run_job(job.kind, job.start_time);
+        self.rc.inverse_direction = inverse_direction;
+        result
     }
 
     /// `searchTrack` with `searchRoutedTrack` (beeline segments are excluded above).
@@ -531,7 +769,7 @@ impl RoutingEngine {
 
     fn reset_cache(&mut self, detailed: bool) -> Result<(), Abort> {
         let maxmem = i64::from(self.rc.memoryclass) * 1024 * 1024; // in MB
-        let cache = NodesCache::new(&self.segment_dir, &mut self.profile.way, maxmem, &mut self.nodes_cache, detailed)?;
+        let cache = NodesCache::new(&self.segments, &mut self.profile.way, maxmem, &mut self.nodes_cache, detailed)?;
         self.nodes_cache = Some(cache);
         self.island_node_pairs.clear_temp_pairs();
         Ok(())
@@ -651,7 +889,7 @@ impl RoutingEngine {
         let idx = self.paths.len() as PathIdx;
         self.paths.push(best_path);
         if let Some(previous) = cache.nodes_map.link_mut(best_link).add_link_holder(idx, n1) {
-            self.paths[idx as usize].next_for_link = Some(previous);
+            self.paths[idx as usize].set_next_for_link(previous);
         }
         Ok(Some(idx))
     }
@@ -793,10 +1031,13 @@ impl RoutingEngine {
                 continue;
             }
 
-            // direct weaving is always on
-            let has_hollow_link_targets = cache.has_hollow_link_targets(paths[pi].target_node);
-            if has_hollow_link_targets {
-                if !memory_panic_mode && !cache.nodes_map.is_in_memory_bounds(open_set.get_size(), false) {
+            // Direct weaving is always on. Java looks for hollow link targets first; the answer only
+            // matters when the memory check runs, otherwise the pre-pass below finds them itself.
+            let memory_check = memory_panic_mode || !cache.nodes_map.is_in_memory_bounds(open_set.get_size(), false);
+            let hollow_link_targets = memory_check && cache.has_hollow_link_targets(paths[pi].target_node);
+            if hollow_link_targets {
+                if !memory_panic_mode {
+                    // not in memory bounds
                     cache.nodes_map.collect_outreachers()?;
                     while let Some(p3) = open_set.pop_lowest_key_value() {
                         let p3_path = &paths[p3 as usize];
@@ -857,8 +1098,7 @@ impl RoutingEngine {
                     || (source_node_id == end_node_id2 && current_node_id == end_node_id1)
                 {
                     // track found, compile
-                    let mut t =
-                        compile_track(&mut paths[pi], &cache.nodes_map, elements, detail_mode, rc.inverse_routing);
+                    let mut t = compile_track(paths, path, &cache.nodes_map, elements, detail_mode, rc.inverse_routing);
                     t.showspeed = rc.showspeed;
                     return Ok(Some(t));
                 }
@@ -874,7 +1114,8 @@ impl RoutingEngine {
                         .wrapping_add(p.elevation_correction())
                         .wrapping_add(cct.cost.wrapping_sub(elements[pe].cost));
                     if cost_estimate <= max_total_cost {
-                        *match_path = Some(elements.push(p.element(&cache.nodes_map, p.message.clone())));
+                        let message = p.message.clone();
+                        *match_path = Some(OsmPath::new_element(paths, path, message, &cache.nodes_map, elements));
                     }
                     if cost_estimate < max_total_cost {
                         max_total_cost = cost_estimate;
@@ -886,7 +1127,7 @@ impl RoutingEngine {
             let mut holder = first_link_holder;
             while let Some(h) = holder {
                 paths[h as usize].airdistance = -1; // invalidate the entry in the open set
-                holder = paths[h as usize].next_for_link;
+                holder = paths[h as usize].next_for_link();
             }
 
             if paths[pi].treedepth > 1 {
@@ -913,8 +1154,8 @@ impl RoutingEngine {
             cache.nodes_map.destination = Some(end_pos);
 
             // StdModel creates no pre-paths, so this first pass over the links only loads the neighbours.
-            // It has nothing to load unless some were hollow above: nothing since makes a node hollow.
-            if has_hollow_link_targets {
+            // It has nothing to load if the check above found none hollow: nothing since makes a node hollow.
+            if hollow_link_targets || !memory_check {
                 let mut l = cache.nodes_map.node(current_node).firstlink;
                 while let Some(link) = l {
                     let next_node = cache.nodes_map.target(link, current_node);
@@ -984,7 +1225,7 @@ impl RoutingEngine {
                         {
                             best_path = Some(test_path);
                         }
-                        holder = paths[other_path as usize].next_for_link;
+                        holder = paths[other_path as usize].next_for_link();
                     }
                     let Some(mut best_path) = best_path else { break 'link };
 
@@ -1005,7 +1246,7 @@ impl RoutingEngine {
                             if dp.airdistance != -1 && best_path.definitly_worse_than(dp) {
                                 break;
                             }
-                            dominator = dp.next_for_link;
+                            dominator = dp.next_for_link();
                         }
 
                         if dominator.is_none() {
@@ -1013,7 +1254,7 @@ impl RoutingEngine {
                             let idx = PathIdx::try_from(paths.len()).expect("path arena overflow");
                             paths.push(best_path);
                             if let Some(previous) = cache.nodes_map.link_mut(link).add_link_holder(idx, current_node) {
-                                paths[idx as usize].next_for_link = Some(previous);
+                                paths[idx as usize].set_next_for_link(previous);
                             }
                             // addToOpenset
                             if paths[idx as usize].cost >= 0 {
@@ -1185,7 +1426,7 @@ impl RoutingEngine {
     }
 
     /// Recomputes distances, ascend and the time of time-less (beeline) sections.
-    fn recalc_track(&mut self, t: &mut OsmTrack) {
+    fn recalc_track(&mut self, t: &mut OsmTrack, last_cache: &ElevationTypes) {
         let mut totaldist = 0i32;
         let mut lasttime = 0.0f32;
         let mut speed_min = 9999.0f32;
@@ -1235,7 +1476,7 @@ impl RoutingEngine {
                 if ele_last != i16::MIN {
                     ehb += f64::from(i32::from(ele_last) - i32::from(ele)) * ele_factor;
                 }
-                let filter = self.elevation_filter(&self.elements[n]);
+                let filter = elevation_filter(last_cache, &self.elements[n]);
                 if ehb > 0.0 {
                     ascend += ehb;
                     ehb = 0.0;
@@ -1274,27 +1515,20 @@ impl RoutingEngine {
         t.energy = el[*t.nodes.last().expect("a track has nodes")].energy() as i32;
     }
 
-    /// The elevation filter for the position's elevation source: 1 arc second data is less noisy.
-    fn elevation_filter(&self, n: &OsmPathElement) -> f64 {
-        if let Some(cache) = &self.nodes_cache
-            && cache.get_elevation_type(n.ilon, n.ilat) == 1
-        {
-            return -5.0;
-        }
-        -10.0
-    }
 }
 
 /// `compileTrack`: the track of the found path, from its elements.
 fn compile_track(
-    path: &mut OsmPath,
+    paths: &mut [OsmPath],
+    path: PathIdx,
     map: &brouter_mapaccess::OsmNodesMap,
     elements: &mut PathElements,
     final_track: bool,
     inverse_routing: bool,
 ) -> OsmTrack {
-    let message = path.message.take();
-    let mut element = elements.push(path.element(map, message));
+    let message = paths[path as usize].message.take();
+    let mut element = OsmPath::new_element(paths, path, message, map, elements);
+    let path = &paths[path as usize];
 
     // for final track, cut endnode
     if final_track && let Some(origin) = elements[element].origin {
@@ -1339,4 +1573,40 @@ fn compile_track(
     track.distance = distance;
     track.build_map(elements);
     track
+}
+
+/// The elevation filter for the position's elevation source, as the last search's cache knows it: 1 arc
+/// second data is less noisy.
+fn elevation_filter(last_cache: &ElevationTypes, n: &OsmPathElement) -> f64 {
+    if last_cache.get(n.ilon, n.ilat) == 1 { -5.0 } else { -10.0 }
+}
+
+/// Runs a job on a pool thread with the thread's own profile and arenas. Hands the job back when this
+/// thread's profile could differ from the request's (the profile file changed in between).
+pub(crate) fn run_pool_job(
+    job: Job,
+    segments: &Arc<SegmentStore>,
+    profiles: &mut ProfileCache,
+    arenas: &mut Arenas,
+) -> Result<JobResult, Box<Job>> {
+    // parsing reads the profile's global configuration into a context; the search keeps the request's
+    let mut config = job.rc.clone();
+    let profile = match profiles.parse_profile(&mut config) {
+        Ok(profile) if config.profile_timestamp == job.rc.profile_timestamp => profile,
+        Ok(profile) => {
+            profiles.release_profile(profile, &config);
+            return Err(Box::new(job));
+        }
+        Err(_) => return Err(Box::new(job)),
+    };
+    let Job { kind, rc, island_node_pairs, max_running_time, start_time } = job;
+    let mut search =
+        Searcher::new(segments, rc, profile, std::mem::take(arenas), island_node_pairs, max_running_time);
+    let mut result = search.run_job(kind, start_time);
+    result.outcome = match result.outcome {
+        Ok(JobOutput::Section(track)) => Ok(JobOutput::Detached(track.detach(&search.elements))),
+        outcome => outcome,
+    };
+    *arenas = search.release(profiles);
+    Ok(result)
 }

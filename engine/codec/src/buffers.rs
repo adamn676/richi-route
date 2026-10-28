@@ -7,7 +7,7 @@ pub struct DataBuffers {
     pub iobuffer: Vec<u8>,
     /// Re-encoded tag sets.
     pub tagbuf1: Vec<u8>,
-    /// Decoded node data (`MicroCache2`) or transfer-node geometry (direct weaving).
+    /// Decoded node data (`MicroCache2`).
     pub bbuf1: Vec<u8>,
     /// Reverse-link lists.
     pub ibuf1: Vec<i32>,

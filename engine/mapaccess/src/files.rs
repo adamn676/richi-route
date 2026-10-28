@@ -2,13 +2,15 @@
 //! square of it, split into cells that are read and decoded on demand).
 
 use crate::OsmNodesMap;
-use crate::direct_weaver::direct_weave;
+use crate::direct_weaver::{DecodedCell, WeaveBuffers, weave};
+use crate::store::{CellKey, SegmentStore};
 use brouter_codec::{DataBuffers, MicroCache, StatCoderContext, TagValueValidator, WaypointMatcher};
 use brouter_util::{ByteDataReader, crc};
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::{Arc, OnceLock};
+use std::time::SystemTime;
 
 /// An `IOException` message, wrapped by `NodesCache` into the error the router reports.
 pub(crate) type IoResult<T> = Result<T, String>;
@@ -17,47 +19,99 @@ fn io_message(e: io::Error) -> String {
     e.to_string()
 }
 
+/// Reads `buf.len()` bytes at `pos` without moving a shared file position, so threads can share the
+/// file (Java seeks its own `RandomAccessFile`).
 fn read_fully(file: &File, pos: u64, buf: &mut [u8]) -> IoResult<()> {
-    let mut f = file;
-    f.seek(SeekFrom::Start(pos)).map_err(io_message)?;
-    f.read_exact(buf).map_err(io_message)
+    #[cfg(unix)]
+    let result = std::os::unix::fs::FileExt::read_exact_at(file, buf, pos);
+    #[cfg(windows)]
+    let result = (|| {
+        let mut done = 0;
+        while done < buf.len() {
+            match std::os::windows::fs::FileExt::seek_read(file, &mut buf[done..], pos + done as u64)? {
+                0 => return Err(io::Error::from(io::ErrorKind::UnexpectedEof)),
+                n => done += n,
+            }
+        }
+        Ok(())
+    })();
+    #[cfg(not(any(unix, windows)))]
+    let result = {
+        use std::io::{Read, Seek, SeekFrom};
+        // without positional reads, one file position for all threads
+        static POSITION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = POSITION.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut f = file;
+        f.seek(SeekFrom::Start(pos)).and_then(|_| f.read_exact(buf))
+    };
+    result.map_err(io_message)
+}
+
+/// What identifies the file on disk behind an open `PhysicalFile`: if it changes, the file was
+/// replaced and is opened again.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct FileStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    /// Device and inode, where the platform has them.
+    id: (u64, u64),
+}
+
+impl FileStamp {
+    pub(crate) fn of(meta: &std::fs::Metadata) -> Self {
+        #[cfg(unix)]
+        let id = (std::os::unix::fs::MetadataExt::dev(meta), std::os::unix::fs::MetadataExt::ino(meta));
+        #[cfg(not(unix))]
+        let id = (0, 0);
+        Self { len: meta.len(), modified: meta.modified().ok(), id }
+    }
 }
 
 pub(crate) struct PhysicalFile {
-    ra: Rc<File>,
+    ra: File,
+    file_name: String,
+    /// Distinguishes this open file from earlier versions in the store's cell cache.
+    pub(crate) id: u64,
+    pub(crate) stamp: FileStamp,
+    /// The lookup table version the file was built with.
+    read_version: i16,
     file_index: [i64; 25],
     file_header_crcs: Option<[i32; 25]>,
     divisor: i32,
     elevation_type: i8,
+    /// Each tile's cell index (`OsmFile.posIdx`), read and checked on first use.
+    pos_idx: [OnceLock<Arc<[i32]>>; 25],
 }
 
 impl PhysicalFile {
     /// Opens a segment file and reads its index; Java's `lookupMinorVersion` argument is unused there.
-    pub(crate) fn open(f: &Path, lookup_version: i32) -> IoResult<Self> {
+    pub(crate) fn open(f: &Path, lookup_version: i32, id: u64) -> IoResult<Self> {
         let ra = File::open(f).map_err(io_message)?;
         // Java reads both the header and the trailer into DataBuffers.iobuffer; a trailer without
         // the elevation byte leaves the header's byte 112 in its place.
         let mut iobuffer = [0u8; 200];
         read_fully(&ra, 0, &mut iobuffer)?;
         let file_index_crc = crc(&iobuffer, 0, 200);
-        let mut file_index = [0i64; 25];
         let mut dis = ByteDataReader::new(&iobuffer);
-        for (i, entry) in file_index.iter_mut().enumerate() {
-            let lv = dis.read_long();
-            let read_version = (lv >> 48) as i16;
-            if i == 0 && lookup_version != -1 && i32::from(read_version) != lookup_version {
-                let file_name = f.file_name().unwrap_or_default().to_string_lossy();
-                return Err(format!(
-                    "lookup version mismatch (old rd5?) lookups.dat={lookup_version} {file_name}={read_version}"
-                ));
-            }
-            *entry = lv & 0xffff_ffff_ffff;
-        }
-
-        let mut pf = Self { ra: Rc::new(ra), file_index, file_header_crcs: None, divisor: 80, elevation_type: 3 };
+        let longs: [i64; 25] = std::array::from_fn(|_| dis.read_long());
+        let meta = ra.metadata().map_err(io_message)?;
+        let mut pf = Self {
+            ra,
+            file_name: f.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            id,
+            stamp: FileStamp::of(&meta),
+            read_version: (longs[0] >> 48) as i16,
+            file_index: longs.map(|lv| lv & 0xffff_ffff_ffff),
+            file_header_crcs: None,
+            divisor: 80,
+            elevation_type: 3,
+            pos_idx: Default::default(),
+        };
+        pf.check_lookup_version(lookup_version)?;
 
         // read some extra info from the end of the file, if present
-        let len = pf.ra.metadata().map_err(io_message)?.len() as i64;
+        let file_index = pf.file_index;
+        let len = meta.len() as i64;
         let pos = file_index[24];
         let mut extra_len = 8 + 26 * 4;
 
@@ -92,12 +146,46 @@ impl PhysicalFile {
         pf.elevation_type = dis.read_byte();
         Ok(pf)
     }
+
+    /// The check `open` makes after reading the index, also for a file opened by an earlier search.
+    pub(crate) fn check_lookup_version(&self, lookup_version: i32) -> IoResult<()> {
+        if lookup_version != -1 && i32::from(self.read_version) != lookup_version {
+            let (file_name, read_version) = (&self.file_name, self.read_version);
+            return Err(format!(
+                "lookup version mismatch (old rd5?) lookups.dat={lookup_version} {file_name}={read_version}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// The tile's cell index, read with the checks of Java's `OsmFile` constructor (only successes
+    /// are kept, so a failing read fails again for the next search, as in Java).
+    fn pos_idx(&self, tile_index: usize, file_offset: i64, ncaches: usize) -> IoResult<Arc<[i32]>> {
+        if let Some(pos_idx) = self.pos_idx[tile_index].get() {
+            return Ok(pos_idx.clone());
+        }
+        let indexsize = ncaches * 4;
+        let mut iobuffer = vec![0u8; indexsize];
+        read_fully(&self.ra, file_offset as u64, &mut iobuffer)?;
+
+        if let Some(crcs) = &self.file_header_crcs {
+            let header_crc = crc(&iobuffer, 0, indexsize);
+            if crcs[tile_index] != header_crc {
+                return Err("sub index checksum error".into());
+            }
+        }
+
+        let mut dis = ByteDataReader::new(&iobuffer);
+        let pos_idx: Arc<[i32]> = (0..ncaches).map(|_| dis.read_int()).collect();
+        Ok(self.pos_idx[tile_index].get_or_init(|| pos_idx).clone())
+    }
 }
 
 pub(crate) struct OsmFile {
-    is: Option<Rc<File>>,
+    is: Option<Arc<PhysicalFile>>,
+    tile_index: usize,
     file_offset: i64,
-    pos_idx: Vec<i32>,
+    pos_idx: Arc<[i32]>,
     /// `None` when the square has no data (`hasData()`). Boxed: most slots stay empty, and a loaded
     /// one holds just a marker under direct weaving.
     micro_caches: Option<Vec<Option<Box<MicroCache>>>>,
@@ -110,11 +198,15 @@ pub(crate) struct OsmFile {
 }
 
 impl OsmFile {
-    pub(crate) fn new(rafile: Option<&PhysicalFile>, lon_degree: i32, lat_degree: i32) -> IoResult<Self> {
+    pub(crate) fn new(rafile: Option<&Arc<PhysicalFile>>, lon_degree: i32, lat_degree: i32) -> IoResult<Self> {
+        let lon_mod5 = lon_degree % 5;
+        let lat_mod5 = lat_degree % 5;
+        let tile_index = (lon_mod5 * 5 + lat_mod5) as usize;
         let mut osmf = Self {
             is: None,
+            tile_index,
             file_offset: 0,
-            pos_idx: Vec::new(),
+            pos_idx: Arc::new([]),
             micro_caches: None,
             lon_degree,
             lat_degree,
@@ -123,9 +215,6 @@ impl OsmFile {
             indexsize: 0,
             elevation_type: 3,
         };
-        let lon_mod5 = lon_degree % 5;
-        let lat_mod5 = lat_degree % 5;
-        let tile_index = (lon_mod5 * 5 + lat_mod5) as usize;
 
         let Some(rafile) = rafile else {
             return Ok(osmf);
@@ -143,19 +232,8 @@ impl OsmFile {
             return Ok(osmf); // empty
         }
 
-        let mut iobuffer = vec![0u8; osmf.indexsize as usize];
-        read_fully(&rafile.ra, osmf.file_offset as u64, &mut iobuffer)?;
-
-        if let Some(crcs) = &rafile.file_header_crcs {
-            let header_crc = crc(&iobuffer, 0, osmf.indexsize as usize);
-            if crcs[tile_index] != header_crc {
-                return Err("sub index checksum error".into());
-            }
-        }
-
-        let mut dis = ByteDataReader::new(&iobuffer);
-        osmf.pos_idx = (0..ncaches).map(|_| dis.read_int()).collect();
-        osmf.is = Some(rafile.ra.clone());
+        osmf.pos_idx = rafile.pos_idx(tile_index, osmf.file_offset, ncaches)?;
+        osmf.is = Some(rafile.clone());
         osmf.micro_caches = Some((0..ncaches).map(|_| None).collect());
         Ok(osmf)
     }
@@ -183,12 +261,16 @@ impl OsmFile {
     }
 
     /// Decodes the cell at this position and stores the result (`createMicroCache(ilon, ilat, ...)`).
-    /// With `hollow_nodes` the cell is woven straight into the graph. Returns the cell index.
+    /// With `hollow_nodes` the cell is woven straight into the graph, from the store's decoded copy
+    /// of it. Returns the cell index.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_micro_cache(
         &mut self,
         ilon: i32,
         ilat: i32,
+        store: &SegmentStore,
         data_buffers: &mut DataBuffers,
+        weave_buffers: &mut WeaveBuffers,
         way_validator: &mut dyn TagValueValidator,
         waypoint_matcher: Option<&mut dyn WaypointMatcher>,
         hollow_nodes: Option<&mut OsmNodesMap>,
@@ -197,43 +279,51 @@ impl OsmFile {
         let lon_idx = ilon / self.cellsize;
         let lat_idx = ilat / self.cellsize;
 
-        let mut ab = std::mem::take(&mut data_buffers.iobuffer);
-        let segment = self.decode_cell(
-            sub_idx,
-            lon_idx,
-            lat_idx,
-            &mut ab,
-            data_buffers,
-            way_validator,
-            waypoint_matcher,
-            hollow_nodes,
-        );
-        data_buffers.iobuffer = ab;
-        self.micro_caches.as_mut().expect("square with data")[sub_idx] = Some(Box::new(segment?));
+        let segment = if self.cell_range(sub_idx).1 == 0 {
+            MicroCache::empty_cache()
+        } else if let Some(hollow_nodes) = hollow_nodes {
+            let is = self.is.as_ref().expect("square with data");
+            let key = CellKey { file: is.id, tile: self.tile_index as u32, lon_idx, lat_idx };
+            let cell = store.cell(key, || {
+                let ab = self.read_cell(sub_idx, &mut data_buffers.iobuffer)?;
+                Ok(DecodedCell::decode(ab, lon_idx, lat_idx, self.divisor, way_validator))
+            })?;
+            let grown = weave(&cell, weave_buffers, way_validator, waypoint_matcher, hollow_nodes);
+            store.charge(key, &cell, grown);
+            MicroCache::empty_non_virgin()
+        } else {
+            let mut iobuffer = std::mem::take(&mut data_buffers.iobuffer);
+            let segment = self.read_cell(sub_idx, &mut iobuffer).map(|ab| {
+                let mut bc = StatCoderContext::new(ab);
+                MicroCache::decode_v2(
+                    &mut bc,
+                    data_buffers,
+                    lon_idx,
+                    lat_idx,
+                    self.divisor,
+                    way_validator,
+                    waypoint_matcher,
+                )
+            });
+            data_buffers.iobuffer = iobuffer;
+            segment?
+        };
+        self.micro_caches.as_mut().expect("square with data")[sub_idx] = Some(Box::new(segment));
         Ok(sub_idx)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn decode_cell(
-        &self,
-        sub_idx: usize,
-        lon_idx: i32,
-        lat_idx: i32,
-        ab: &mut Vec<u8>,
-        data_buffers: &mut DataBuffers,
-        way_validator: &mut dyn TagValueValidator,
-        waypoint_matcher: Option<&mut dyn WaypointMatcher>,
-        hollow_nodes: Option<&mut OsmNodesMap>,
-    ) -> IoResult<MicroCache> {
-        // getDataInputForSubIdx: the cell's bytes lie between the previous cell's end and its own
+    /// `getDataInputForSubIdx`: the cell's bytes lie between the previous cell's end and its own.
+    fn cell_range(&self, sub_idx: usize) -> (i32, usize) {
         let start_pos = if sub_idx == 0 { self.indexsize } else { self.pos_idx[sub_idx - 1] };
-        let asize = (self.pos_idx[sub_idx] - start_pos).max(0) as usize;
-        if asize == 0 {
-            return Ok(MicroCache::empty_cache());
-        }
+        (start_pos, (self.pos_idx[sub_idx] - start_pos).max(0) as usize)
+    }
+
+    /// Reads a non-empty cell into `ab` and checks its footer.
+    fn read_cell<'a>(&self, sub_idx: usize, ab: &'a mut Vec<u8>) -> IoResult<&'a [u8]> {
+        let (start_pos, asize) = self.cell_range(sub_idx);
         ab.resize(asize, 0);
         let is = self.is.as_ref().expect("square with data");
-        read_fully(is, (self.file_offset + i64::from(start_pos)) as u64, ab)?;
+        read_fully(&is.ra, (self.file_offset + i64::from(start_pos)) as u64, ab)?;
 
         // Java checks the footer CRC after decoding, and only if the decoder did not consume exactly
         // the cell's data, so a damaged cell fails with one of these messages. Checking first gives the
@@ -248,33 +338,7 @@ impl OsmFile {
         if (crc_data ^ 2) != crc_footer {
             return Err(if crc_data == crc_footer { "old, unsupported data-format" } else { "checkum error" }.into());
         }
-
-        let mut bc = StatCoderContext::new(ab);
-        let segment = match hollow_nodes {
-            None => MicroCache::decode_v2(
-                &mut bc,
-                data_buffers,
-                lon_idx,
-                lat_idx,
-                self.divisor,
-                way_validator,
-                waypoint_matcher,
-            ),
-            Some(hollow_nodes) => {
-                direct_weave(
-                    &mut bc,
-                    data_buffers,
-                    lon_idx,
-                    lat_idx,
-                    self.divisor,
-                    way_validator,
-                    waypoint_matcher,
-                    hollow_nodes,
-                );
-                MicroCache::empty_non_virgin()
-            }
-        };
-        Ok(segment)
+        Ok(ab)
     }
 
     /// Puts the virgin caches into ghost state and drops the others; returns the ghosted data size.

@@ -43,14 +43,30 @@ fn spread(ilon: i32, ilat: i32) -> i32 {
 impl NodeHashMap {
     /// Java allocates the table on the first put; allocating it here gives the same layout.
     pub(crate) fn new() -> Self {
-        Self {
-            table: vec![NIL; INITIAL_CAPACITY],
+        let mut map = Self {
+            table: Vec::new(),
             entries: Vec::new(),
             free: Vec::new(),
             size: 0,
-            threshold: INITIAL_CAPACITY * 3 / 4,
+            threshold: 0,
             treeified_buckets: 0,
+        };
+        map.clear();
+        map
+    }
+
+    /// Empties the map, back to the initial capacity (which the iteration order depends on).
+    pub(crate) fn clear(&mut self) {
+        if self.table.len() == INITIAL_CAPACITY {
+            self.table.fill(NIL);
+        } else {
+            self.table = vec![NIL; INITIAL_CAPACITY]; // resizing allocates a new table anyway
         }
+        self.entries.clear();
+        self.free.clear();
+        self.size = 0;
+        self.threshold = INITIAL_CAPACITY * 3 / 4;
+        self.treeified_buckets = 0;
     }
 
     fn bucket(&self, hash: i32) -> usize {

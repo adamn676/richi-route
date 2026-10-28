@@ -53,6 +53,9 @@ pub fn double_to_string(v: f64) -> String {
     if v == 0.0 {
         return if v.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
     }
+    if let Some(s) = quarter_to_string(v) {
+        return s;
+    }
     let (digits, exponent) = java_digits(v.abs());
     let mut out = String::with_capacity(24);
     if v < 0.0 {
@@ -83,6 +86,19 @@ pub fn double_to_string(v: f64) -> String {
         out.push_str(&exponent.to_string());
     }
     out
+}
+
+/// `Double.toString` of a nonzero multiple of 1/4 below 2^20 (an elevation, `selev / 4.`): its exact
+/// decimal, which no shorter decimal rounds to at that magnitude, written plain.
+fn quarter_to_string(v: f64) -> Option<String> {
+    let quarters = v * 4.0; // exact
+    let k = quarters as i32;
+    let q = k.unsigned_abs();
+    if f64::from(k) != quarters || q >= 1 << 22 {
+        return None;
+    }
+    let sign = if k < 0 { "-" } else { "" };
+    Some(format!("{sign}{}.{}", q / 4, ["0", "25", "5", "75"][(q % 4) as usize]))
 }
 
 /// The digits Java's `Double.toString` chooses for a positive finite double: (`d1d2...`, exponent of

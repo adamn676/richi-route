@@ -16,6 +16,10 @@
 //! }
 //! ```
 //!
+//! Routers on several threads should share the decoded map data: create one `Arc<SegmentStore>`, with a
+//! byte budget for decoded cells (`SegmentStore::DEFAULT_CELL_CACHE_BYTES`), and pass it to
+//! [`Router::with_segments`]; `Router::new` makes a private one.
+//!
 //! `Err(JavaException)` stands for the exceptions BRouter throws to its caller; its `Display` is
 //! Java's `Throwable.toString()`. Routing failures are `Answer::Error`, with BRouter's texts. Requests
 //! that would need code this port leaves out (turn instructions, beeline segments, nogos, pois,
@@ -37,17 +41,20 @@ mod message_data;
 mod param_collector;
 mod path;
 mod path_element;
+mod pool;
 mod profile_cache;
 mod request;
 mod routing_context;
 mod track;
 
+pub use brouter_mapaccess::SegmentStore;
 pub use engine::{BROUTER_ENGINEMODE_ROUNDTRIP, BROUTER_ENGINEMODE_ROUTING, RoutingEngine, panic_message};
 pub use format::{VERSION, format_json};
 pub use java::JavaException;
 pub use message_data::MessageData;
 pub use param_collector::{OsmNodeNamed, UrlParams, get_url_params, get_way_point_list, set_params};
 pub use path_element::{ElemIdx, OsmPathElement, PathElements};
+pub use pool::{Outcome, RouterPool};
 pub use profile_cache::ProfileCache;
 pub use request::{Answer, Router};
 pub use routing_context::RoutingContext;

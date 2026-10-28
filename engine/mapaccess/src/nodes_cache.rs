@@ -1,12 +1,14 @@
 //! Port of `NodesCache`: the per-search view of the segment files, loading cells on demand into the
 //! graph of its `OsmNodesMap`.
 
+use crate::direct_weaver::WeaveBuffers;
 use crate::files::{OsmFile, PhysicalFile};
-use crate::{MapError, MatchedWaypoint, NodeIdx, OsmNodePairSet, OsmNodesMap, OsmPos, Pos, WaypointMatcherImpl};
+use crate::{
+    MapError, MatchedWaypoint, NodeIdx, OsmNodePairSet, OsmNodesMap, OsmPos, Pos, SegmentStore, WaypointMatcherImpl,
+};
 use brouter_codec::{DataBuffers, MicroCache, TagValueValidator, WaypointMatcher};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 
 const RETRY_RANGE: f64 = 250.;
 /// Used with `RoutingEngine.MAX_DYNAMIC_RANGE = 60000` m.
@@ -25,13 +27,15 @@ fn segment(file_rows: &mut [Vec<OsmFile>], r: SegmentRef) -> &mut MicroCache {
 }
 
 pub struct NodesCache {
-    segment_dir: PathBuf,
+    store: Arc<SegmentStore>,
 
     pub nodes_map: OsmNodesMap,
     lookup_version: i32,
 
-    file_cache: HashMap<String, Option<Rc<PhysicalFile>>>,
+    /// The files this search (and the searches before it in the chain of caches) asked the store for.
+    file_cache: HashMap<String, Option<Arc<PhysicalFile>>>,
     data_buffers: DataBuffers,
+    weave_buffers: WeaveBuffers,
 
     /// The open degree squares per latitude degree (Java: `OsmFile[180][]`, where a missing row and an
     /// empty one behave alike).
@@ -63,29 +67,29 @@ impl NodesCache {
     /// `old_cache` is left in place, as Java's constructor throws before the assignment.
     ///
     /// `force_secondary_data` and BRouter's secondary segment directory (`storageconfig.txt`) are not
-    /// supported: all segments come from `segment_dir`.
+    /// supported: all segments come from the store's directory.
     pub fn new(
-        segment_dir: &Path,
+        store: &Arc<SegmentStore>,
         ctx_way: &mut dyn TagValueValidator,
         maxmem: i64,
         old_cache: &mut Option<NodesCache>,
         detailed: bool,
     ) -> Result<Self, MapError> {
-        let mut nodes_map = OsmNodesMap::new();
-        nodes_map.maxmem = (2 * maxmem) / 3;
         ctx_way.set_decode_forbidden(detailed);
 
+        let segment_dir = store.segment_dir();
         if !segment_dir.is_dir() {
             let absolute = std::path::absolute(segment_dir).unwrap_or_else(|_| segment_dir.to_path_buf());
             return Err(MapError::Runtime(format!("segment directory {} does not exist", absolute.display())));
         }
 
         let mut cache = Self {
-            segment_dir: segment_dir.to_path_buf(),
-            nodes_map,
+            store: store.clone(),
+            nodes_map: OsmNodesMap::new(),
             lookup_version: i32::from(ctx_way.lookup_version()),
             file_cache: HashMap::new(),
             data_buffers: DataBuffers::new(),
+            weave_buffers: WeaveBuffers::default(),
             file_rows: (0..180).map(|_| Vec::new()).collect(),
             first_file_access_failed: false,
             first_file_access_name: None,
@@ -101,8 +105,10 @@ impl NodesCache {
         };
 
         if let Some(old) = old_cache.take() {
+            cache.nodes_map = old.nodes_map.recycle(); // Java's garbage collector frees the old graph
             cache.file_cache = old.file_cache;
             cache.data_buffers = old.data_buffers;
+            cache.weave_buffers = old.weave_buffers;
             // re-use old, virgin caches (if same detail-mode)
             if old.detailed == detailed {
                 cache.file_rows = old.file_rows;
@@ -111,6 +117,7 @@ impl NodesCache {
                 }
             }
         }
+        cache.nodes_map.maxmem = (2 * maxmem) / 3;
         cache.ghost_sum = cache.cache_sum;
         Ok(cache)
     }
@@ -125,6 +132,13 @@ impl NodesCache {
             self.ghost_sum,
             self.ghost_wakeup
         )
+    }
+
+    /// Forgets the open files and loaded cells but keeps the allocations, for the searches of another
+    /// request: Java's caches start without files for each request.
+    pub fn forget_files(&mut self) {
+        self.file_cache.clear();
+        self.file_rows.iter_mut().for_each(Vec::clear);
     }
 
     /// Drops non-virgin cells (or all cells with `all`), so they are decoded again.
@@ -206,7 +220,16 @@ impl NodesCache {
             let hollow_nodes = self.direct_weaving.then_some(&mut self.nodes_map);
             let matcher = matcher.map(|m| m as &mut dyn WaypointMatcher);
             self.file_rows[lat][file]
-                .create_micro_cache(ilon, ilat, &mut self.data_buffers, ctx_way, matcher, hollow_nodes)
+                .create_micro_cache(
+                    ilon,
+                    ilat,
+                    &self.store,
+                    &mut self.data_buffers,
+                    &mut self.weave_buffers,
+                    ctx_way,
+                    matcher,
+                    hollow_nodes,
+                )
                 .map_err(MapError::Runtime)?;
             self.cache_sum += i64::from(segment(&mut self.file_rows, r).get_data_size());
         } else {
@@ -269,8 +292,7 @@ impl NodesCache {
 
     /// True if any link target of the given node is hollow.
     pub fn has_hollow_link_targets(&self, n: NodeIdx) -> bool {
-        let map = &self.nodes_map;
-        map.links(n).any(|l| map.is_hollow(map.target(l, n)))
+        self.nodes_map.has_hollow_link_targets(n)
     }
 
     /// The node for `id` with all link targets non-hollow, or `None` if not found. No instance of the
@@ -407,13 +429,11 @@ impl NodesCache {
         let file_name = format!("{filename_base}.rd5");
 
         if !self.file_cache.contains_key(&filename_base) {
-            let primary = self.segment_dir.join(&file_name);
-            let ra =
-                if primary.exists() { Some(Rc::new(PhysicalFile::open(&primary, self.lookup_version)?)) } else { None };
+            let ra = self.store.open_file(&file_name, self.lookup_version)?;
             self.file_cache.insert(filename_base.clone(), ra);
         }
         let ra = self.file_cache[&filename_base].clone();
-        let osmf = OsmFile::new(ra.as_deref(), lon_degree, lat_degree)?;
+        let osmf = OsmFile::new(ra.as_ref(), lon_degree, lat_degree)?;
 
         if self.first_file_access_name.is_none() {
             self.first_file_access_name = Some(file_name);
@@ -432,5 +452,26 @@ impl NodesCache {
             .get(lat_degree as usize)
             .and_then(|row| row.iter().find(|f| f.lon_degree == lon_degree))
             .map_or(3, |f| i32::from(f.elevation_type))
+    }
+
+    /// The elevation source types of the squares this cache has opened, for `get_elevation_type`
+    /// once the cache is gone.
+    pub fn elevation_types(&self) -> ElevationTypes {
+        let squares = self.file_rows.iter().enumerate().flat_map(|(lat_degree, row)| {
+            row.iter().map(move |f| (f.lon_degree, lat_degree as i32, i32::from(f.elevation_type)))
+        });
+        ElevationTypes(squares.collect())
+    }
+}
+
+/// `NodesCache::get_elevation_type` of a cache, kept apart from it: (lon degree, lat degree, type) of
+/// each opened square.
+#[derive(Clone, Debug, Default)]
+pub struct ElevationTypes(Vec<(i32, i32, i32)>);
+
+impl ElevationTypes {
+    pub fn get(&self, ilon: i32, ilat: i32) -> i32 {
+        let (lon_degree, lat_degree) = (ilon / 1_000_000, ilat / 1_000_000);
+        self.0.iter().find(|&&(lon, lat, _)| lon == lon_degree && lat == lat_degree).map_or(3, |&(_, _, t)| t)
     }
 }
