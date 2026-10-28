@@ -90,9 +90,10 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
     cleanup();
   }
 
-  // The route section under the pointer, unless a marker lies on top or Street View, which takes clicks, is being placed.
+  // The route section under the pointer, unless a marker lies on top or a point is being picked (Street View, a stretch
+  // to report), which takes clicks.
   function sectionAt(event: MapLayerMouseEvent | MapLayerTouchEvent) {
-    if (drag || !routeStore.route || streetView.picking) return null;
+    if (drag || !routeStore.route || streetView.picking || routeStore.surfaceReporting) return null;
     if (event.originalEvent.target instanceof HTMLElement && event.originalEvent.target.closest('.maplibregl-marker')) return null;
     const { fromId, toId } = event.features?.[0]?.properties ?? {};
     return typeof fromId === 'string' && typeof toId === 'string' ? { fromId, toId, point: event.point, lngLat: event.lngLat } : null;
@@ -134,7 +135,7 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
     if (!map || !section || event.points.length !== 1) return;
     const timer = press = setTimeout(() => {
       const current = routeStore.route?.features.some(({ properties }) => properties.fromId === section.fromId && properties.toId === section.toId);
-      if (map.isMoving() || drag || streetView.picking || !current) return;
+      if (map.isMoving() || drag || streetView.picking || routeStore.surfaceReporting || !current) return;
       navigator.vibrate?.(15);
       start(map, section, true);
     }, 400);

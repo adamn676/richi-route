@@ -10,5 +10,6 @@ export function formatKm(meters: number, digits = 2, fixed = false): string {
   return format.format(meters / 1000);
 }
 export const formatMeters = (meters: number) => `${wholeNumber.format(meters)} m`;
+export const formatLength = (meters: number) => meters < 1000 ? `${meters < 1 ? '< 1' : Math.round(meters)} m` : `${formatKm(meters, 1)} km`;
 // A gradient in percent, signed: +4,5 or -2.
 export const formatGradient = (percent: number) => signedGradient.format(percent);

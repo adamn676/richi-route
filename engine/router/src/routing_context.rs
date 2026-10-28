@@ -15,6 +15,7 @@ use brouter_util::{CheapAngleMeter, cheap_ruler, jmath};
 use crate::java::{JavaException, string_hash};
 use crate::local_rules::{ActiveAreas, LocalRules};
 use crate::param_collector::UrlParams;
+use crate::surfaces::{SurfaceCorrections, SurfaceMemo};
 
 #[derive(Clone, Default)]
 pub struct RoutingContext {
@@ -28,6 +29,9 @@ pub struct RoutingContext {
 
     /// `localRulesEnabled`: the local rules, while the request uses them.
     pub local_rules: Option<Arc<LocalRules>>,
+    /// The rider's surface corrections, if there are any.
+    pub surfaces: Option<Arc<SurfaceCorrections>>,
+    pub(crate) surface_memo: SurfaceMemo,
 
     pub car_mode: bool,
     pub bike_mode: bool,

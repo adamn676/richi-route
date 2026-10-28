@@ -29,15 +29,37 @@ export interface ShapePoint {
 
 export type RoutePoint = Waypoint | ShapePoint;
 
-export interface SurfaceSpan {
-  fromIndex: number;
-  toIndex: number;
+export interface SurfaceKind {
   surface: Surface;
   surfaceTag?: string;
 }
 
+export interface SpanKind extends SurfaceKind {
+  // What OSM says where the rider corrected the surface.
+  osm?: SurfaceKind;
+}
+
+export interface SurfaceSpan extends SpanKind {
+  fromIndex: number;
+  toIndex: number;
+}
+
+export function pathMeters(coordinates: Coord[]): number {
+  return coordinates.reduce((sum, coord, i) => i ? sum + distanceMeters(coordinates[i - 1], coord) : 0, 0);
+}
+
+export function spanKind({ surface, surfaceTag, osm }: SpanKind): SpanKind {
+  return { surface, ...(surfaceTag ? { surfaceTag } : {}), ...(osm ? { osm } : {}) };
+}
+
+export function sameKind(a: SpanKind, b: SpanKind): boolean {
+  return a.surface === b.surface && a.surfaceTag === b.surfaceTag && a.osm?.surface === b.osm?.surface && a.osm?.surfaceTag === b.osm?.surfaceTag;
+}
+
 export interface LegGeometry {
   routingPolicy?: string;
+  // An imported track, drawn as recorded: its points lie near the roads, not on them.
+  recorded?: true;
   coordinates: Coord[];
   distanceMeters: number;
   ascentMeters: number | null;

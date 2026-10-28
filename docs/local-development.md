@@ -920,31 +920,56 @@ Reports go to `.cache/gpx-surfaces/`, `.cache/map-style/` and `.cache/imagery-re
 
 ## Inspect route surfaces
 
-After a route finishes calculating, **Untergrund** shows each material's share
-as a bar and lists its length and percentage; the colours match the route on the
-map: green for asphalt, blue for other paving, amber for rough paving and wood,
-magenta for unpaved and a light grey for unknown, told apart also with colour
-blindness. Select a material to see its sections along the route, with its part
-of the bar standing out, and select it again to close them. Select a section to frame it on the map, drawn in its colour above the
-route, which fades meanwhile. **Weitere
+After a route finishes calculating, **Untergrund** shows the share of each
+surface group as a bar and lists its length and percentage; the colours match
+the route on the map: green for **Befestigt** (asphalt, concrete, paving
+stones), a lighter green for **Vermutlich befestigt**, amber for
+**Kopfsteinpflaster/Holzbrücke**, magenta for **Unbefestigt** (gravel, dirt and
+every other unpaved material) and a light grey for **Unbekannt**. Ways without
+a surface tag count by their type: roads and cycleways as likely paved, tracks
+of grade 2 to 5 as unpaved. Select a group to see its sections along the route,
+and select it again to close them. Select a section to frame it on the map,
+drawn in its colour above the route, which fades meanwhile. **Weitere
 Abschnitte** shows ten more entries; **Markierung aufheben** removes the
-highlight.
-
-The inspector distinguishes materials such as fine gravel, wood and paving
-stones. Paving labels say how they ride: **Pflaster, eben** (flat paving
-stones), **Natursteinpflaster, holprig** (setts) and **Kopfsteinpflaster, sehr
-holprig** (cobblestones); they share the paving colour on the map. Primary, secondary and tertiary roads (and trunk roads) without a
-surface tag show as **Vermutlich Asphalt** in a lighter green, since classified
-roads in Austria are as good as always paved; other roads without a tag stay
-unknown. Lengths follow the drawn coordinates
-and can differ slightly from the routing engine's reported total. Material tags
-describe the map data; they do not establish the current condition of a road.
+highlight. Lengths follow the drawn coordinates and can differ slightly from
+the engine's total. Tags describe the map data, not the current condition of a
+road.
 
 Inspection does not change the route, undo history or saved draft. Edits and
-undo/redo clear the highlight. Older drafts still load without rerouting and
-display the broader groups originally saved. New calculations retain individual
-material tags. The [long-route review](../experiments/routing/README.md#long-route-surface-review-22-october-2026)
+undo/redo clear the highlight. Drafts saved before the road-bike groups load
+with their groups translated. The [long-route review](../experiments/routing/README.md#long-route-surface-review-22-october-2026)
 records the surface-penalty experiments and why the default remains unchanged.
+
+### Report a surface
+
+When the map data is wrong, switch on the brush button on the map (**Belag
+melden**) and tap the start and the end of the stretch on the route; until the
+end is tapped, the stretch follows the pointer and the banner shows its length.
+A card then offers the surface groups in the route's colours (**Befestigt**,
+**Unbefestigt**, **Kopfsteinpflaster/Holzbrücke**), with the current one ticked,
+and **Laut Karte** where the stretch is already corrected. One tap saves the
+choice and recolours the route; the next stretch can follow at once. **Esc** or
+the button ends reporting. The **Untergrund** list marks corrected sections
+with **korrigiert**.
+
+The planner's server saves each report to
+[`config/surface-corrections.json`](../config/surface-corrections.json), one
+line per stretch with its points, the surface, the date and the surfaces OSM had
+there, and writes the engine's copy
+(`experiments/routing/.local/local-routing-rules/surfaces.tsv`), which the
+engine reads again for its next route, without a restart. A new report replaces
+older ones where they overlap.
+
+The engine routes and describes a corrected stretch as if OSM had tagged it that
+way (`surface=paved`, `unpaved` or `cobblestone`, with the track grade and
+smoothness made to fit), so the profile prices it like any other road of that
+surface, and adds what OSM says as `osm:surface=…`. A correction covers exactly
+the reported stretch, also in the middle of a road; it starts and ends at points
+of the map's road geometry, a few metres apart in towns and further apart on
+long straight roads. Where OSM has since changed the surface, the correction
+lapses and OSM's tag counts again. Only planned routes can be reported:
+imported tracks lie beside the roads, not on them. Reports are saved only by
+the local planner (`npm run dev:local`).
 
 ## Checks
 

@@ -19,9 +19,12 @@
 //! planner reaches it through its own server, so other web pages cannot read its answers.
 //!
 //! The local rules come from the prepared rule file named by `RICHIROUTE_RULES` (Java:
-//! `-Drichiroute.rules`); `serve` needs them, `lines` without them routes as BRouter does. A search
-//! that runs away ends with BRouter's memory error at its own budget; behind that, the heap has a
-//! ceiling (`HEAP_CEILING`), so that a fault elsewhere ends the program, not the machine.
+//! `-Drichiroute.rules`); `serve` needs them, `lines` without them routes as BRouter does. The rider's
+//! surface corrections come from the prepared file named by `RICHIROUTE_SURFACES`, read again whenever
+//! it changes (BRouter has none).
+//!
+//! A search that runs away ends with BRouter's memory error at its own budget; behind that, the heap
+//! has a ceiling (`HEAP_CEILING`), so that a fault elsewhere ends the program, not the machine.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::io::{BufRead, BufReader, ErrorKind, Write};
@@ -33,7 +36,8 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use brouter_router::{
-    Answer, LocalRules, Outcome, RouterPool, SegmentStore, UrlParams, VERSION_MISMATCH, get_url_params, panic_message,
+    Answer, LocalRules, Outcome, RouterPool, SegmentStore, SurfaceFile, UrlParams, VERSION_MISMATCH, get_url_params,
+    panic_message,
 };
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
@@ -113,21 +117,26 @@ fn main() {
     };
     let local_rules = std::env::var_os("RICHIROUTE_RULES")
         .map(|file| Arc::new(LocalRules::load(Path::new(&file)).unwrap_or_else(|e| fail(&e))));
+    let surfaces = std::env::var_os("RICHIROUTE_SURFACES")
+        .map(|file| Arc::new(SurfaceFile::open(Path::new(&file)).unwrap_or_else(|e| fail(&e))));
 
     if serving {
         let Some(rules) = local_rules else { fail("serve: set RICHIROUTE_RULES to the prepared rule file") };
         println!("Local routing rules: {}", rules.revision());
+        if let Some(surfaces) = &surfaces {
+            println!("Surface corrections: {}", surfaces.current().len());
+        }
         let port = args[4].parse::<u16>().unwrap_or_else(|_| fail("port must be a number from 0 to 65535"));
         let address = args.get(6).map_or("127.0.0.1", String::as_str);
         let listener = TcpListener::bind((address, port)).unwrap_or_else(|e| fail(&format!("{address}:{port}: {e}")));
         let segments = Arc::new(SegmentStore::new(&args[2], SegmentStore::DEFAULT_CELL_CACHE_BYTES));
-        serve(&listener, RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules)));
+        serve(&listener, RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules), surfaces));
     }
 
     let threads = number(4, 1, 1, "threads");
     let cell_cache_bytes = number(5, SegmentStore::DEFAULT_CELL_CACHE_BYTES >> 20, 0, "cellCacheMB") << 20;
     let segments = Arc::new(SegmentStore::new(&args[2], cell_cache_bytes));
-    let pool = RouterPool::new(segments, profile_dir, threads, local_rules);
+    let pool = RouterPool::new(segments, profile_dir, threads, local_rules, surfaces);
 
     // like Java's UTF-8 reader, malformed bytes become U+FFFD instead of ending the input
     for line in std::io::stdin().lock().split(b'\n') {

@@ -19,7 +19,7 @@ test('a track opens as sections of about 5 km that keep its exact path and heigh
   assert.deepEqual(sections.flatMap((section, i) => i ? section.coordinates.slice(1) : section.coordinates), track.segments[0].coordinates);
   assert.deepEqual(sections.flatMap((section, i) => i ? section.elevations.slice(1) : section.elevations), track.segments[0].elevations);
   assert.ok(Math.abs(sections.reduce((sum, section) => sum + section.distanceMeters, 0) - track.distanceMeters) < 1e-6);
-  assert.ok(sections.every(section => isRoutingPolicyCurrent(section.routingPolicy) && section.segment === 0));
+  assert.ok(sections.every(section => isRoutingPolicyCurrent(section.routingPolicy) && section.segment === 0 && section.recorded));
 });
 
 test('short tracks stay one section; missing heights leave a section without ascent; empty segments are skipped', () => {

@@ -1,4 +1,4 @@
-import { cumulativeAscent, routerClimbThreshold, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
+import { cumulativeAscent, routerClimbThreshold, sameKind, type Coord, type LegGeometry, type Surface, type SpanKind, type SurfaceKind, type SurfaceSpan } from './route-model.ts';
 
 // The material does not matter on a road bike, only whether it is paved; cobblestones are paved but rough.
 export function surfaceType(tag: string | undefined): Surface {
@@ -13,10 +13,21 @@ export function surfaceType(tag: string | undefined): Surface {
 // these types are 95–100 % paved, tracks of grade 2 to 5 95–99 % unpaved. Paths and tracks without a grade stay unknown.
 const likelyPavedWays = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link',
   'unclassified', 'residential', 'service', 'cycleway']);
-function surfaceByWayType(wayTags: string): Surface {
-  const highway = /(?:^|\s)highway=([^\s]+)/.exec(wayTags)?.[1] ?? '', grade = /(?:^|\s)tracktype=([^\s]+)/.exec(wayTags)?.[1];
-  if (likelyPavedWays.has(highway) || (highway === 'track' && grade === 'grade1')) return 'likelyPaved';
-  return highway === 'track' && /^grade[2-5]$/.test(grade ?? '') ? 'unpaved' : 'unknown';
+function surfaceKind(tags: Map<string, string>): SurfaceKind {
+  const tag = tags.get('surface') || undefined, tagged = surfaceType(tag);
+  if (tagged !== 'unknown') return { surface: tagged, surfaceTag: tag };
+  const highway = tags.get('highway') ?? '', grade = tags.get('tracktype') ?? '';
+  const surface = likelyPavedWays.has(highway) || (highway === 'track' && grade === 'grade1') ? 'likelyPaved'
+    : highway === 'track' && /^grade[2-5]$/.test(grade) ? 'unpaved' : 'unknown';
+  return { surface, ...(tag ? { surfaceTag: tag } : {}) };
+}
+
+// Where the rider corrected the way, the engine names what OSM says as osm:<key>=<value> (empty when OSM has none).
+function kindOf(wayTags: string): SpanKind {
+  const tags = new Map(wayTags.split(' ').filter(Boolean).map(tag => [tag.slice(0, tag.indexOf('=')), tag.slice(tag.indexOf('=') + 1)]));
+  const corrected = [...tags].filter(([key]) => key.startsWith('osm:'));
+  const kind = surfaceKind(tags);
+  return corrected.length ? { ...kind, osm: surfaceKind(new Map([...tags, ...corrected.map(([key, value]) => [key.slice(4), value] as const)])) } : kind;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -61,13 +72,10 @@ export function parseBRouterLeg(raw: unknown): LegGeometry {
         while (end < coordinates.length && !(Math.round(coordinates[end][0] * 1e6) === Number(row[lon]) && Math.round(coordinates[end][1] * 1e6) === Number(row[lat]))) end++;
         if (end === coordinates.length) break; // Unmatched spans remain unknown.
         if (end > start) {
-          const wayTags = typeof row[tags] === 'string' ? row[tags] : '';
-          const tag = /(?:^|\s)surface=([^\s]+)/.exec(wayTags)?.[1];
-          const tagged = surfaceType(tag);
-          const surface = tagged === 'unknown' ? surfaceByWayType(wayTags) : tagged;
+          const kind = kindOf(typeof row[tags] === 'string' ? row[tags] : '');
           const previous = surfaces.at(-1);
-          if (previous?.surface === surface && previous.surfaceTag === tag && previous.toIndex === start) previous.toIndex = end;
-          else surfaces.push({ fromIndex: start, toIndex: end, surface, ...(tag ? { surfaceTag: tag } : {}) });
+          if (previous?.toIndex === start && sameKind(previous, kind)) previous.toIndex = end;
+          else surfaces.push({ fromIndex: start, toIndex: end, ...kind });
         }
         start = end;
       }

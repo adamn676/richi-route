@@ -30,7 +30,7 @@ export function gpxSections(track: GpxTrack): GpxSection[][] {
       const elevations = heights.every((height): height is number => height !== null) ? heights : null;
       return { segment: s, from, coordinates: segment.coordinates.slice(from, to + 1), elevations,
         ascentMeters: elevations && climbed[to] - climbed[from], distanceMeters: distances[to] - distances[from], surfaces: [],
-        routingPolicy: routingPolicyVersion };
+        routingPolicy: routingPolicyVersion, recorded: true };
     });
   }).filter(sections => sections.length);
 }

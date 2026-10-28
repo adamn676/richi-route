@@ -12,6 +12,7 @@ export interface SurfaceSection {
   fromMeters: number;
   toMeters: number;
   surface: Surface;
+  corrected: boolean;
 }
 
 // From paved to unknown, the order of the labels above.
@@ -31,18 +32,19 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     for (let vertex = 1; vertex < leg.coordinates.length; vertex++) {
       distances.push(distances[vertex - 1] + distanceMeters(leg.coordinates[vertex - 1], leg.coordinates[vertex]));
     }
-    // Neighbouring stretches of the same kind are one section, whatever their materials.
+    // Neighbouring stretches of the same kind are one section, whatever their materials, apart from corrected ones.
     function add(fromIndex: number, toIndex: number, span?: SurfaceSpan) {
       if (toIndex <= fromIndex || distances[toIndex] === distances[fromIndex]) return;
-      const surface = span?.surface ?? 'unknown', previous = sections.at(-1);
+      const surface = span?.surface ?? 'unknown', corrected = !!span?.osm, previous = sections.at(-1);
       // (zero-length pieces in between are skipped above)
-      if (previous?.legId === leg.id && previous.toMeters === offset + distances[fromIndex] && previous.surface === surface) {
+      if (previous?.legId === leg.id && previous.toMeters === offset + distances[fromIndex] && previous.surface === surface
+        && previous.corrected === corrected) {
         Object.assign(previous, { id: `${leg.id}:${previous.fromIndex}:${toIndex}`, toIndex, toMeters: offset + distances[toIndex] });
         return;
       }
       sections.push({
         id: `${leg.id}:${fromIndex}:${toIndex}`, legId: leg.id, fromIndex, toIndex,
-        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface,
+        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface, corrected,
       });
     }
     let cursor = 0;
@@ -62,4 +64,13 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     totals.set(section.surface, total);
   }
   return { sections, distanceMeters: offset, totals: [...totals.values()].sort(bySurface) };
+}
+
+// The surfaces along part of a leg, and whether the rider corrected some of it.
+export function inspectStretch(leg: RouteLeg, fromIndex: number, toIndex: number) {
+  const spans = leg.surfaces.filter(span => span.toIndex > fromIndex && span.fromIndex < toIndex);
+  const surfaces = new Set(spans.map(span => span.surface));
+  const covered = spans.reduce((sum, span) => sum + Math.min(span.toIndex, toIndex) - Math.max(span.fromIndex, fromIndex), 0);
+  if (covered < toIndex - fromIndex) surfaces.add('unknown');
+  return { surfaces: [...surfaces], corrected: spans.some(span => span.osm) };
 }

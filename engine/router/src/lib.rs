@@ -46,6 +46,7 @@ mod pool;
 mod profile_cache;
 mod request;
 mod routing_context;
+mod surfaces;
 mod track;
 
 pub use brouter_mapaccess::SegmentStore;
@@ -60,4 +61,5 @@ pub use pool::{Outcome, RouterPool};
 pub use profile_cache::ProfileCache;
 pub use request::{Answer, Router};
 pub use routing_context::RoutingContext;
+pub use surfaces::{SurfaceCorrections, SurfaceFile};
 pub use track::OsmTrack;

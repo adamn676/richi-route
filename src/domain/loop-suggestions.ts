@@ -1,4 +1,4 @@
-import { cumulativeAscent, distanceMeters, routerClimbThreshold, type Coord, type LegGeometry, type SurfaceSpan } from './route-model.ts';
+import { cumulativeAscent, distanceMeters, pathMeters, routerClimbThreshold, sameKind, spanKind, type Coord, type LegGeometry, type SurfaceSpan } from './route-model.ts';
 import { bearing } from './gpx-inspection.ts';
 import { clipSpans, sectionCuts } from './gpx-route.ts';
 import { routingPolicyVersion } from '../config/routing-policy.ts';
@@ -52,11 +52,10 @@ export function withoutSpurs(leg: LegGeometry): LegGeometry {
   for (let j = 0; j < kept.length - 1; j++) {
     const span = spanOf[kept[j + 1] - 1], previous = surfaces.at(-1);
     if (!span) continue;
-    if (previous?.toIndex === j && previous.surface === span.surface && previous.surfaceTag === span.surfaceTag) previous.toIndex = j + 1;
-    else surfaces.push({ fromIndex: j, toIndex: j + 1, surface: span.surface, ...(span.surfaceTag ? { surfaceTag: span.surfaceTag } : {}) });
+    if (previous?.toIndex === j && sameKind(previous, span)) previous.toIndex = j + 1;
+    else surfaces.push({ fromIndex: j, toIndex: j + 1, ...spanKind(span) });
   }
-  const length = (points: Coord[]) => points.reduce((sum, point, i) => i ? sum + distanceMeters(points[i - 1], point) : 0, 0);
-  return { ...leg, coordinates, elevations, surfaces, distanceMeters: leg.distanceMeters * length(coordinates) / length(leg.coordinates),
+  return { ...leg, coordinates, elevations, surfaces, distanceMeters: leg.distanceMeters * pathMeters(coordinates) / pathMeters(leg.coordinates),
     ascentMeters: elevations ? cumulativeAscent(elevations, routerClimbThreshold).at(-1)! : leg.ascentMeters };
 }
 

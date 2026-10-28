@@ -15,7 +15,7 @@ Austria. The planner currently has a German interface.
 - Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
 - Drag points or route sections, with undo and redo.
 - Inspect distance, ascent, elevation and the surface along the route: paved, likely paved, cobblestones or wooden bridges, unpaved, or unknown.
-- Highlight individual surface sections on the map.
+- Highlight individual surface sections on the map, and report where the map data is wrong by tapping the stretch on the route; routing uses the correction from then on.
 - Choose the calm local map with shaded relief, or an aerial view with street names, or switch to OpenTopoMap online.
 - Switch on cycle paths, signed cycle routes, drinking-water sources, bicycle services, food stops and railway stations over any map.
 - Look at Google Street View from any point on the map or the elevation profile.

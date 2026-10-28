@@ -76,3 +76,16 @@ test('without a known material, ways count by their type: roads and graded track
     { fromIndex: 6, toIndex: 7, surface: 'likelyPaved', surfaceTag: 'unknown' },
   ]);
 });
+
+test('a stretch the rider corrected keeps what OSM says about it', () => {
+  const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47]], [
+    ['Longitude', 'Latitude', 'WayTags'],
+    ['15001000', '47000000', 'highway=track tracktype=grade1 surface=unpaved osm:surface= osm:tracktype=grade1'],
+    ['15002000', '47000000', 'highway=track tracktype=grade1 surface=paved osm:surface=gravel'],
+    ['15003000', '47000000', 'highway=track tracktype=grade1 surface=paved osm:surface=gravel'],
+  ]));
+  assert.deepEqual(leg.surfaces, [
+    { fromIndex: 0, toIndex: 1, surface: 'unpaved', surfaceTag: 'unpaved', osm: { surface: 'likelyPaved' } },
+    { fromIndex: 1, toIndex: 3, surface: 'paved', surfaceTag: 'paved', osm: { surface: 'unpaved', surfaceTag: 'gravel' } },
+  ]);
+});

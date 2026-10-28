@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import type { Coord, LegGeometry, Surface, SurfaceSpan } from './route-model.ts';
+import { sameKind, spanKind, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
 import type { GpxTrack } from './gpx-track.ts';
 import { bySurface, surfaceLabels, surfaces } from './route-surfaces.ts';
 import { routeStyle } from '../config/mapStyle.ts';
@@ -96,8 +96,8 @@ export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate
     if (!span || span.surface === 'unknown' || span.toIndex <= endSegment) continue;
     const fromIndex = portion.from + v - 1, toIndex = portion.from + v;
     const previous = spans.at(-1);
-    if (previous?.toIndex === fromIndex && previous.surface === span.surface && previous.surfaceTag === span.surfaceTag) previous.toIndex = toIndex;
-    else spans.push({ fromIndex, toIndex, surface: span.surface, ...(span.surfaceTag ? { surfaceTag: span.surfaceTag } : {}) });
+    if (previous?.toIndex === fromIndex && sameKind(previous, span)) previous.toIndex = toIndex;
+    else spans.push({ fromIndex, toIndex, ...spanKind(span) });
   }
   return spans;
 }

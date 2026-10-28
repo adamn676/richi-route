@@ -339,7 +339,21 @@ impl OsmPath {
             None => &[],
         };
 
-        let costs = WayCosts::of(way, costfactor);
+        // the rider's surface corrections: a corrected piece is evaluated with its own tags, while the link as a
+        // whole (access, classifiers, initial cost) keeps OSM's
+        let along = rc.surfaces.as_deref().and_then(|surfaces| {
+            let points = std::iter::once(Pos::new(source_node.ilon, source_node.ilat))
+                .chain(transfer_nodes.iter().map(|t| Pos::new(t.ilon, t.ilat)))
+                .chain(std::iter::once(Pos::new(target_node.ilon, target_node.ilat)));
+            surfaces.along(way, description, points, &mut rc.surface_memo)
+        });
+        let described = |corrected: Option<usize>| match (&along, corrected) {
+            (Some(along), Some(i)) => (&along.corrected[i].description[..], &along.corrected[i].osm_tags[..]),
+            _ => (description, ""),
+        };
+        let mut corrected = None;
+
+        let mut costs = WayCosts::of(way, costfactor);
         rc.nogos.nogo_cost = 0.0;
         let mut nsection = 0;
         loop {
@@ -352,6 +366,15 @@ impl OsmPath {
                 Some(t) => (t.ilon, t.ilat, t.selev),
             };
             let mut ele2 = origin_ele2;
+
+            // where a correction starts or ends along the link
+            if let Some(piece) = along.as_ref().map(|along| along.piece(nsection))
+                && piece != corrected
+            {
+                corrected = piece;
+                way.evaluate(tags_reverse, described(corrected).0)?;
+                costs = WayCosts::of(way, way.costfactor());
+            }
 
             let mut is_startpoint = lon0 == -1 && lat0 == -1;
 
@@ -482,7 +505,8 @@ impl OsmPath {
                 m.lon = lon2;
                 m.lat = lat2;
                 m.ele = origin_ele2;
-                m.way_key_values = Some(way.key_value_description(is_reverse, description));
+                let (description, osm_tags) = described(corrected);
+                m.way_key_values = Some(way.key_value_description(is_reverse, description) + osm_tags);
             }
 
             if stop_at_endpoint {

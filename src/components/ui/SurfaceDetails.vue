@@ -11,7 +11,7 @@
         :active="selected === total.surface" color="primary" rounded="lg" @click="selectSurface(total.surface)">
         <template #prepend><i class="surfaces__dot" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
         <span>{{ surfaceLabels[total.surface] }}</span>
-        <template #append><span class="surfaces__amount"><strong>{{ lengthLabel(total.meters) }}</strong><span>{{ share(total.meters) }}</span></span></template>
+        <template #append><span class="surfaces__amount"><strong>{{ formatLength(total.meters) }}</strong><span>{{ share(total.meters) }}</span></span></template>
       </v-list-item>
     </v-list>
     <template v-if="selected">
@@ -19,8 +19,8 @@
       <v-list class="surfaces__sections">
         <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
           :aria-pressed="isFocused(section)" :active="isFocused(section)" color="primary" rounded="lg" @click="focus(section)">
-          <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}</span>
-          <template #append><strong>{{ lengthLabel(section.toMeters - section.fromMeters) }}</strong></template>
+          <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}<template v-if="section.corrected"> · korrigiert</template></span>
+          <template #append><strong>{{ formatLength(section.toMeters - section.fromMeters) }}</strong></template>
         </v-list-item>
       </v-list>
       <div class="surfaces__more">
@@ -36,7 +36,7 @@ import { computed, ref, watch } from 'vue';
 import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
-import { formatKm } from '@/utils/format';
+import { formatKm, formatLength } from '@/utils/format';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();
@@ -49,9 +49,6 @@ const matching = computed(() => inspection.value?.sections.filter(section => sec
 function share(meters: number) {
   const percent = meters / inspection.value!.distanceMeters * 100;
   return percent < 1 ? '< 1 %' : `${Math.round(percent)} %`;
-}
-function lengthLabel(meters: number) {
-  return meters < 1000 ? `${meters < 1 ? '< 1' : Math.round(meters)} m` : `${formatKm(meters, 1)} km`;
 }
 function focus(section: SurfaceSection) {
   store.inspectSurface(section.legId, section.fromIndex, section.toIndex, section.surface);

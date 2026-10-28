@@ -8,6 +8,7 @@ import {
   isPlaced,
   legId,
   LegScheduler,
+  pathMeters,
   reconcileLegs,
   sameEndpoints,
   type Coord,
@@ -29,6 +30,9 @@ import type { GpxTrack } from '../domain/gpx-track.ts';
 import { gpxSections, sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
 import { loopSections } from '../domain/loop-suggestions.ts';
 import { lookupGpxSurfaces } from '../services/gpx-surfaces.service.ts';
+import { saveSurfaceReport } from '../services/surface-corrections.service.ts';
+import { applyReport, osmSurfaces, type CorrectedSurface } from '../domain/surface-corrections.ts';
+import { inspectStretch } from '../domain/route-surfaces.ts';
 
 export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
 
@@ -48,6 +52,15 @@ interface SurfaceFocus {
   fromIndex: number;
   toIndex: number;
   surface: Surface;
+}
+
+// A stretch of a planned leg whose surface the rider reports: its start, then its end, tapped on the map; until the
+// end is tapped, the stretch follows the pointer.
+interface SurfacePick {
+  leg: RouteLeg;
+  start: number;
+  end: number | null;
+  hover: number | null;
 }
 
 interface HistoryEntry {
@@ -181,6 +194,8 @@ export const useRouteStore = defineStore('route', {
     draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
     draftError: null as string | null,
     surfaceFocus: null as SurfaceFocus | null,
+    surfaceReporting: false,
+    surfacePick: null as SurfacePick | null,
     // Progress of looking up the surfaces of an imported GPX track.
     surfaceEstimate: null as { completed: number; total: number } | null,
     // Counts routes opened as a whole (examples, saved routes, imports) and the stops found by address that start or
@@ -202,6 +217,26 @@ export const useRouteStore = defineStore('route', {
       return { legId: focus.leg.id, fromIndex: focus.fromIndex, toIndex: focus.toIndex,
         coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1),
         surface: focus.surface };
+    },
+    // A pick lasts while reporting goes on and its leg stays as it is.
+    surfacePicking: (state): SurfacePick | null => {
+      const pick = state.surfacePick;
+      return state.surfaceReporting && pick && state.legs[pick.leg.id] === pick.leg ? pick : null;
+    },
+    surfacePreview(): { coordinates: Coord[]; surface: Surface } | null {
+      const pick = this.surfacePicking;
+      if (!pick) return null;
+      const end = pick.end ?? pick.hover ?? pick.start, from = Math.min(pick.start, end), to = Math.max(pick.start, end);
+      const { surfaces } = inspectStretch(pick.leg, from, to);
+      return { coordinates: pick.leg.coordinates.slice(from, to + 1), surface: surfaces.length === 1 ? surfaces[0] : 'unknown' };
+    },
+    // The stretch to report, once its end is tapped.
+    surfaceSelection(): { leg: RouteLeg; fromIndex: number; toIndex: number; meters: number; surfaces: Surface[]; corrected: boolean } | null {
+      const pick = this.surfacePicking;
+      if (pick?.end == null) return null;
+      const fromIndex = Math.min(pick.start, pick.end), toIndex = Math.max(pick.start, pick.end);
+      return { leg: pick.leg, fromIndex, toIndex, meters: pathMeters(pick.leg.coordinates.slice(fromIndex, toIndex + 1)),
+        ...inspectStretch(pick.leg, fromIndex, toIndex) };
     },
     distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
     ascentMeters: (state): number | null => {
@@ -246,6 +281,43 @@ export const useRouteStore = defineStore('route', {
       if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
           fromIndex < 0 || toIndex <= fromIndex || toIndex >= leg.coordinates.length) return;
       this.surfaceFocus = { leg: markRaw(leg), fromIndex, toIndex, surface };
+    },
+    setSurfaceReporting(on: boolean) {
+      this.surfaceReporting = on;
+      this.surfacePick = null;
+      if (on) this.surfaceFocus = null;
+    },
+    // A tapped vertex: it starts a stretch, or ends the one started on the same leg. Recorded tracks lie beside the
+    // roads and cannot be reported.
+    pickSurfacePoint(legId: string, index: number) {
+      const leg = this.legs[legId], pick = this.surfacePicking;
+      if (!this.surfaceReporting || !leg || leg.status !== 'routed' || leg.recorded) return;
+      if (pick && pick.end === null) {
+        if (pick.leg === leg && index !== pick.start) pick.end = index;
+        return;
+      }
+      this.surfacePick = { leg: markRaw(leg), start: index, end: null, hover: null };
+    },
+    hoverSurfacePoint(index: number | null) {
+      if (this.surfacePicking?.end === null) this.surfacePicking.hover = index;
+    },
+    // Saves the rider's surface for the selected stretch, or the map's again (null). The routing engine uses it from
+    // its next answer on; the route shows it at once, also in the undo history, since the saved report stays.
+    async reportSurface(surface: CorrectedSurface | null) {
+      const selection = this.surfaceSelection;
+      if (!selection) return;
+      const { leg, fromIndex, toIndex } = selection, points = leg.coordinates.slice(fromIndex, toIndex + 1);
+      await saveSurfaceReport({ points, surface, osmSurfaces: osmSurfaces(leg, fromIndex, toIndex) });
+      const memo = new Map<RouteLeg, RouteLeg>();
+      const relabel = (legs: Record<string, RouteLeg>) => {
+        const relabelled = applyReport(legs, { points, surface }, memo);
+        Object.values(relabelled).forEach(markRaw);
+        return relabelled;
+      };
+      this.legs = relabel(this.legs);
+      this.undoStack = this.undoStack.map(entry => ({ ...entry, legs: relabel(entry.legs) }));
+      this.redoStack = this.redoStack.map(entry => ({ ...entry, legs: relabel(entry.legs) }));
+      this.surfacePick = null;
     },
     restoreDraft(draft: RouteDraft) {
       this.surfaceFocus = null;
@@ -309,8 +381,8 @@ export const useRouteStore = defineStore('route', {
       stops.forEach((stop, i) => {
         if (!stop.section) return;
         const from = this.points[i - 1] as RoutePoint & { coord: Coord }, to = this.points[i] as RoutePoint & { coord: Coord };
-        const { coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy } = stop.section;
-        const leg = markRaw<RouteLeg>({ coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy,
+        const { coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy, recorded } = stop.section;
+        const leg = markRaw<RouteLeg>({ coordinates, elevations, distanceMeters, ascentMeters, surfaces, routingPolicy, ...(recorded ? { recorded } : {}),
           id: legId(from.id, to.id), fromId: from.id, toId: to.id, fromCoord: from.coord, toCoord: to.coord, status: 'routed' });
         legs[leg.id] = leg;
         opened.push({ leg, section: stop.section });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { distanceMeters } from '../src/domain/route-model.ts';
-import { inspectSurfaces } from '../src/domain/route-surfaces.ts';
+import { inspectStretch, inspectSurfaces } from '../src/domain/route-surfaces.ts';
 import { parseDraft, serializeDraft } from '../src/domain/route-draft.ts';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { routingEngine } from '../src/services/route.service.ts';
@@ -31,6 +31,16 @@ test('surface totals cover the entire out-and-back geometry including unknown ta
   assert.equal(result.sections.at(-1).toIndex, leg.coordinates.length - 1);
   assert.equal(result.sections.at(-1).surface, 'unknown');
   assert.equal(result.sections[1].fromMeters, result.sections[0].toMeters);
+});
+
+test('what the rider corrected forms sections of its own', () => {
+  const { points, legs, leg } = route();
+  leg.surfaces = [
+    { fromIndex: 0, toIndex: 1, surface: 'paved', surfaceTag: 'paved', osm: { surface: 'unknown' } },
+    { fromIndex: 1, toIndex: 2, surface: 'paved', surfaceTag: 'asphalt' },
+  ];
+  assert.deepEqual(inspectSurfaces(points, legs).sections.map(s => [s.surface, s.corrected]),
+    [['paved', true], ['paved', false], ['unknown', false]]);
 });
 
 test('neighbouring stretches of one group form one section, whatever their materials', () => {
@@ -79,10 +89,16 @@ test('drafts preserve precise surface tags and reject overlapping or malformed s
   assert.deepEqual(parseDraft(JSON.stringify(old)).legs['stop-a:stop-b'].surfaces.map(s => s.surface), ['paved', 'paved', 'likelyPaved']);
   old.legs['stop-a:stop-b'].surfaces = [{ fromIndex: 0, toIndex: 1, surface: 'likelyAsphalt' }];
   assert.deepEqual(parseDraft(JSON.stringify(old)).legs['stop-a:stop-b'].surfaces.map(s => s.surface), ['likelyPaved']);
+  // what OSM says where the rider corrected the surface
+  const corrected = JSON.parse(serializeDraft(points, legs));
+  corrected.legs['stop-a:stop-b'].surfaces[0].osm = { surface: 'paved', surfaceTag: 'asphalt' };
+  assert.deepEqual(parseDraft(JSON.stringify(corrected)).legs['stop-a:stop-b'].surfaces[0].osm, { surface: 'paved', surfaceTag: 'asphalt' });
   for (const mutate of [
     spans => spans.push({ fromIndex: 0, toIndex: 2, surface: 'asphalt' }),
     spans => { spans[0].surfaceTag = {}; },
     spans => { spans[0].surfaceTag = ''; },
+    spans => { spans[0].osm = { surface: 'gravelish' }; },
+    spans => { spans[0].osm = 'paved'; },
   ]) {
     const bad = JSON.parse(serializeDraft(points, legs));
     mutate(bad.legs['stop-a:stop-b'].surfaces);
@@ -115,4 +131,63 @@ test('surface inspection makes no routing calls or draft edits and stale selecti
   store.inspectSurface(leg.id, 0, 1, 'unpaved');
   store.legs = { [leg.id]: { ...leg, surfaces: [] } };
   assert.equal(store.focusedSurface, null);
+});
+
+test('recorded tracks lie beside the roads: their sections say so and cannot be corrected', async t => {
+  setActivePinia(createPinia());
+  const { points, legs, leg } = route();
+  leg.recorded = true;
+  assert.equal(parseDraft(serializeDraft(points, legs)).legs[leg.id].recorded, true);
+  const bad = JSON.parse(serializeDraft(points, legs));
+  bad.legs[leg.id].recorded = 'yes';
+  assert.throws(() => parseDraft(JSON.stringify(bad)));
+  t.mock.method(globalThis, 'fetch', () => Promise.reject(new Error('offline')));
+  const store = useRouteStore();
+  store.restoreDraft({ version: 1, points, legs });
+  store.setSurfaceReporting(true);
+  store.pickSurfacePoint(leg.id, 0);
+  store.pickSurfacePoint(leg.id, 1);
+  assert.equal(store.surfaceSelection, null);
+  await store.reportSurface('paved');
+  assert.ok(!globalThis.fetch.mock.calls.some(call => String(call.arguments[0]).includes('surface-corrections')));
+  assert.equal(store.legs[leg.id].surfaces, leg.surfaces);
+});
+
+test('a stretch to report is picked on the route: start, then end, in either order', async t => {
+  setActivePinia(createPinia());
+  const { points, legs, leg } = route([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47]]);
+  leg.surfaces = [{ fromIndex: 0, toIndex: 4, surface: 'unpaved', surfaceTag: 'gravel' }];
+  const store = useRouteStore();
+  store.restoreDraft({ version: 1, points, legs });
+  store.inspectSurface(leg.id, 0, 4, 'unpaved');
+  store.pickSurfacePoint(leg.id, 3);
+  assert.equal(store.surfacePicking, null, 'only while reporting');
+  store.setSurfaceReporting(true);
+  assert.equal(store.surfaceFocus, null, 'reporting replaces the selected section');
+  store.pickSurfacePoint(leg.id, 3);
+  store.hoverSurfacePoint(1);
+  assert.deepEqual(store.surfacePreview.coordinates, leg.coordinates.slice(1, 4));
+  assert.equal(store.surfaceSelection, null);
+  store.pickSurfacePoint(leg.id, 1);
+  const selection = store.surfaceSelection;
+  assert.deepEqual([selection.fromIndex, selection.toIndex, selection.surfaces, selection.corrected], [1, 3, ['unpaved'], false]);
+  assert.ok(Math.abs(selection.meters - distanceMeters(leg.coordinates[1], leg.coordinates[3])) < 1e-6);
+  // a tap after a finished pick starts the next stretch
+  store.pickSurfacePoint(leg.id, 2);
+  assert.equal(store.surfaceSelection, null);
+  // reporting saves the stretch and shows it at once
+  t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 204 }));
+  store.pickSurfacePoint(leg.id, 0);
+  store._remember();
+  await store.reportSurface('paved');
+  assert.deepEqual(JSON.parse(globalThis.fetch.mock.calls.at(-1).arguments[1].body),
+    { points: leg.coordinates.slice(0, 3), surface: 'paved', osmSurfaces: ['gravel'] });
+  assert.deepEqual(store.legs[leg.id].surfaces.map(s => [s.fromIndex, s.toIndex, s.surface]), [[0, 2, 'paved'], [2, 4, 'unpaved']]);
+  assert.equal(store.surfaceSelection, null);
+  // the report stays saved, so undoing an earlier edit keeps showing it
+  assert.equal(store.undoStack.at(-1).legs[leg.id], store.legs[leg.id]);
+  store.setSurfaceReporting(false);
+  assert.equal(store.surfacePicking, null);
+  assert.deepEqual(inspectStretch({ ...leg, surfaces: [{ fromIndex: 0, toIndex: 2, surface: 'paved', osm: { surface: 'unknown' } }] }, 1, 3),
+    { surfaces: ['paved', 'unknown'], corrected: true });
 });

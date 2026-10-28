@@ -357,7 +357,7 @@ impl ExpressionContext {
     }
 
     /// The value's index, matching the primary value only; -1 if missing.
-    pub(crate) fn get_lookup_value_idx(&self, name_idx: usize, value: &str) -> i32 {
+    pub fn get_lookup_value_idx(&self, name_idx: usize, value: &str) -> i32 {
         self.lookup_values[name_idx].iter().position(|v| v.value == value).map_or(-1, |i| i as i32)
     }
 

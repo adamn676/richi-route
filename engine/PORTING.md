@@ -17,6 +17,8 @@ differs is a bug in the port. Speed work comes later and must not change results
     classes ahead of the bundle jar. Apart from speed-only changes, they are the local rules, ported as
     an explicit layer (`router/src/local_rules.rs`) that a rule file switches on; without one, routing is
     1.7.10's. The planner's server is `richi-engine serve` with the rules.
+  - The rider's surface corrections (`router/src/surfaces.rs`, file named by `RICHIROUTE_SURFACES`) have
+    no Java counterpart; parity runs go without them.
 - Java toolchain: `../.cache/runtime/java/bin/{javac,java}`.
 - Test data:
   - Routing segments: `../../richiroute-ubuntu-benchmark/data/E10_N45.rd5` and `E15_N45.rd5`.

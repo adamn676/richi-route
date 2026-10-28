@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileRules, validateLookupTags } from './routing-rules.mjs';
 import { localRulesProfile } from './routing-profile.mjs';
+import { compileCorrections, validateCorrections } from '../src/domain/surface-corrections.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const bundle = path.resolve(process.env.BROUTER_BUNDLE ?? path.join(root, '../richiroute-ubuntu-benchmark'));
@@ -36,6 +37,8 @@ async function replace(file, text) {
   await rename(file + '.tmp', file);
 }
 await replace(path.join(output, 'rules.tsv'), compiled.engine);
+const corrections = validateCorrections(JSON.parse(await readFile(path.join(root, 'config/surface-corrections.json'), 'utf8')));
+await replace(path.join(output, 'surfaces.tsv'), compileCorrections(corrections));
 await replace(path.join(profiles, 'richi-local-v1.brf'), profile);
 await copyFile(path.join(bundle, 'profiles/lookups.dat'), path.join(profiles, 'lookups.dat'));
 // Keep the historical profiles available for explicit comparisons.
@@ -48,4 +51,4 @@ if (!process.env.ROUTING_RULES_CONFIG && !process.env.ROUTING_RULES_OUTPUT) {
   await replace(path.join(root, 'src/config/routing-rules.generated.json'), JSON.stringify(compiled.client, null, 2) + '\n');
 }
 await replace(path.join(output, 'manifest.json'), JSON.stringify({ revision: compiled.revision, ruleIds: active.map(r => r.id), reviewedTiles: Object.fromEntries(reviewed) }, null, 2) + '\n');
-console.log(`Prepared ${active.length} local routing rules (${compiled.revision.slice(0, 12)}). Restart the routing service to activate them; no Java rebuild is needed.`);
+console.log(`Prepared ${active.length} local routing rules (${compiled.revision.slice(0, 12)}) and ${corrections.corrections.length} surface corrections. Restart the routing service to activate the rules; no Java rebuild is needed.`);

@@ -1,4 +1,4 @@
-import { distanceMeters, isPlaced, reconcileLegs, sameEndpoints, type Coord, type RouteLeg, type RoutePoint, type Surface, type SurfaceSpan } from './route-model.ts';
+import { distanceMeters, isPlaced, reconcileLegs, sameEndpoints, type Coord, type RouteLeg, type RoutePoint, type Surface, type SurfaceKind, type SurfaceSpan } from './route-model.ts';
 import { surfaceType } from './route-response.ts';
 
 // Surface groups as drafts store them, including those before the road-bike grouping (asphalt and concrete apart).
@@ -54,6 +54,17 @@ function point(value: unknown): RoutePoint {
   };
 }
 
+// A material the groups know is grouped as today; otherwise the saved group stands (translated, for older drafts),
+// which also keeps what the way's type told when the span was routed
+function surfaceKind(s: Record<string, unknown>): SurfaceKind {
+  const saved = text(s.surface), group = Object.hasOwn(savedSurfaces, saved) ? savedSurfaces[saved] : undefined;
+  if (!group) throw new Error('Invalid draft surface');
+  if (s.surfaceTag === undefined) return { surface: group };
+  if (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200) throw new Error('Invalid draft surface tag');
+  const tagged = surfaceType(s.surfaceTag);
+  return { surface: tagged === 'unknown' ? group : tagged, surfaceTag: s.surfaceTag };
+}
+
 function leg(value: unknown): RouteLeg {
   const l = object(value);
   if (!Array.isArray(l.coordinates) || l.coordinates.length < 2 || !Array.isArray(l.surfaces) ||
@@ -65,18 +76,10 @@ function leg(value: unknown): RouteLeg {
   const surfaces: SurfaceSpan[] = l.surfaces.map(value => {
     const s = object(value);
     const fromIndex = number(s.fromIndex), toIndex = number(s.toIndex);
-    const saved = text(s.surface), group = Object.hasOwn(savedSurfaces, saved) ? savedSurfaces[saved] : undefined;
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < previousEnd ||
-        toIndex <= fromIndex || toIndex >= coordinates.length || !group) throw new Error('Invalid draft surface');
+        toIndex <= fromIndex || toIndex >= coordinates.length) throw new Error('Invalid draft surface');
     previousEnd = toIndex;
-    if (s.surfaceTag !== undefined && (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200)) {
-      throw new Error('Invalid draft surface tag');
-    }
-    // A material the groups know is grouped as today; otherwise the saved group stands (translated, for older drafts),
-    // which also keeps what the way's type told when the span was routed
-    if (s.surfaceTag === undefined) return { fromIndex, toIndex, surface: group };
-    const tagged = surfaceType(s.surfaceTag as string);
-    return { fromIndex, toIndex, surface: tagged === 'unknown' ? group : tagged, surfaceTag: s.surfaceTag as string };
+    return { fromIndex, toIndex, ...surfaceKind(s), ...(s.osm !== undefined ? { osm: surfaceKind(object(s.osm)) } : {}) };
   });
   const result: RouteLeg = {
     id: text(l.id), fromId: text(l.fromId), toId: text(l.toId),
@@ -86,9 +89,11 @@ function leg(value: unknown): RouteLeg {
     ascentMeters: l.ascentMeters === null ? null : number(l.ascentMeters),
     status: l.status as RouteLeg['status'],
     ...(l.routingPolicy !== undefined ? { routingPolicy: text(l.routingPolicy) } : {}),
+    ...(l.recorded === true ? { recorded: true } : {}),
     ...(l.error !== undefined ? { error: text(l.error) } : {}),
   };
   if (result.routingPolicy !== undefined && (!result.routingPolicy.length || result.routingPolicy.length > 200)) throw new Error('Invalid routing policy version');
+  if (l.recorded !== undefined && l.recorded !== true) throw new Error('Invalid draft leg');
   if (result.distanceMeters < 0 || (result.ascentMeters !== null && result.ascentMeters < 0) ||
       distanceMeters(result.fromCoord, coordinates[0]) > 2 ||
       distanceMeters(result.toCoord, coordinates.at(-1)!) > 2) throw new Error('Invalid draft leg endpoints');

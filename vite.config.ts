@@ -2,12 +2,16 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vuetify from 'vite-plugin-vuetify';
 import { fileURLToPath, URL } from 'node:url';
+import { surfaceCorrections } from './scripts/surface-corrections.ts';
+
+const file = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
   envDir: false,
   // Vuetify components and their styles are imported where used.
-  plugins: [vue(), vuetify({ autoImport: true })],
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  plugins: [vue(), vuetify({ autoImport: true }),
+    surfaceCorrections(file('./config/surface-corrections.json'), file('./experiments/routing/.local/local-routing-rules/surfaces.tsv'))],
+  resolve: { alias: { '@': file('./src') } },
   server: {
     host: '127.0.0.1', port: 5173, strictPort: true,
     watch: { ignored: ['**/.cache/**', '**/experiments/routing/.local/**'] },
