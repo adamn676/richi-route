@@ -9,6 +9,7 @@ use brouter_mapaccess::SegmentStore;
 use crate::engine::{self, Arenas, Job, JobResult, RoutingEngine};
 use crate::format::format_json;
 use crate::java::{self, JavaException};
+use crate::local_rules::LocalRules;
 use crate::param_collector::{get_url_params, get_way_point_list, set_params};
 use crate::pool::Pool;
 use crate::profile_cache::ProfileCache;
@@ -35,13 +36,17 @@ impl Router {
     /// budget; routers on several threads, or with a tighter memory budget, use `with_segments`.
     pub fn new(segment_dir: impl Into<PathBuf>, profile_dir: impl Into<PathBuf>) -> Self {
         let segments = SegmentStore::new(segment_dir, SegmentStore::DEFAULT_CELL_CACHE_BYTES);
-        Self::with_segments(Arc::new(segments), profile_dir)
+        Self::with_segments(Arc::new(segments), profile_dir, None)
     }
 
-    /// A router reading its segments through `segments`.
-    pub fn with_segments(segments: Arc<SegmentStore>, profile_dir: impl Into<PathBuf>) -> Self {
+    /// A router reading its segments through `segments`, with the planner's `local_rules` if given.
+    pub fn with_segments(
+        segments: Arc<SegmentStore>,
+        profile_dir: impl Into<PathBuf>,
+        local_rules: Option<Arc<LocalRules>>,
+    ) -> Self {
         // BRouter shares 2 × threads profile slots among its worker threads; a router keeps 2
-        Self { segments, profiles: ProfileCache::new(profile_dir, 2), arenas: Some(Arenas::default()) }
+        Self { segments, profiles: ProfileCache::new(profile_dir, 2, local_rules), arenas: Some(Arenas::default()) }
     }
 
     /// `RouteReference.answer`: the server's memory class (128), the profile named by `profile`, the

@@ -16,6 +16,7 @@ use brouter_mapaccess::SegmentStore;
 
 use crate::engine::{Job, JobResult};
 use crate::java::JavaException;
+use crate::local_rules::LocalRules;
 use crate::request::{Answer, Router};
 
 /// How a request ended: its answer, or the panic of an internal error.
@@ -30,14 +31,20 @@ pub struct RouterPool {
 }
 
 impl RouterPool {
-    /// `threads` threads, each with its own profile cache for `profile_dir`.
-    pub fn new(segments: Arc<SegmentStore>, profile_dir: impl Into<PathBuf>, threads: usize) -> Self {
+    /// `threads` threads, each with its own profile cache for `profile_dir` (see `Router::with_segments`).
+    pub fn new(
+        segments: Arc<SegmentStore>,
+        profile_dir: impl Into<PathBuf>,
+        threads: usize,
+        local_rules: Option<Arc<LocalRules>>,
+    ) -> Self {
         let profile_dir = profile_dir.into();
         let pool = Pool(Arc::new(Shared { queue: Mutex::default(), work: Condvar::new(), threads: threads.max(1) }));
         let threads = (0..threads.max(1))
             .map(|_| {
-                let (pool, segments, profile_dir) = (pool.clone(), segments.clone(), profile_dir.clone());
-                std::thread::spawn(move || pool.work(Router::with_segments(segments, profile_dir)))
+                let (pool, segments, profile_dir, rules) =
+                    (pool.clone(), segments.clone(), profile_dir.clone(), local_rules.clone());
+                std::thread::spawn(move || pool.work(Router::with_segments(segments, profile_dir, rules)))
             })
             .collect();
         Self { pool, threads }
@@ -45,12 +52,7 @@ impl RouterPool {
 
     /// Answers the request (see `Router::answer`) on a free thread and hands the outcome and the time
     /// taken to `reply`, on that thread.
-    pub fn submit(
-        &self,
-        query: String,
-        max_running_time: i64,
-        reply: impl FnOnce(Outcome, Duration) + Send + 'static,
-    ) {
+    pub fn submit(&self, query: String, max_running_time: i64, reply: impl FnOnce(Outcome, Duration) + Send + 'static) {
         let mut queue = self.pool.queue();
         queue.requests.push_back(Request { query, max_running_time, reply: Box::new(reply) });
         drop(queue);

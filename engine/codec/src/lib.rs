@@ -8,8 +8,8 @@ mod tag_value_coder;
 pub use buffers::{DataBuffers, LinkedListContainer};
 pub use micro_cache::{MicroCache, decode_transfer_nodes, expand_id32, match_transfer_nodes};
 pub use stat_coder::{NoisyDiffCoder, StatCoderContext};
-pub use tag_value_coder::{TagTree, TagValueWrapper};
 use tag_value_coder::TagValueCoder;
+pub use tag_value_coder::{TagTree, TagValueWrapper};
 
 use brouter_util::ByteArrayUnifier;
 

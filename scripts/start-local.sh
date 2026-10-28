@@ -5,7 +5,8 @@ app_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bundle_dir="$app_dir/../richiroute-ubuntu-benchmark"
 node_bin="$app_dir/.cache/runtime/node/bin/node"
 java_bin="$app_dir/.cache/runtime/java/bin/java"
-rules_jar="$app_dir/experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar"
+rust_dir="$app_dir/.cache/runtime/rust/bin"
+engine_dir="$app_dir/engine"
 rules_dir="$app_dir/experiments/routing/.local/local-routing-rules"
 log_dir="$app_dir/experiments/routing/.local"
 # Vite ignores .env files; local settings such as VITE_GOOGLE_MAPS_EMBED_KEY come from app/.env.local instead.
@@ -15,7 +16,7 @@ if [ ! -f "$bundle_dir/manifest.json" ] || [ ! -f "$bundle_dir/benchmark.mjs" ];
   echo 'The verified routing bundle is missing. Place richiroute-ubuntu-benchmark/ next to this checkout; see docs/local-development.md.' >&2
   exit 1
 fi
-if [ ! -x "$node_bin" ] || [ ! -x "$java_bin" ]; then
+if [ ! -x "$node_bin" ] || [ ! -x "$java_bin" ] || [ ! -x "$rust_dir/cargo" ]; then
   echo 'The current native runtimes are missing. Run node scripts/setup-native.mjs first; see docs/local-development.md.' >&2
   exit 1
 fi
@@ -33,7 +34,8 @@ if [ ! -f "$app_dir/.cache/imagery/ready.json" ]; then
 fi
 
 "$node_bin" "$bundle_dir/benchmark.mjs" verify
-"$node_bin" "$app_dir/experiments/routing/brouter-patch/build-local-rules.mjs" --verify
+PATH="$rust_dir:$PATH" CARGO_HOME="$app_dir/.cache/cargo" "$rust_dir/cargo" build --release \
+  --manifest-path "$engine_dir/Cargo.toml" --target-dir "$engine_dir/target" -p richi-engine
 "$node_bin" "$app_dir/scripts/prepare-routing-rules.mjs"
 "$node_bin" --input-type=module - <<'JS'
 import net from 'node:net';
@@ -46,7 +48,7 @@ for (const port of [17777, 2322, 8088, 5173]) {
 }
 JS
 
-mkdir -p "$bundle_dir/customprofiles" "$log_dir"
+mkdir -p "$log_dir"
 router_pid=''
 web_pid=''
 search_pid=''
@@ -66,9 +68,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-"$java_bin" -Xmx1g -XX:+UseParallelGC -DmaxRunningTime=60 -Drichiroute.rules="$rules_dir/rules.tsv" -cp "$rules_jar:$bundle_dir/brouter.jar" \
-  btools.router.LocalRulesServer "$bundle_dir/data" "$rules_dir/profiles" \
-  "$bundle_dir/customprofiles" 17777 6 127.0.0.1 > "$log_dir/native-brouter.log" 2>&1 &
+RICHIROUTE_RULES="$rules_dir/rules.tsv" "$engine_dir/target/release/richi-engine" serve \
+  "$bundle_dir/data" "$rules_dir/profiles" 17777 6 127.0.0.1 > "$log_dir/native-routing.log" 2>&1 &
 router_pid=$!
 "$node_bin" "$app_dir/scripts/start-search.mjs" > "$log_dir/native-search.log" 2>&1 &
 search_pid=$!
@@ -89,7 +90,7 @@ for (let attempt = 0; attempt < 30; attempt++) {
   } catch {}
   await delay(250);
 }
-throw new Error('Routing did not start. Check experiments/routing/.local/native-brouter.log.');
+throw new Error('Routing did not start. Check experiments/routing/.local/native-routing.log.');
 JS
 
 "$node_bin" --input-type=module - <<'JS'

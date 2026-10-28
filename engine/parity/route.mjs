@@ -1,5 +1,6 @@
 // Query set and comparison for parity/route.sh.
-//   node parity/route.mjs queries <routing-rules.json> <routing-search.json>    prints "id<TAB>query" lines
+//   node parity/route.mjs queries <routing-rules.generated.json> <routing-search.json> [<routing-rules.json>]
+//                                    prints "id<TAB>query" lines; with the rules' source, also routes at each rule
 //   node parity/route.mjs compare <queries> <java.jsonl> <rust.jsonl>
 // Queries are built like the planner's route service builds them (app/src/services/route.service.ts).
 import { readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ const starts = {
 };
 const profiles = ['richi-local-v1', 'richi-surface-v4', 'richi-weidweg-v1'];
 
-function queries(rulesFile, searchFile) {
+function queries(rulesFile, searchFile, rulesSource) {
   // the planner's routingParameters (app/src/config/routing-policy.ts)
   const rules = JSON.parse(readFileSync(rulesFile, 'utf8'));
   const search = JSON.parse(readFileSync(searchFile, 'utf8'));
@@ -116,6 +117,28 @@ function queries(rulesFile, searchFile) {
   }
   raw('errors', 'profile=richi-local-v1&lonlats=15.4395%2C47.0707%7C15.45%2C47.08&profile%3Apass1coefficient=abc');
   raw('errors', 'profile=richi-local-v1&lonlats=15.4395%2C47.0707%7C15.45%2C47.08&profile%3Anosuchvariable=1');
+
+  // the local rules (app/config/routing-rules.json): at and across each rule, opted out, a stale revision
+  const beyond = (a, b, k) => [+(a[0] + (a[0] - b[0]) * k).toFixed(6), +(a[1] + (a[1] - b[1]) * k).toFixed(6)];
+  for (const rule of rulesSource ? JSON.parse(readFileSync(rulesSource, 'utf8')).rules.filter(r => r.enabled) : []) {
+    const legs = rule.kind === 'passage'
+      ? rule.segments.flatMap(s => rule.direction === 'both' ? [s, [...s].reverse()] : [s])
+      : rule.kind === 'turn' ? [[rule.from, rule.to]]
+      : [[0.002, 0], [0, 0.0014]].map(([dlon, dlat]) => [offset(rule.center, -dlon, -dlat), offset(rule.center, dlon, dlat)]);
+    for (const [a, b] of legs) {
+      add('rules', [a, b]);
+      add('rules', [beyond(a, b, 40), beyond(b, a, 40)]);
+    }
+    const [a, b] = legs[0];
+    add('rules', [beyond(a, b, 40), beyond(b, a, 40)], { overrides: { ...planner, richiroute_local_rules: 0 } });
+    add('rules', [a], { extra: roundTrip(3000, 135) });
+  }
+  if (rulesSource) {
+    const leg = [starts.graz, offset(starts.graz, 0.01, 0.01)];
+    add('rules', leg, { overrides: { ...planner, richiroute_rules_0: '1' } });
+    const { richiroute_rules_1, richiroute_rules_2, richiroute_rules_3, ...partial } = planner;
+    add('rules', leg, { overrides: partial });
+  }
   return list.map(([group, query], i) => `${group}-${i}\t${query}`).join('\n') + '\n';
 }
 
@@ -154,6 +177,6 @@ function compare(queriesFile, javaFile, rustFile) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
-if (mode === 'queries') process.stdout.write(queries(args[0], args[1]));
+if (mode === 'queries') process.stdout.write(queries(args[0], args[1], args[2]));
 else if (mode === 'compare') compare(...args);
 else throw new Error(`unknown mode ${mode}`);

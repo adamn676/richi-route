@@ -79,13 +79,16 @@ mod expression;
 pub mod java;
 mod lru_map;
 
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
+use std::rc::Rc;
 
 use brouter_codec::TagValueValidator;
 use brouter_util::{ByteArrayUnifier, Description};
 
-use context::ContextKind;
+use context::{ContextKind, FxHasher};
 pub use context::{ExpressionContext, MetaData};
 pub use error::ExpressionError;
 use error::Failure;
@@ -95,7 +98,13 @@ pub struct WayContext {
     ctx: ExpressionContext,
     decode_forbidden: bool,
     deferred_error: Option<ExpressionError>,
+    local_access: Option<LocalAccess>,
+    /// Its answers by description: the tags of a description never change.
+    local_access_memo: HashMap<Box<[u8]>, bool, BuildHasherDefault<FxHasher>>,
 }
+
+/// The local rules' `mayAccess(tags)` (see `WayContext::set_local_access`).
+pub type LocalAccess = Rc<dyn Fn(&str) -> bool>;
 
 /// The node context (`BExpressionContextNode`). Shared context methods come through `Deref`.
 pub struct NodeContext {
@@ -115,7 +124,20 @@ impl WayContext {
     /// `hash_size` is the result cache's capacity in descriptions (Java's default: 4096). Zero
     /// disables the cache; `access_type` needs one, in Java as here.
     pub fn new(hash_size: usize) -> Self {
-        Self { ctx: ExpressionContext::new(ContextKind::Way, hash_size), decode_forbidden: true, deferred_error: None }
+        Self {
+            ctx: ExpressionContext::new(ContextKind::Way, hash_size),
+            decode_forbidden: true,
+            deferred_error: None,
+            local_access: None,
+            local_access_memo: HashMap::default(),
+        }
+    }
+
+    /// The planner's local rules (`experiments/routing/brouter-patch/rules/`): a way closed to a
+    /// bicycle-only profile that opts in (`richiroute_local_rules`) stays usable when `may_access`
+    /// accepts its tags, as a passage may open it.
+    pub fn set_local_access(&mut self, may_access: LocalAccess) {
+        self.local_access = Some(may_access);
     }
 
     /// `parseFile(file, "global", keyValues)`: the `global` section with the key values injected,
@@ -152,6 +174,16 @@ impl WayContext {
                 min_cost_factor = reverse_cost_factor;
             }
         }
+        let var = |name: &str| self.variable_value(name, 0.0);
+        let local_access = || {
+            var("richiroute_local_rules") == 1.0
+                && var("validForBikes") != 0.0
+                && var("validForCars") == 0.0
+                && var("validForFoot") == 0.0
+        };
+        if min_cost_factor == 9999.0 && self.local_access.is_some() && local_access() && self.may_access(description) {
+            return Ok(2);
+        }
         Ok(if min_cost_factor < 9999.0 {
             2
         } else if self.decode_forbidden && min_cost_factor < 10000.0 {
@@ -159,6 +191,17 @@ impl WayContext {
         } else {
             0
         })
+    }
+
+    /// `mayAccess(getKeyValueDescription(false, description))`.
+    fn may_access(&mut self, description: &[u8]) -> bool {
+        if let Some(&known) = self.local_access_memo.get(description) {
+            return known;
+        }
+        let may_access = self.local_access.as_ref().expect("checked by the caller");
+        let known = may_access(&self.key_value_description(false, description));
+        self.local_access_memo.insert(description.into(), known);
+        known
     }
 
     /// The first evaluation error `TagValueValidator::access_type` swallowed.

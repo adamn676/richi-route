@@ -7,6 +7,8 @@
 //   node parity/loops.mjs java --as java-now   record under another name (e.g. to time Java again
 //                                              without replacing the baseline), compare with that name
 // Run from app/engine/. Paths: RICHIROUTE_SEGMENTS, RICHIROUTE_PROFILES, RICHIROUTE_JAVA, RICHIROUTE_BROUTER_JAR;
+// with RICHIROUTE_RULES (the prepared rule file) both engines apply the local rules, and the Java reference is
+// the planner's server: RICHIROUTE_RULES_JAR (the local-rules jar) ahead of the bundle's jar.
 // the Rust engine is built into CARGO_TARGET_DIR (default target/). The engine runs with the planner's
 // concurrency as its thread count unless RICHIROUTE_ENGINE_THREADS says otherwise; the planner still sends
 // that many requests at a time.
@@ -45,8 +47,12 @@ function engineCommand(engine) {
     const java = process.env.RICHIROUTE_JAVA ?? path.join(app, '.cache/runtime/java/bin/java');
     const jar = process.env.RICHIROUTE_BROUTER_JAR ?? path.join(app, '../richiroute-ubuntu-benchmark/brouter.jar');
     const classes = path.join(engineDir, 'target/parity/classes');
-    const classpath = [path.join(classes, 'pristine'), jar, path.join(classes, 'router')].join(path.delimiter);
-    return [java, ['-Xmx1g', '-cp', classpath, 'RouteReference', segments, profiles, engineThreads]];
+    const rules = process.env.RICHIROUTE_RULES;
+    const base = rules ? process.env.RICHIROUTE_RULES_JAR ?? path.join(app, 'experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar')
+      : path.join(classes, 'pristine');
+    const classpath = [base, jar, path.join(classes, 'router')].join(path.delimiter);
+    const properties = rules ? [`-Drichiroute.rules=${rules}`] : [];
+    return [java, ['-Xmx1g', ...properties, '-cp', classpath, 'RouteReference', segments, profiles, engineThreads]];
   }
   const release = path.join(process.env.CARGO_TARGET_DIR ?? path.join(engineDir, 'target'), 'release');
   if (engine === 'rust') return [path.join(release, 'richi-engine'), ['lines', segments, profiles, engineThreads]];

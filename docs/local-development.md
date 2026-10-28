@@ -45,21 +45,23 @@ npm run dev:local
 
 `native:setup` downloads checksum-verified Node, GraalVM and Rust archives into
 `.cache/runtime/`. It is specific to Linux x64. Rust builds the routing engine
-port in `engine/` (see [its porting notes](../engine/PORTING.md)), which is
-not used by the planner yet. `.nvmrc` records the Node version
+in `engine/`, a port of BRouter 1.7.10 with the local rules (see [its porting
+notes](../engine/PORTING.md)). `npm run routing:build` builds the Java rules
+integration that the engine's parity checks compare against. `.nvmrc` records the Node version
 for other development environments. Use an existing Node 22 or newer
 to run the installer. In the prepared workspace, the equivalent bootstrap is
 `../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs`.
 Subsequent app commands use the new runtime.
 
-The repository launcher, `scripts/start-local.sh`, verifies the original bundle
-and the separately built rules integration. It prepares the shared local rules
-and their profile, then starts GraalVM Community 25.4.4.1.1 with its default compiler, a 1 GB heap,
-the parallel collector and six routing workers. It binds BRouter to
-`127.0.0.1:17777`, Photon to `127.0.0.1:2322`, the map service to
-`127.0.0.1:8088` and Vite to `127.0.0.1:5173`. It checks readiness before opening
+The repository launcher, `scripts/start-local.sh`, verifies the original bundle,
+builds the routing engine (`cargo build --release`, quick after the first time)
+and prepares the shared local rules and their profile. It then starts the engine
+with six routing threads and the rules (`richi-engine serve`, BRouter's server
+protocol), bound to `127.0.0.1:17777`. Photon runs on GraalVM Community 25.4.4.1.1
+at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
+`127.0.0.1:5173`. It checks readiness before opening
 the frontend. Ctrl+C stops the processes it started. Logs are
-`experiments/routing/.local/native-{brouter,search,maps}.log`. Docker, GraphHopper
+`experiments/routing/.local/native-{routing,search,maps}.log`. Docker, GraphHopper
 and ORS are not required for this setup. The [performance build](../experiments/routing/brouter-patch/README.md#performance-overlay)
 documents the engine changes and parity checks. The current native profile is
 `richi-local-v1`; its comparison preset is `local-rules-v1`.
@@ -269,7 +271,7 @@ Downloaded assets and generated graphs remain on disk.
 | --- | --- | --- |
 | Planner | 5173 | Route editing and GPX export |
 | Comparison app | 5174 | Engine and route review |
-| BRouter | 17777 | Planner route calculation |
+| Routing engine (BRouter port) | 17777 | Planner route calculation |
 | GraphHopper | 8989 | Comparison routing and local road tiles |
 | openrouteservice, optional | 8082 | Third comparison engine |
 | Photon | 2322 | Local European address search |

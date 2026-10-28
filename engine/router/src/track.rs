@@ -154,7 +154,12 @@ impl OsmTrack {
         let origins = copied.iter().map(|&idx| elements[idx].origin.map(|o| local[&o])).collect();
         let copies = copied.iter().map(|&idx| OsmPathElement { origin: None, ..elements[idx].clone() }).collect();
         let nodes = self.nodes.iter().map(|n| local[n]).collect();
-        DetachedTrack { track: OsmTrack { nodes: Vec::new(), nodes_map: None, ..self }, nodes, elements: copies, origins }
+        DetachedTrack {
+            track: OsmTrack { nodes: Vec::new(), nodes_map: None, ..self },
+            nodes,
+            elements: copies,
+            origins,
+        }
     }
 
     /// A detached track, moved into `elements`.

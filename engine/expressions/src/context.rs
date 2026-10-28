@@ -197,7 +197,7 @@ impl ResultMemo {
 
 /// A fast hash for short byte strings (descriptions are a few bytes).
 #[derive(Default)]
-struct FxHasher(u64);
+pub(crate) struct FxHasher(u64);
 
 impl Hasher for FxHasher {
     fn write(&mut self, bytes: &[u8]) {

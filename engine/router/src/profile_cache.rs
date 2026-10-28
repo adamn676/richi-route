@@ -8,11 +8,14 @@
 //! While a request uses a profile, the profile is out of its slot, which is Java's "busy" flag.
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext, read_meta_data};
 
 use crate::java::JavaException;
+use crate::local_rules::LocalRules;
 use crate::routing_context::RoutingContext;
 
 struct Slot {
@@ -28,6 +31,7 @@ pub struct ProfileCache {
     /// The lookup table's modification time when the slots were filled.
     lookup_timestamp: Option<i64>,
     clock: u64,
+    local_rules: Option<Arc<LocalRules>>,
 }
 
 /// `File.lastModified()`: milliseconds since the epoch, 0 if the file is missing.
@@ -41,13 +45,15 @@ fn last_modified(file: &Path) -> i64 {
 
 impl ProfileCache {
     /// Profiles are read from `<profile_dir>/<name>.brf`, the lookup table from
-    /// `<profile_dir>/lookups.dat` (BRouter's `profileBaseDir`).
-    pub fn new(profile_dir: impl Into<PathBuf>, size: usize) -> Self {
+    /// `<profile_dir>/lookups.dat` (BRouter's `profileBaseDir`). With `local_rules`, profiles that opt
+    /// in use them (the planner's server); without, routing is BRouter's.
+    pub fn new(profile_dir: impl Into<PathBuf>, size: usize, local_rules: Option<Arc<LocalRules>>) -> Self {
         Self {
             profile_dir: profile_dir.into(),
             slots: (0..size).map(|_| None).collect(),
             lookup_timestamp: None,
             clock: 0,
+            local_rules,
         }
     }
 
@@ -83,8 +89,13 @@ impl ProfileCache {
             };
             if pc.profile.is_some() && profile_file == pc.file {
                 if rc.profile_timestamp == pc.timestamp {
-                    let mut profile = self.slots[i].as_mut().and_then(|s| s.profile.take()).expect("checked");
-                    rc.read_global_config(&mut profile.way)?;
+                    let slot = self.slots[i].as_mut().expect("checked");
+                    let mut profile = slot.profile.take().expect("checked");
+                    // Java marks the slot busy only once the configuration is read
+                    if let Err(e) = rc.read_global_config(&mut profile.way, self.local_rules.as_ref()) {
+                        slot.profile = Some(profile);
+                        return Err(e);
+                    }
                     return Ok(profile);
                 }
                 lru = Some(i); // name-match but timestamp-mismatch -> we override this one
@@ -100,6 +111,10 @@ impl ProfileCache {
         let key_values: Vec<(String, String)> =
             rc.key_values.entries().into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         let mut way = WayContext::new(rc.memoryclass as usize * 512);
+        if let Some(rules) = &self.local_rules {
+            let rules = rules.clone();
+            way.set_local_access(Rc::new(move |tags| rules.may_access(tags)));
+        }
         let mut node = NodeContext::new();
         read_meta_data(&lookup_file, Some(&mut way), Some(&mut node))
             .map_err(|e| JavaException::new("java.lang.RuntimeException", e.0))?;
@@ -107,7 +122,7 @@ impl ProfileCache {
         node.parse_file(&profile_file, &key_values, &mut way).map_err(parse_exception)?;
         let mut profile = Profile { way, node };
 
-        rc.read_global_config(&mut profile.way)?;
+        rc.read_global_config(&mut profile.way, self.local_rules.as_ref())?;
         if rc.process_unused_tags {
             profile.way.set_all_tags_used();
         }

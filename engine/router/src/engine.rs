@@ -24,9 +24,9 @@ use brouter_util::{SortedHeap, cheap_ruler};
 use crate::java::{JavaException, min_f32, parse_double};
 use crate::libm;
 use crate::param_collector::OsmNodeNamed;
-use crate::pool::Pool;
 use crate::path::{GRAVITY, OsmPath, PathEnv, PathIdx};
 use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
+use crate::pool::Pool;
 use crate::profile_cache::ProfileCache;
 use crate::routing_context::RoutingContext;
 use crate::track::{DetachedTrack, OsmTrack};
@@ -91,12 +91,18 @@ pub(crate) struct SearchEnd {
     node1: Pos,
     node2: Pos,
     crosspoint: Pos,
+    waypoint: Pos,
 }
 
 impl SearchEnd {
     fn of(mwp: &MatchedWaypoint) -> Self {
         let matched = |p: Option<Pos>| p.expect("matched waypoint");
-        Self { node1: matched(mwp.node1), node2: matched(mwp.node2), crosspoint: matched(mwp.crosspoint) }
+        Self {
+            node1: matched(mwp.node1),
+            node2: matched(mwp.node2),
+            crosspoint: matched(mwp.crosspoint),
+            waypoint: mwp.waypoint,
+        }
     }
 }
 
@@ -904,6 +910,9 @@ impl Searcher {
         cost_cutting_track: Option<&OsmTrack>,
         ref_track: Option<&OsmTrack>,
     ) -> Result<Option<OsmTrack>, Abort> {
+        if let Some(areas) = &mut self.rc.nogos.local_areas {
+            areas.clean(&[start.waypoint, end.waypoint]);
+        }
         let detailed = self.guide_track.is_some();
         let result = self.reset_cache(detailed).and_then(|()| {
             let cleanup_mode = if detailed {
@@ -916,6 +925,9 @@ impl Searcher {
             self.nodes_cache.as_mut().expect("cache was reset").nodes_map.cleanup_mode = cleanup_mode;
             self.search(operation_name, start, end, cost_cutting_track, ref_track)
         });
+        if let Some(areas) = &mut self.rc.nogos.local_areas {
+            areas.restore();
+        }
         if let Some(cache) = &mut self.nodes_cache {
             cache.clean(false); // clean only non-virgin caches
         }
@@ -1514,7 +1526,6 @@ impl Searcher {
         }
         t.energy = el[*t.nodes.last().expect("a track has nodes")].energy() as i32;
     }
-
 }
 
 /// `compileTrack`: the track of the found path, from its elements.
@@ -1600,8 +1611,7 @@ pub(crate) fn run_pool_job(
         Err(_) => return Err(Box::new(job)),
     };
     let Job { kind, rc, island_node_pairs, max_running_time, start_time } = job;
-    let mut search =
-        Searcher::new(segments, rc, profile, std::mem::take(arenas), island_node_pairs, max_running_time);
+    let mut search = Searcher::new(segments, rc, profile, std::mem::take(arenas), island_node_pairs, max_running_time);
     let mut result = search.run_job(kind, start_time);
     result.outcome = match result.outcome {
         Ok(JobOutput::Section(track)) => Ok(JobOutput::Detached(track.detach(&search.elements))),

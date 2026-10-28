@@ -96,6 +96,16 @@ parity/route.sh                         # routes and number formats, Java agains
 parity/route.sh routes                  # (or: formats) one part only
 ```
 
+The local rules (`src/local_rules.rs`) are a second layer. With `RICHIROUTE_RULES` set to the prepared rule
+file (`../experiments/routing/.local/local-routing-rules/rules.tsv`), both engines apply them and the Java
+reference is the planner's server classpath: `brouter-local-rules.jar` (`npm run routing:build`) ahead of the
+bundle's jar. `route.sh` then also routes at and across each rule, opted out, and with a stale revision:
+
+```sh
+RICHIROUTE_RULES=$PWD/../experiments/routing/.local/local-routing-rules/rules.tsv parity/route.sh routes
+RICHIROUTE_RULES=… node parity/loops.mjs java --as java-live   # likewise rust --as rust-live, then compare
+```
+
 Use the Node at `../.cache/runtime/node/bin/node`. `richi-engine lines <segmentDir> <profileDir> <threads>
 [cellCacheMB]` speaks the line protocol of `parity/java/router/RouteReference.java` (BRouter's server without
 the socket): `id<TAB>query` lines in, one JSON line `{"id","ms","error"|"geojson"}` out per request, in

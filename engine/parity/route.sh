@@ -1,7 +1,9 @@
 #!/bin/sh
 # Router parity: answers a query set with the Java reference (RouteReference on BRouter 1.7.10) and with
 # richi-engine, and compares every answer byte for byte; also compares the number formats of the output
-# (FormatParity.java against router/examples/format_parity.rs).
+# (FormatParity.java against router/examples/format_parity.rs). With RICHIROUTE_RULES (the prepared rule
+# file) both apply the local rules, and the reference is the planner's server: RICHIROUTE_RULES_JAR (the
+# local-rules jar) ahead of the bundle's jar.
 #   parity/route.sh            both checks
 #   parity/route.sh routes     the routes only
 #   parity/route.sh formats    the number formats only
@@ -13,6 +15,8 @@ jar="${RICHIROUTE_BROUTER_JAR:-$app/../richiroute-ubuntu-benchmark/brouter.jar}"
 segments="${RICHIROUTE_SEGMENTS:-$app/../richiroute-ubuntu-benchmark/data}"
 profiles="${RICHIROUTE_PROFILES:-$app/experiments/routing/.local/local-routing-rules/profiles}"
 rules="${RICHIROUTE_ROUTING_RULES:-$app/src/config/routing-rules.generated.json}"
+rules_source="${RICHIROUTE_ROUTING_RULES_SOURCE:-$app/config/routing-rules.json}"
+[ -f "$rules_source" ] || rules_source=""
 search="${RICHIROUTE_ROUTING_SEARCH:-$app/src/config/routing-search.json}"
 node="${RICHIROUTE_NODE:-$app/.cache/runtime/node/bin/node}"
 threads="${RICHIROUTE_PARITY_THREADS:-6}"
@@ -27,6 +31,8 @@ mkdir -p "$out"
 [ -d "$classes/pristine" ] && [ "$classes/router/RouteReference.class" -nt "$engine/parity/java/router/RouteReference.java" ] ||
   "$engine/parity/build-reference.sh"
 classpath="$classes/pristine:$jar:$classes/router"
+[ -n "${RICHIROUTE_RULES:-}" ] &&
+  classpath="${RICHIROUTE_RULES_JAR:-$app/experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar}:$jar:$classes/router"
 cd "$engine"
 export PATH="$app/.cache/runtime/rust/bin:$PATH" CARGO_HOME="${CARGO_HOME:-$app/.cache/cargo}"
 release="${CARGO_TARGET_DIR:-$engine/target}/release"
@@ -52,8 +58,8 @@ case " $modes " in *" routes "*)
     echo "route parity skipped: segments, profiles or routing rules missing"
   else
     cargo build --quiet --release -p richi-engine
-    "$node" parity/route.mjs queries "$rules" "$search" > "$out/queries.txt"
-    "$java_home/bin/java" -Xmx2g -cp "$classpath" RouteReference "$segments" "$profiles" "$threads" < "$out/queries.txt" > "$out/java.jsonl"
+    "$node" parity/route.mjs queries "$rules" "$search" "$rules_source" > "$out/queries.txt"
+    "$java_home/bin/java" -Xmx2g ${RICHIROUTE_RULES:+"-Drichiroute.rules=$RICHIROUTE_RULES"} -cp "$classpath" RouteReference "$segments" "$profiles" "$threads" < "$out/queries.txt" > "$out/java.jsonl"
     "$release/richi-engine" lines "$segments" "$profiles" "$threads" < "$out/queries.txt" > "$out/rust.jsonl"
     "$node" parity/route.mjs compare "$out/queries.txt" "$out/java.jsonl" "$out/rust.jsonl" || status=1
   fi

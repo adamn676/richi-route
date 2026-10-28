@@ -7,7 +7,7 @@
 //! the link-holder handle stored in the graph.
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext};
-use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, TurnRestriction};
+use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos, TurnRestriction};
 use brouter_util::cheap_ruler;
 
 use crate::java::{max_f32, min_f32, min_f64};
@@ -277,8 +277,17 @@ impl OsmPath {
         let Profile { way, node } = &mut *env.profile;
         way.evaluate(rc.inverse_direction ^ is_reverse, description)?;
 
-        // calculate the costfactor inputs
-        let costfactor = way.costfactor();
+        // calculate the costfactor inputs (`wayCostfactor`: a local passage may open a closed link)
+        let costfactor = match &rc.local_rules {
+            Some(rules) if way.costfactor() == 9999.0 && map.link(link).geometry.is_none() => {
+                let (from, to) =
+                    if rc.inverse_direction { (target_node, source_node) } else { (source_node, target_node) };
+                rules.passage_costfactor(Pos::new(from.ilon, from.ilat), Pos::new(to.ilon, to.ilat), || {
+                    way.key_value_description(rc.inverse_direction ^ is_reverse, description)
+                })
+            }
+            _ => way.costfactor(),
+        };
         let is_traffic_backbone = self.cost == 0 && way.is_traffic_backbone() > 0.0;
         let lastpriorityclassifier = self.priorityclassifier;
         self.priorityclassifier = way.priority_classifier() as i32;
@@ -328,7 +337,8 @@ impl OsmPath {
             None => &[],
         };
 
-        let costs = WayCosts::of(way);
+        let costs = WayCosts::of(way, costfactor);
+        rc.nogos.nogo_cost = 0.0;
         let mut nsection = 0;
         loop {
             self.origin_lon = lon1;
@@ -347,10 +357,25 @@ impl OsmPath {
             if nsection == 0 && rc.consider_turn_restrictions && !detail_mode && !is_startpoint {
                 let restrictions = map.restrictions(source);
                 let bike_or_foot = rc.bike_mode || rc.foot_mode;
-                let forbidden = if rc.inverse_direction {
-                    TurnRestriction::is_turn_forbidden(restrictions, lon2, lat2, lon0, lat0, bike_or_foot, rc.car_mode)
+                let (from, to) = if rc.inverse_direction {
+                    (Pos::new(lon2, lat2), Pos::new(lon0, lat0))
                 } else {
-                    TurnRestriction::is_turn_forbidden(restrictions, lon0, lat0, lon2, lat2, bike_or_foot, rc.car_mode)
+                    (Pos::new(lon0, lat0), Pos::new(lon2, lat2))
+                };
+                let forbidden = match &rc.local_rules {
+                    Some(rules) => {
+                        let via = Pos::new(source_node.ilon, source_node.ilat);
+                        rules.is_turn_forbidden(via, restrictions, from, to, bike_or_foot, rc.car_mode)
+                    }
+                    None => TurnRestriction::is_turn_forbidden(
+                        restrictions,
+                        from.ilon,
+                        from.ilat,
+                        to.ilon,
+                        to.ilat,
+                        bike_or_foot,
+                        rc.car_mode,
+                    ),
                 };
                 if forbidden {
                     self.cost = -1;
@@ -477,7 +502,7 @@ impl OsmPath {
                     e.message.clone_from(&self.message);
                     self.origin_element = Some(env.elements.push(e));
                 }
-                // the nogo cost (nogos are not supported) would be added here
+                self.cost = (f64::from(self.cost) + rc.nogos.nogo_cost) as i32;
                 return Ok(());
             }
 
@@ -505,6 +530,9 @@ impl OsmPath {
             ele1 = ele2;
             nsection += 1;
         }
+
+        // nogo matches (after the *actual* start of segment): only avoidance circles, which never block
+        self.cost = (f64::from(self.cost) + rc.nogos.nogo_cost) as i32;
 
         // add target-node costs
         let target_cost = self.process_target_node(way, node, target_node.node_description.as_deref())?;
@@ -777,8 +805,8 @@ struct WayCosts {
 }
 
 impl WayCosts {
-    fn of(way: &WayContext) -> Self {
-        let cf = way.costfactor();
+    /// `cf` is `wayCostfactor`, the profile's cost factor or a local passage's.
+    fn of(way: &WayContext, cf: f32) -> Self {
         let cfup = way.uphill_costfactor();
         let cfdown = way.downhill_costfactor();
         // a cost's divisor, or `otherwise` for a cost of 0 or less

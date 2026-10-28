@@ -9,10 +9,11 @@ historical baseline used by the preserved benchmark bundle.
 ## Configurable local rules
 
 For the first build, run `npm run bench:brouter:performance`, followed by
-`npm run routing:build`. The native launcher prepares the rules and profile
-before starting the engine. It checks the compiled integration against its
-source manifest, then loads `brouter-local-rules.jar` ahead of the preserved
-base JAR. The new JAR includes the measured cache and distance optimizations.
+`npm run routing:build`. The JAR loads ahead of the preserved base JAR and
+includes the measured cache and distance optimizations. The native launcher
+no longer runs it: it starts the Rust port in `engine/`, which applies the same
+rules (`engine/router/src/local_rules.rs`) and is checked against this JAR
+answer for answer (`RICHIROUTE_RULES=… engine/parity/route.sh`).
 Run it with `npm run dev:local`; the tracked launcher is `scripts/start-local.sh`.
 The [setup guide](../../../docs/local-development.md#native-linux-setup) lists the
 separate reviewed bundle required by this native build.

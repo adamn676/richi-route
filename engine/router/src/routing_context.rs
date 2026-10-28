@@ -6,11 +6,14 @@
 //! onto its way section (`setWaypoint`), which is what `Nogos` models. The way and node contexts live
 //! in the engine's `Profile`, and the `GeometryDecoder` beside it, so that they can be borrowed apart.
 
+use std::sync::Arc;
+
 use brouter_expressions::WayContext;
 use brouter_mapaccess::Pos;
 use brouter_util::{CheapAngleMeter, cheap_ruler, jmath};
 
 use crate::java::{JavaException, string_hash};
+use crate::local_rules::{ActiveAreas, LocalRules};
 use crate::param_collector::UrlParams;
 
 #[derive(Clone, Default)]
@@ -22,6 +25,9 @@ pub struct RoutingContext {
     pub key_values: UrlParams,
 
     pub memoryclass: i32,
+
+    /// `localRulesEnabled`: the local rules, while the request uses them.
+    pub local_rules: Option<Arc<LocalRules>>,
 
     pub car_mode: bool,
     pub bike_mode: bool,
@@ -126,7 +132,11 @@ impl RoutingContext {
     }
 
     /// `readGlobalConfig`: re-run on every request, also when the profile comes from the cache.
-    pub fn read_global_config(&mut self, way: &mut WayContext) -> Result<(), JavaException> {
+    pub fn read_global_config(
+        &mut self,
+        way: &mut WayContext,
+        local_rules: Option<&Arc<LocalRules>>,
+    ) -> Result<(), JavaException> {
         self.set_model(way.model_class())?;
 
         let var = |name: &str, default: f32| way.variable_value(name, default);
@@ -135,6 +145,16 @@ impl RoutingContext {
         self.car_mode = flag("validForCars", 0.0);
         self.bike_mode = flag("validForBikes", 0.0);
         self.foot_mode = flag("validForFoot", 0.0);
+        // LocalRoutingRules.configure: bicycle profiles that opt in
+        self.local_rules = local_rules
+            .filter(|_| {
+                self.bike_mode && !self.car_mode && !self.foot_mode && var("richiroute_local_rules", 0.0) == 1.0
+            })
+            .cloned();
+        if let Some(rules) = &self.local_rules {
+            rules.check_revision(&self.key_values)?;
+        }
+        self.nogos.local_areas = self.local_rules.clone().filter(|r| r.has_areas()).map(ActiveAreas::new);
 
         self.consider_crossing = flag("consider_crossing", 0.0);
         self.crossing_prio_h = var("crossing_Prio_H", 0.0) as i32;
@@ -215,6 +235,11 @@ pub struct Nogos {
     pub wayfraction: f64,
     pub ilatshortest: i32,
     pub ilonshortest: i32,
+
+    /// `nogoCost`: the cost of the avoidance circle the link's last section passed through (local
+    /// rules; request nogos are not supported).
+    pub nogo_cost: f64,
+    pub local_areas: Option<ActiveAreas>,
 }
 
 /// The radius both callers give a waypoint before matching: "1.5 meters is the upper limit that will
@@ -332,6 +357,7 @@ impl Nogos {
                         lon2 = self.ilonshortest;
                         lat2 = self.ilatshortest;
                     } else {
+                        self.nogo_cost = 0.0;
                         lon1 = self.ilonshortest;
                         lat1 = self.ilatshortest;
                     }
@@ -340,6 +366,13 @@ impl Nogos {
                     d = (dy * dy + dx * dx).sqrt();
                 }
             }
+        }
+        if let Some(areas) = &self.local_areas
+            && d > 0.0
+            && self.nogo_cost >= 0.0
+            && let Some(cost) = areas.cost(lon1, lat1, lon2, lat2, d, dlon2m, dlat2m)
+        {
+            self.nogo_cost = cost;
         }
         f64::max(1.0, jmath::round(d) as f64) as i32
     }

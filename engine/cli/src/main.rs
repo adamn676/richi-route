@@ -7,16 +7,31 @@
 //! searches of one request side by side; the program exits when stdin is closed and every request is
 //! answered. The threads share the decoded map cells, up to `<cellCacheMB>` megabytes (default
 //! `SegmentStore::DEFAULT_CELL_CACHE_BYTES`, 0 to decode every cell for every search as BRouter does).
-//! Like the Java reference's `-Xmx`, the heap has a ceiling (`HEAP_CEILING`): a search that runs away
-//! ends the program, not the machine.
+//!
+//! `richi-engine serve <segmentDir> <profileDir> <port> [threads] [bindAddress]`: the planner's routing
+//! server, as `LocalRulesServer` (BRouter's `RouteServer` with the local rules) answers: one request
+//! per connection, `GET /brouter?<query>`. 200 with the GeoJSON, 400 with the routing error or the
+//! rules version mismatch, 500 for any other exception, 404 without `lonlats` and `profile`. Unlike
+//! Java it queues requests beyond `<threads>` instead of stopping the oldest, never compresses, and
+//! answers GeoJSON whatever `format` asks for (`trackname` names only the file).
+//! It listens on 127.0.0.1 unless `<bindAddress>` says otherwise.
+//!
+//! The local rules come from the prepared rule file named by `RICHIROUTE_RULES` (Java:
+//! `-Drichiroute.rules`); `serve` needs them, `lines` without them routes as BRouter does. Like the
+//! Java reference's `-Xmx`, the heap has a ceiling (`HEAP_CEILING`): a search that runs away ends the
+//! program, not the machine.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::io::{BufRead, Write};
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
-use brouter_router::{Answer, Outcome, RouterPool, SegmentStore, panic_message};
+use brouter_router::{
+    Answer, LocalRules, Outcome, RouterPool, SegmentStore, UrlParams, VERSION_MISMATCH, get_url_params, panic_message,
+};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 const MAX_RUNNING_TIME_MS: i64 = 60_000;
@@ -80,23 +95,42 @@ unsafe impl GlobalAlloc for Ceiling {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 4 || args[1] != "lines" {
-        eprintln!("usage: richi-engine lines <segmentDir> <profileDir> [threads] [cellCacheMB]");
-        std::process::exit(2);
-    }
+    let serving = match args.get(1).map(String::as_str) {
+        Some("lines") if args.len() >= 4 => false,
+        Some("serve") if args.len() >= 5 => true,
+        _ => fail(
+            "usage: richi-engine lines <segmentDir> <profileDir> [threads] [cellCacheMB]\n       \
+             richi-engine serve <segmentDir> <profileDir> <port> [threads] [bindAddress]",
+        ),
+    };
     let profile_dir = PathBuf::from(&args[3]);
     let number = |i: usize, default: usize, min: usize, name: &str| match args.get(i).map(|a| a.parse::<usize>()) {
         None => default,
         Some(Ok(n)) if n >= min => n,
-        Some(_) => {
-            eprintln!("{name} must be a number of at least {min}");
-            std::process::exit(2);
-        }
+        Some(_) => fail(&format!("{name} must be a number of at least {min}")),
     };
+    let local_rules = std::env::var_os("RICHIROUTE_RULES")
+        .map(|file| Arc::new(LocalRules::load(Path::new(&file)).unwrap_or_else(|e| fail(&e))));
+
+    if serving {
+        let Some(rules) = local_rules else { fail("serve: set RICHIROUTE_RULES to the prepared rule file") };
+        println!("Local routing rules: {}", rules.revision());
+        let port = args[4].parse::<u16>().unwrap_or_else(|_| fail("port must be a number from 0 to 65535"));
+        let address = args.get(6).map_or("127.0.0.1", String::as_str);
+        let listener = TcpListener::bind((address, port)).unwrap_or_else(|e| fail(&format!("{address}:{port}: {e}")));
+        let segments = Arc::new(SegmentStore::new(&args[2], SegmentStore::DEFAULT_CELL_CACHE_BYTES));
+        let pool = Arc::new(RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules)));
+        for stream in listener.incoming().flatten() {
+            let pool = pool.clone();
+            std::thread::spawn(move || respond(stream, &pool));
+        }
+        unreachable!("the listener accepts connections forever");
+    }
+
     let threads = number(4, 1, 1, "threads");
     let cell_cache_bytes = number(5, SegmentStore::DEFAULT_CELL_CACHE_BYTES >> 20, 0, "cellCacheMB") << 20;
     let segments = Arc::new(SegmentStore::new(&args[2], cell_cache_bytes));
-    let pool = RouterPool::new(segments, profile_dir, threads);
+    let pool = RouterPool::new(segments, profile_dir, threads, local_rules);
 
     // like Java's UTF-8 reader, malformed bytes become U+FFFD instead of ending the input
     for line in std::io::stdin().lock().split(b'\n') {
@@ -120,6 +154,83 @@ fn main() {
         });
     }
     pool.finish();
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(2);
+}
+
+/// `RouteServer.run` for one connection.
+fn respond(stream: TcpStream, pool: &RouterPool) {
+    // the request line, then the headers up to the first empty line; a client that stops sending ends
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let mut lines = BufReader::new(&stream).lines();
+    let request = lines.next().and_then(Result::ok);
+    if !lines.by_ref().map_while(Result::ok).any(|line| line.is_empty()) {
+        return send(stream, "400 Bad Request", "");
+    }
+    let target = request.as_deref().and_then(|r| r.split(' ').nth(1)).unwrap_or_default();
+    let query = target.split_once('?').map_or("", |(_, query)| query).to_string();
+    let file_name = match get_url_params(&format!("/brouter?{query}")) {
+        Ok(params) if params.contains_key("lonlats") && params.contains_key("profile") => file_name(&params),
+        Ok(_) => return send(stream, "404 Not Found", ""),
+        Err(exception) => {
+            eprintln!("RouteServer got exception (will continue): {exception}");
+            return send(stream, "500 Internal Server Error", "");
+        }
+    };
+    let (sender, receiver) = mpsc::channel();
+    pool.submit(query, MAX_RUNNING_TIME_MS, move |outcome, _| sender.send(outcome).unwrap_or_default());
+    let outcome: Outcome = receiver.recv().expect("the pool answers every request");
+    match outcome {
+        Ok(Ok(Answer::GeoJson(geojson))) => {
+            let disposition = file_name.map(|name| format!("Content-Disposition: attachment; filename=\"{name}\"\r\n"));
+            send_body(
+                stream,
+                "200 OK",
+                "application/vnd.geo+json",
+                disposition.as_deref().unwrap_or_default(),
+                &geojson,
+            );
+        }
+        Ok(Ok(Answer::Error(message))) => send(stream, "400 Bad Request", &format!("{message}\n")),
+        Ok(Err(exception)) if exception.class == VERSION_MISMATCH => {
+            send(stream, "400 Bad Request", &format!("{}\n", exception.message.unwrap_or_default()));
+        }
+        failure => {
+            let reason = match failure {
+                Ok(Err(exception)) => exception.to_string(),
+                Err(panic) => panic_message(&*panic),
+                Ok(Ok(_)) => unreachable!("answers are sent above"),
+            };
+            eprintln!("RouteServer got exception (will continue): {reason}");
+            send(stream, "500 Internal Server Error", "");
+        }
+    }
+}
+
+/// `ServerHandler.getFileName`: `<trackname or "brouter">.<format>` (the body is GeoJSON whatever
+/// `format` asks for).
+fn file_name(params: &UrlParams) -> Option<String> {
+    let track =
+        |name: &str| name.chars().filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c)).collect::<String>();
+    let format = params.get("format")?;
+    Some(format!("{}.{format}", params.get("trackname").map_or_else(|| "brouter".into(), track)))
+}
+
+fn send(stream: TcpStream, status: &str, text: &str) {
+    send_body(stream, status, "text/plain", "", text);
+}
+
+/// `writeHttpHeader` with the extra `headers`, then the body; the connection closes with the stream.
+fn send_body(mut stream: TcpStream, status: &str, mime_type: &str, headers: &str, body: &str) {
+    let head = format!(
+        "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: {mime_type}; charset=utf-8\r\n{headers}\
+         Access-Control-Allow-Origin: *\r\n\r\n"
+    );
+    // a client that went away needs no answer
+    let _ = stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(body.as_bytes()));
 }
 
 /// `RouteReference.answer`: the JSON members after `"id"`. The engine turns the data layer's internal
