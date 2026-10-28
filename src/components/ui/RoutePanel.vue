@@ -47,8 +47,8 @@
         </li>
       </ol>
       <v-btn variant="text" class="planner__add" :prepend-icon="IconPlus" :disabled="!hasEndpoints" @click="addStop">Zwischenstopp hinzufügen</v-btn>
-      <!-- Until the route has been changed on the map, it says how; offered loops take the map's clicks instead. -->
-      <p v-if="routeStore.route && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
+      <!-- Until the rider has changed a route on the map once, it says how; offered loops take the map's clicks instead. -->
+      <p v-if="routeStore.route && !shaped && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
         {{ touch ? 'Tipp: Route auf der Karte gedrückt halten und ziehen, um sie zu formen; Antippen setzt einen Zwischenstopp.'
           : 'Tipp: Route auf der Karte ziehen, um sie zu formen; ein Klick darauf setzt einen Zwischenstopp.' }}</p>
     </section>
@@ -94,6 +94,13 @@ const routingNotices = computed(() => localRoutingNotices(Object.values(routeSto
 const airHint = computed(() => routeStore.hasAirLines && !routeStore.routingPending);
 const exportReason = computed(() => gpxUnavailableReason(routeStore));
 const touch = matchMedia('(hover: none)').matches;
+const shapedKey = 'richiroute.route-shaped';
+const shaped = ref((() => { try { return localStorage.getItem(shapedKey) === '1'; } catch { return false; } })());
+routeStore.$onAction(({ name }) => {
+  if (shaped.value || (name !== 'insertShapingPoint' && name !== 'insertWaypointOnRoute')) return;
+  shaped.value = true;
+  try { localStorage.setItem(shapedKey, '1'); } catch { /* Storage may be disabled. */ }
+});
 
 function downloadGpx() {
   const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));

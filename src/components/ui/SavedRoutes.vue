@@ -1,7 +1,7 @@
 <template>
   <section class="library">
     <form class="library__save" @submit.prevent="save()">
-      <v-text-field v-model="name" label="Routenname" placeholder="z. B. Feierabendrunde" maxlength="120" required />
+      <v-text-field v-model="name" label="Routenname" placeholder="z. B. Feierabendrunde" persistent-placeholder maxlength="120" required />
       <v-btn type="submit" variant="flat" :prepend-icon="IconDeviceFloppy" :disabled="busy || !hasDraft || !name.trim()"
         :aria-label="active ? 'Änderungen speichern' : 'Route speichern'">Speichern</v-btn>
       <v-icon-button v-if="active" v-tooltip:bottom="'Als Kopie speichern'" size="default" :disabled="busy || !hasDraft || !name.trim()"
