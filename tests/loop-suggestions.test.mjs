@@ -17,7 +17,7 @@ function circle(radius, direction, { steps = 200, ascent } = {}) {
   let distance = 0;
   for (let i = 1; i < coordinates.length; i++) distance += distanceMeters(coordinates[i - 1], coordinates[i]);
   const climb = ascent ?? Math.round(radius / 10 * (1 + Math.cos(direction * rad)));
-  return { coordinates, distanceMeters: distance, ascentMeters: climb, surfaces: [{ fromIndex: 0, toIndex: steps, surface: 'asphalt', surfaceTag: 'asphalt' }],
+  return { coordinates, distanceMeters: distance, ascentMeters: climb, surfaces: [{ fromIndex: 0, toIndex: steps, surface: 'paved', surfaceTag: 'asphalt' }],
     elevations: coordinates.map((_, i) => 300 + climb / 2 * (1 - Math.cos(i / steps * 2 * Math.PI))) };
 }
 const candidate = (direction, leg) => ({ direction, radius: 1000, leg });
@@ -106,8 +106,8 @@ test('dead ends leave a loop, with or without a turning circle; the road home st
     at(10, 4), at(13, 4), at(14, 5), at(13, 6), at(13, 4), at(10, 4), at(10, 0), at(10, -2), at(5, -2), at(0, -2), at(0, 0)];
   const elevations = path.map((_, i) => 300 + i);
   // Steps 4 to 7 ride into dead end A and back out on gravel.
-  const surfaces = [{ fromIndex: 0, toIndex: 4, surface: 'asphalt', surfaceTag: 'asphalt' }, { fromIndex: 4, toIndex: 8, surface: 'unpaved', surfaceTag: 'gravel' },
-    { fromIndex: 8, toIndex: 20, surface: 'asphalt', surfaceTag: 'asphalt' }];
+  const surfaces = [{ fromIndex: 0, toIndex: 4, surface: 'paved', surfaceTag: 'asphalt' }, { fromIndex: 4, toIndex: 8, surface: 'unpaved', surfaceTag: 'gravel' },
+    { fromIndex: 8, toIndex: 20, surface: 'paved', surfaceTag: 'asphalt' }];
   const leg = { coordinates: path, elevations, surfaces, distanceMeters: 5000, ascentMeters: 20 };
   const clean = withoutSpurs(leg);
   assert.deepEqual(clean.coordinates, [at(0, 0), at(0, 5), at(0, 10), at(3, 10), at(6, 10), at(10, 10), at(10, 4), at(10, 0), at(10, -2), at(5, -2), at(0, -2), at(0, 0)]);

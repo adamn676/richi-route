@@ -61,9 +61,8 @@ export function useSegmentedRoute() {
           'line-color': [
             'match',
             ['get', 'surface'],
-            'asphalt', routeStyle.asphalt,
-            'likelyAsphalt', routeStyle.likelyAsphalt,
             'paved', routeStyle.paved,
+            'likelyPaved', routeStyle.likelyPaved,
             'rough', routeStyle.rough,
             'unpaved', routeStyle.unpaved,
             routeStyle.unknown,

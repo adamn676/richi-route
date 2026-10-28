@@ -2,8 +2,8 @@ import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 
 export type Coord = [number, number];
 type StopKind = 'start' | 'via' | 'end';
-// Likely asphalt: a classified road without a surface tag.
-export type Surface = 'asphalt' | 'likelyAsphalt' | 'paved' | 'rough' | 'unpaved' | 'unknown';
+// What matters on a road bike: paved or not. Likely paved: an untagged way of a type that is almost always paved.
+export type Surface = 'paved' | 'likelyPaved' | 'rough' | 'unpaved' | 'unknown';
 export const routingConcurrency = 6;
 
 export interface Waypoint {

@@ -1,4 +1,11 @@
-import { distanceMeters, isPlaced, reconcileLegs, sameEndpoints, type Coord, type RouteLeg, type RoutePoint, type SurfaceSpan } from './route-model.ts';
+import { distanceMeters, isPlaced, reconcileLegs, sameEndpoints, type Coord, type RouteLeg, type RoutePoint, type Surface, type SurfaceSpan } from './route-model.ts';
+import { surfaceType } from './route-response.ts';
+
+// Surface groups as drafts store them, including those before the road-bike grouping (asphalt and concrete apart).
+const savedSurfaces: Record<string, Surface> = {
+  paved: 'paved', likelyPaved: 'likelyPaved', rough: 'rough', unpaved: 'unpaved', unknown: 'unknown',
+  asphalt: 'paved', likelyAsphalt: 'likelyPaved',
+};
 
 export interface RouteDraft {
   version: 1;
@@ -58,15 +65,16 @@ function leg(value: unknown): RouteLeg {
   const surfaces: SurfaceSpan[] = l.surfaces.map(value => {
     const s = object(value);
     const fromIndex = number(s.fromIndex), toIndex = number(s.toIndex);
+    const group = Object.hasOwn(savedSurfaces, text(s.surface)) ? savedSurfaces[text(s.surface)] : undefined;
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < previousEnd ||
-        toIndex <= fromIndex || toIndex >= coordinates.length ||
-        !['asphalt', 'likelyAsphalt', 'paved', 'rough', 'unpaved', 'unknown'].includes(text(s.surface))) throw new Error('Invalid draft surface');
+        toIndex <= fromIndex || toIndex >= coordinates.length || !group) throw new Error('Invalid draft surface');
     previousEnd = toIndex;
     if (s.surfaceTag !== undefined && (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200)) {
       throw new Error('Invalid draft surface tag');
     }
-    return { fromIndex, toIndex, surface: s.surface as SurfaceSpan['surface'],
-      ...(s.surfaceTag !== undefined ? { surfaceTag: s.surfaceTag as string } : {}) };
+    // A recorded material is grouped as today; without one, an older draft's group is translated
+    return s.surfaceTag !== undefined ? { fromIndex, toIndex, surface: surfaceType(s.surfaceTag as string), surfaceTag: s.surfaceTag as string }
+      : { fromIndex, toIndex, surface: group };
   });
   const result: RouteLeg = {
     id: text(l.id), fromId: text(l.fromId), toId: text(l.toId),

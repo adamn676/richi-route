@@ -222,13 +222,13 @@ test('surface display splits within a leg but keeps point IDs instead of geometr
       toId: 'end',
       status: 'routed',
       surfaces: [
-        { fromIndex: 0, toIndex: 2, surface: 'asphalt' },
+        { fromIndex: 0, toIndex: 2, surface: 'paved' },
         { fromIndex: 2, toIndex: 4, surface: 'unpaved' },
       ],
     },
   });
 
-  assert.deepEqual(segments.map((segment) => segment.properties.surface), ['asphalt', 'unpaved']);
+  assert.deepEqual(segments.map((segment) => segment.properties.surface), ['paved', 'unpaved']);
   assert.equal(segments[1].properties.fromId, 'start');
   assert.equal(segments[1].properties.toId, 'end');
   assert.deepEqual(segments[0].geometry.coordinates.at(-1), segments[1].geometry.coordinates[0]);

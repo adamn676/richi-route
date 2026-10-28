@@ -10,11 +10,11 @@ test('BRouter message endpoints delimit surfaces; missing tags and unmatched tai
   const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47]], [
     ['Longitude', 'Latitude', 'WayTags'],
     ['15001000', '47000000', 'highway=cycleway surface=asphalt'],
-    ['15002000', '47000000', 'highway=cycleway'],
+    ['15002000', '47000000', 'highway=path'],
     ['16000000', '47000000', 'surface=asphalt'],
   ]));
   assert.deepEqual(leg.surfaces, [
-    { fromIndex: 0, toIndex: 1, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 0, toIndex: 1, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: 1, toIndex: 2, surface: 'unknown' },
   ]);
   const segments = getSegments({ geometry: { coordinates: leg.coordinates }, properties: { status: 'routed', surfaces: leg.surfaces } });
@@ -29,9 +29,11 @@ test('zero-length snapped route is drawable, while malformed geometry is rejecte
   assert.throws(() => parseBRouterLeg(raw([[190, 47], [15, 47]], [])));
   assert.throws(() => parseBRouterLeg(raw([[15, 47], [15.1, 47]], [], null)));
 });
-test('rough and loose surfaces are not described as smooth paving', () => {
-  for (const tag of ['wood', 'sett', 'cobblestone']) assert.equal(surfaceType(tag), 'rough');
-  for (const tag of ['gravel', 'compacted', 'ground']) assert.equal(surfaceType(tag), 'unpaved');
+test('materials are grouped by what they mean on a road bike', () => {
+  for (const tag of ['asphalt', 'concrete', 'concrete:plates', 'paved', 'paving_stones']) assert.equal(surfaceType(tag), 'paved');
+  for (const tag of ['wood', 'sett', 'cobblestone', 'unhewn_cobblestone']) assert.equal(surfaceType(tag), 'rough');
+  for (const tag of ['gravel', 'fine_gravel', 'pebblestone', 'compacted', 'ground', 'grass_paver']) assert.equal(surfaceType(tag), 'unpaved');
+  assert.equal(surfaceType('metal'), 'unknown');
   assert.equal(surfaceType(undefined), 'unknown');
 });
 
@@ -40,10 +42,10 @@ test('a surface span returning to the same coordinate covers the loop', () => {
     ['Longitude', 'Latitude', 'Distance', 'WayTags'],
     ['15000000', '47000000', '100', 'surface=asphalt'],
   ]));
-  assert.deepEqual(leg.surfaces, [{ fromIndex: 0, toIndex: 2, surface: 'asphalt', surfaceTag: 'asphalt' }]);
+  assert.deepEqual(leg.surfaces, [{ fromIndex: 0, toIndex: 2, surface: 'paved', surfaceTag: 'asphalt' }]);
 });
 
-test('surface details retain different recorded materials within the same colour group', () => {
+test('spans keep their recorded materials within a group', () => {
   const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47]], [
     ['Longitude', 'Latitude', 'WayTags'],
     ['15001000', '47000000', 'surface=paving_stones'],
@@ -52,20 +54,25 @@ test('surface details retain different recorded materials within the same colour
     ['15004000', '47000000', 'highway=residential'],
   ]));
   assert.deepEqual(leg.surfaces.map(s => [s.surface, s.surfaceTag]), [
-    ['rough', 'paving_stones'], ['rough', 'wood'], ['unknown', 'metal'], ['unknown', undefined],
+    ['paved', 'paving_stones'], ['rough', 'wood'], ['unknown', 'metal'], ['likelyPaved', undefined],
   ]);
 });
-test('classified roads without a surface tag count as likely asphalt; minor roads stay unknown', () => {
-  const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47]], [
+test('without a known material, ways count by their type: roads and graded tracks are likely paved or unpaved', () => {
+  const leg = parseBRouterLeg(raw([[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.004, 47], [15.005, 47], [15.006, 47], [15.007, 47]], [
     ['Longitude', 'Latitude', 'WayTags'],
     ['15001000', '47000000', 'highway=secondary'],
-    ['15002000', '47000000', 'highway=tertiary_link'],
-    ['15003000', '47000000', 'highway=unclassified'],
-    ['15004000', '47000000', 'highway=primary surface=gravel'],
+    ['15002000', '47000000', 'highway=residential'],
+    ['15003000', '47000000', 'highway=track tracktype=grade1'],
+    ['15004000', '47000000', 'highway=track tracktype=grade3'],
+    ['15005000', '47000000', 'highway=path'],
+    ['15006000', '47000000', 'highway=primary surface=gravel'],
+    ['15007000', '47000000', 'highway=primary surface=unknown'],
   ]));
   assert.deepEqual(leg.surfaces, [
-    { fromIndex: 0, toIndex: 2, surface: 'likelyAsphalt' },
-    { fromIndex: 2, toIndex: 3, surface: 'unknown' },
-    { fromIndex: 3, toIndex: 4, surface: 'unpaved', surfaceTag: 'gravel' },
+    { fromIndex: 0, toIndex: 3, surface: 'likelyPaved' },
+    { fromIndex: 3, toIndex: 4, surface: 'unpaved' },
+    { fromIndex: 4, toIndex: 5, surface: 'unknown' },
+    { fromIndex: 5, toIndex: 6, surface: 'unpaved', surfaceTag: 'gravel' },
+    { fromIndex: 6, toIndex: 7, surface: 'likelyPaved', surfaceTag: 'unknown' },
   ]);
 });

@@ -24,20 +24,19 @@ async function snapshot(page) {
   });
 }
 
-async function checkFocus(page, tag) {
+async function checkFocus(page, surface) {
   await page.waitForFunction(() => {
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.isSourceLoaded('surface-focus-source') && map.queryRenderedFeatures({ layers: ['surface-focus-line'] }).length;
   });
-  assert.equal(await page.evaluate(async tag => {
+  assert.equal(await page.evaluate(async surface => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     const focus = store.focusedSurface;
-    const span = store.legs[focus.legId].surfaces.find(span => span.fromIndex === focus.fromIndex && span.toIndex === focus.toIndex);
     const data = await map.getSource('surface-focus-source').getData();
-    return span.surfaceTag === tag && focus.coordinates.every(coord => map.getBounds().contains(coord)) &&
+    return focus.surface === surface && focus.coordinates.every(coord => map.getBounds().contains(coord)) &&
       JSON.stringify(data.features[0].geometry.coordinates) === JSON.stringify(focus.coordinates);
-  }, tag), true, 'The map frames and draws exactly the selected material');
+  }, surface), true, 'The map frames and draws exactly the selected section');
 }
 
 try {
@@ -57,14 +56,15 @@ try {
   assert.equal(requests, 3);
   const original = await snapshot(page);
   const details = page.getByRole('region', { name: 'Untergrund' });
-  assert.match(await details.locator('.surfaces__totals').textContent(), /Vermutlich Asphalt25,7 km.*Feiner Schotter364 m.*Unbekannt18,6 km/);
-  await details.getByRole('button', { name: /Feiner Schotter/ }).click();
-  await checkFocus(page, 'fine_gravel');
-  assert.equal(await details.locator('.surfaces__sections button').count(), 1);
+  assert.match(await details.locator('.surfaces__totals').textContent(),
+    /^Befestigt293,6 km.*Vermutlich befestigt44,1 km.*Kopfsteinpflaster\/Holzbrücke92 m.*Unbefestigt382 m.*Unbekannt232 m/);
+  await details.getByRole('button', { name: /Unbefestigt/ }).click();
+  await checkFocus(page, 'unpaved');
+  assert.equal(await details.locator('.surfaces__sections button').count(), 4);
   assert.match(await details.locator('.surfaces__sections').textContent(), /364 m/);
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.screenshot({ path: new URL('desktop.png', directory).pathname });
-  await details.getByRole('button', { name: /Unbekannt/ }).click();
+  await details.getByRole('button', { name: /Vermutlich befestigt/ }).click();
   assert.equal(await details.locator('.surfaces__sections button').count(), 10);
   await details.getByRole('button', { name: 'Weitere Abschnitte', exact: true }).click();
   assert.equal(await details.locator('.surfaces__sections button').count(), 20);
@@ -77,8 +77,8 @@ try {
   assert.equal(requests, 3, 'Inspecting surfaces sends no routing requests');
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await details.getByRole('button', { name: /Feiner Schotter/ }).click();
-  await checkFocus(page, 'fine_gravel');
+  await details.getByRole('button', { name: /Unbefestigt/ }).click();
+  await checkFocus(page, 'unpaved');
   await details.locator('.surfaces__sections').scrollIntoViewIfNeeded();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: new URL('mobile.png', directory).pathname });
@@ -98,7 +98,7 @@ try {
   await ready(page);
   assert.deepEqual((await snapshot(page)).legs, original.legs, 'Reload keeps exact material spans and geometry');
   assert.equal(requests, 3, 'Reload does not reroute');
-  assert.equal(await page.getByRole('button', { name: /Feiner Schotter/ }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: /Unbefestigt/ }).count(), 1);
   assert.deepEqual(errors, []);
 
   const legacy = JSON.parse(original.draft);
@@ -112,10 +112,8 @@ try {
   await legacyPage.goto('http://127.0.0.1:5173/');
   await ready(legacyPage);
   await legacyPage.getByRole('region', { name: 'Untergrund' }).waitFor();
-  assert.equal(await legacyPage.getByText(/Ältere Abschnitte kennen nur Belagsgruppen/).count(), 1);
-  assert.equal(await legacyPage.getByRole('button', { name: /Feiner Schotter/ }).count(), 0);
   assert.equal(await legacyPage.getByRole('button', { name: /Unbefestigt/ }).count(), 1);
-  assert.equal(legacyRequests, 0, 'Legacy drafts load without rerouting or inventing exact materials');
+  assert.equal(legacyRequests, 0, 'Drafts without recorded materials load without rerouting');
   assert.deepEqual(errors, []);
   await writeFile(new URL('result.json', directory), JSON.stringify({ route: 'Graz-Virgen', requests, legacyRequests,
     desktop: '1440x1000', mobile: '390x844', errors, checks: ['exact material highlight', 'unknown sections', 'pagination',

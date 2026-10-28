@@ -27,21 +27,22 @@ test('surface totals cover the entire out-and-back geometry including unknown ta
   const expected = leg.coordinates.slice(1).reduce((sum, coord, i) => sum + distanceMeters(leg.coordinates[i], coord), 0);
   assert.ok(Math.abs(result.distanceMeters - expected) < 1e-8);
   assert.ok(Math.abs(result.totals.reduce((sum, t) => sum + t.meters, 0) - expected) < 1e-8);
-  assert.equal(result.totals.find(t => t.key === 'fine_gravel').label, 'Feiner Schotter');
+  assert.equal(result.totals.find(t => t.surface === 'unpaved').label, 'Unbefestigt');
   assert.equal(result.sections.at(-1).toIndex, leg.coordinates.length - 1);
-  assert.equal(result.sections.at(-1).key, 'unknown');
+  assert.equal(result.sections.at(-1).surface, 'unknown');
   assert.equal(result.sections[1].fromMeters, result.sections[0].toMeters);
 });
 
-test('recorded metal is distinct from missing surface information and legacy groups remain readable', () => {
+test('neighbouring stretches of one group form one section, whatever their materials', () => {
   const { points, legs, leg } = route();
   leg.surfaces = [
     { fromIndex: 0, toIndex: 1, surface: 'unknown', surfaceTag: 'metal' },
     { fromIndex: 2, toIndex: 3, surface: 'rough' },
   ];
   const result = inspectSurfaces(points, legs);
-  assert.deepEqual(result.sections.map(s => s.label), ['Metall', 'Unbekannt', 'Pflaster / Holz']);
-  assert.ok(Math.abs(result.totals.find(t => t.key === 'unknown').meters - distanceMeters(leg.coordinates[1], leg.coordinates[2])) < 1e-8);
+  assert.deepEqual(result.sections.map(s => [s.label, s.fromIndex, s.toIndex]), [['Unbekannt', 0, 2], ['Kopfsteinpflaster/Holzbrücke', 2, 3]]);
+  const unknown = distanceMeters(leg.coordinates[0], leg.coordinates[1]) + distanceMeters(leg.coordinates[1], leg.coordinates[2]);
+  assert.ok(Math.abs(result.totals.find(t => t.surface === 'unknown').meters - unknown) < 1e-8);
 });
 
 test('section positions follow point order rather than leg completion order', () => {
@@ -69,6 +70,13 @@ test('incomplete routes have no surface totals and zero-length legs do not inven
 test('drafts preserve precise surface tags and reject overlapping or malformed spans', () => {
   const { points, legs } = route();
   assert.deepEqual(parseDraft(serializeDraft(points, legs)).legs, legs);
+  // older drafts: their groups are translated, recorded materials regrouped
+  const old = JSON.parse(serializeDraft(points, legs));
+  old.legs['stop-a:stop-b'].surfaces = [
+    { fromIndex: 0, toIndex: 1, surface: 'asphalt' }, { fromIndex: 1, toIndex: 2, surface: 'rough', surfaceTag: 'paving_stones' },
+    { fromIndex: 2, toIndex: 3, surface: 'likelyAsphalt' },
+  ];
+  assert.deepEqual(parseDraft(JSON.stringify(old)).legs['stop-a:stop-b'].surfaces.map(s => s.surface), ['paved', 'paved', 'likelyPaved']);
   for (const mutate of [
     spans => spans.push({ fromIndex: 0, toIndex: 2, surface: 'asphalt' }),
     spans => { spans[0].surfaceTag = {}; },
@@ -88,20 +96,21 @@ test('surface inspection makes no routing calls or draft edits and stale selecti
   const store = useRouteStore();
   store.restoreDraft({ version: 1, points, legs });
   const before = serializeDraft(store.points, store.legs);
-  store.inspectSurface(leg.id, 0, 1);
+  store.inspectSurface(leg.id, 0, 1, 'unpaved');
   assert.deepEqual(store.focusedSurface.coordinates, leg.coordinates.slice(0, 2));
+  assert.equal(store.focusedSurface.surface, 'unpaved');
   assert.equal(serializeDraft(store.points, store.legs), before);
   assert.equal(store.canUndo, false);
   assert.equal(routingEngine.routeLeg.mock.callCount(), 0);
   assert.equal(routingEngine.snap.mock.callCount(), 0);
   store._remember();
-  store.inspectSurface(leg.id, 0, 1);
+  store.inspectSurface(leg.id, 0, 1, 'unpaved');
   store.undo();
   assert.equal(store.focusedSurface, null);
-  store.inspectSurface(leg.id, 0, 1);
+  store.inspectSurface(leg.id, 0, 1, 'unpaved');
   store.redo();
   assert.equal(store.focusedSurface, null);
-  store.inspectSurface(leg.id, 0, 1);
+  store.inspectSurface(leg.id, 0, 1, 'unpaved');
   store.legs = { [leg.id]: { ...leg, surfaces: [] } };
   assert.equal(store.focusedSurface, null);
 });

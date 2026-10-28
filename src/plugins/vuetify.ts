@@ -8,7 +8,7 @@ import {
 } from '@/components/icons';
 import { routeStyle } from '@/config/mapStyle';
 
-// Material 3 through Vuetify, in the planner's colours: the green of asphalt on the map, compact controls for the sidebar,
+// Material 3 through Vuetify, in the planner's colours: the green of paved roads on the map, compact controls for the sidebar,
 // and Vuetify's own icons drawn from the Tabler set the planner uses everywhere else. main.css takes its colours from here.
 export const vuetify = createVuetify({
   blueprint: md3,
@@ -23,7 +23,7 @@ export const vuetify = createVuetify({
       planner: {
         dark: false,
         colors: {
-          primary: routeStyle.asphalt, secondary: '#4d6357', background: '#eef1f0', surface: '#fcfcfb', 'surface-variant': '#dde3e1',
+          primary: routeStyle.paved, secondary: '#4d6357', background: '#eef1f0', surface: '#fcfcfb', 'surface-variant': '#dde3e1',
           'on-background': '#17262a', 'on-surface': '#17262a', 'on-surface-variant': '#56676b', error: '#a3261b', warning: '#7a5200',
         },
         // Field labels, hints and placeholders reach a contrast of 4.5:1; hover shows with Material 3's state layer.

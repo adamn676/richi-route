@@ -7,7 +7,7 @@ import { distanceMeters } from '../src/domain/route-model.ts';
 
 const line = (count = 101, lon = 15) => Array.from({ length: count }, (_, i) => [lon + i / 10000, 47]);
 const build = (...segments) => buildGpxTrack('Surfaces', 'test.gpx', segments.map(coordinates => ({ name: '', coordinates, elevations: coordinates.map(() => null) })));
-const candidate = (coordinates, surfaces = [{ fromIndex: 0, toIndex: coordinates.length - 1, surface: 'asphalt', surfaceTag: 'asphalt' }]) => ({ coordinates, surfaces, elevations: null, ascentMeters: null, distanceMeters: 0 });
+const candidate = (coordinates, surfaces = [{ fromIndex: 0, toIndex: coordinates.length - 1, surface: 'paved', surfaceTag: 'asphalt' }]) => ({ coordinates, surfaces, elevations: null, ascentMeters: null, distanceMeters: 0 });
 
 test('surface portions are bounded, preserve segment breaks and skip sparse gaps', () => {
   const coords = line(50000), track = build(coords, [[16, 48]], line(4, 17));
@@ -27,12 +27,12 @@ test('surface attribution preserves original geometry, fills unknown and does no
   const midpoint = [(coordinates[2][0] + coordinates[3][0]) / 2, 47];
   const routed = [...coordinates.slice(0, 3), midpoint, ...coordinates.slice(3)];
   const spans = matchGpxSurfaces(track, portion, candidate(routed, [
-    { fromIndex: 0, toIndex: 3, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 0, toIndex: 3, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: 3, toIndex: 5, surface: 'unpaved', surfaceTag: 'gravel' },
   ]));
   assert.deepEqual(spans.map(s => [s.fromIndex, s.toIndex, s.surfaceTag]), [[0, 2, 'asphalt'], [3, 4, 'gravel']]);
   const inspection = inspectGpxSurfaces(track, [spans]);
-  assert.ok(inspection.totals.some(t => t.key === 'unknown'));
+  assert.ok(inspection.totals.some(t => t.surface === 'unknown'));
   assert.ok(Math.abs(inspection.totals.reduce((n, t) => n + t.meters, 0) - track.distanceMeters) < 1e-6);
   assert.deepEqual(inspection.geojson.features.flatMap((f, i) => f.geometry.coordinates.slice(i ? 1 : 0)), coordinates);
   assert.deepEqual(track.segments[0].coordinates, coordinates);
@@ -49,7 +49,7 @@ test('nearby roads, detours, reversed paths and missing return legs cannot suppl
   const wholeLoop = { segment: 0, from: 0, to: loop.length - 1, points: loop };
   assert.equal(matchGpxSurfaces(outBack, wholeLoop, candidate(coordinates)), null, 'The return leg is missing');
   const complete = matchGpxSurfaces(outBack, wholeLoop, candidate(loop, [
-    { fromIndex: 0, toIndex: 100, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 0, toIndex: 100, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: 100, toIndex: 200, surface: 'unpaved', surfaceTag: 'gravel' },
   ]));
   assert.deepEqual(complete.map(s => [s.fromIndex, s.toIndex, s.surfaceTag]), [[0, 100, 'asphalt'], [100, 200, 'gravel']]);
@@ -109,7 +109,7 @@ test('GPS jitter and a slightly longer trace still match; tags stay with their s
   const track = build(jittery), portion = { segment: 0, from: 0, to: jittery.length - 1, points: jittery };
   const traced = road.map(([x, y], i) => [x, y + Math.sin(i) * .000027]);
   const spans = matchGpxSurfaces(track, portion, candidate(traced, [
-    { fromIndex: 0, toIndex: 50, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 0, toIndex: 50, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: 50, toIndex: 100, surface: 'unpaved', surfaceTag: 'gravel' },
   ]));
   assert.deepEqual(spans.map(s => s.surfaceTag), ['asphalt', 'gravel']);
@@ -129,11 +129,11 @@ test('a portion whose trace takes a detour is split until the halves match', asy
   assert.ok(inspection.estimatedMeters > track.distanceMeters * .99, `${inspection.estimatedMeters} of ${track.distanceMeters}`);
 });
 
-test('likely asphalt carries over to a track and counts as its own group', () => {
+test('likely paved carries over to a track and counts as its own group', () => {
   const coordinates = line(), track = build(coordinates), portion = gpxSurfacePortions(track)[0];
-  const spans = matchGpxSurfaces(track, portion, candidate(coordinates, [{ fromIndex: 0, toIndex: 100, surface: 'likelyAsphalt' }]));
-  assert.deepEqual(spans, [{ fromIndex: 0, toIndex: 100, surface: 'likelyAsphalt' }]);
+  const spans = matchGpxSurfaces(track, portion, candidate(coordinates, [{ fromIndex: 0, toIndex: 100, surface: 'likelyPaved' }]));
+  assert.deepEqual(spans, [{ fromIndex: 0, toIndex: 100, surface: 'likelyPaved' }]);
   const inspection = inspectGpxSurfaces(track, [spans]);
-  assert.deepEqual(inspection.totals.map(t => [t.key, t.label]), [['likelyAsphalt', 'Vermutlich Asphalt']]);
+  assert.deepEqual(inspection.totals.map(t => [t.surface, t.label]), [['likelyPaved', 'Vermutlich befestigt']]);
   assert.ok(Math.abs(inspection.estimatedMeters - track.distanceMeters) < 1e-6);
 });

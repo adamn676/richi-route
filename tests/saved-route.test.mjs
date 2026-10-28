@@ -17,7 +17,7 @@ function fixture(vertices = 3) {
       coordinates: Array.from({ length: vertices }, (_, n) => n === 0 ? from.coord : n === vertices - 1 ? to.coord : [15.45, 47.15]),
       elevations: Array.from({ length: vertices }, (_, n) => 300 + n % 50),
       distanceMeters: 500000, ascentMeters: 500,
-      surfaces: [{ fromIndex: 0, toIndex: vertices - 1, surface: 'asphalt', surfaceTag: 'asphalt' }],
+      surfaces: [{ fromIndex: 0, toIndex: vertices - 1, surface: 'paved', surfaceTag: 'asphalt' }],
       status: 'routed', routingPolicy: 'previous-policy',
     };
   }

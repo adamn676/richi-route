@@ -35,10 +35,10 @@ test('surfaces found for a track segment are cut to each section', () => {
   const track = buildGpxTrack('Runde', 'runde.gpx', [line(200)]);
   const [sections] = gpxSections(track);
   const second = sections[1];
-  const spans = [{ fromIndex: 10, toIndex: second.from + 3, surface: 'asphalt', surfaceTag: 'asphalt' },
+  const spans = [{ fromIndex: 10, toIndex: second.from + 3, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: second.from + 3, toIndex: second.from + 60, surface: 'unpaved', surfaceTag: 'gravel' }];
   assert.deepEqual(sectionSurfaces(second, spans), [
-    { fromIndex: 0, toIndex: 3, surface: 'asphalt', surfaceTag: 'asphalt' },
+    { fromIndex: 0, toIndex: 3, surface: 'paved', surfaceTag: 'asphalt' },
     { fromIndex: 3, toIndex: second.coordinates.length - 1, surface: 'unpaved', surfaceTag: 'gravel' },
   ]);
   assert.deepEqual(sectionSurfaces(sections[3], spans), []);

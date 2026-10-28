@@ -16,6 +16,7 @@ import {
   type RouteLeg,
   type RoutePoint,
   type ShapePoint,
+  type Surface,
   type SurfaceSpan,
   type Waypoint,
 } from '../domain/route-model.ts';
@@ -46,6 +47,7 @@ interface SurfaceFocus {
   leg: RouteLeg;
   fromIndex: number;
   toIndex: number;
+  surface: Surface;
 }
 
 interface HistoryEntry {
@@ -199,7 +201,7 @@ export const useRouteStore = defineStore('route', {
       if (!focus || state.legs[focus.leg.id] !== focus.leg) return null;
       return { legId: focus.leg.id, fromIndex: focus.fromIndex, toIndex: focus.toIndex,
         coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1),
-        surface: focus.leg.surfaces.find(span => span.fromIndex === focus.fromIndex && span.toIndex === focus.toIndex)?.surface ?? 'unknown' };
+        surface: focus.surface };
     },
     distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
     ascentMeters: (state): number | null => {
@@ -239,11 +241,11 @@ export const useRouteStore = defineStore('route', {
   },
 
   actions: {
-    inspectSurface(legId: string, fromIndex: number, toIndex: number) {
+    inspectSurface(legId: string, fromIndex: number, toIndex: number, surface: Surface) {
       const leg = this.legs[legId];
       if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
           fromIndex < 0 || toIndex <= fromIndex || toIndex >= leg.coordinates.length) return;
-      this.surfaceFocus = { leg: markRaw(leg), fromIndex, toIndex };
+      this.surfaceFocus = { leg: markRaw(leg), fromIndex, toIndex, surface };
     },
     restoreDraft(draft: RouteDraft) {
       this.surfaceFocus = null;

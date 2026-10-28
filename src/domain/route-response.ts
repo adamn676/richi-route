@@ -1,15 +1,23 @@
 import { cumulativeAscent, routerClimbThreshold, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
 
+// The material does not matter on a road bike, only whether it is paved; cobblestones are paved but rough.
 export function surfaceType(tag: string | undefined): Surface {
-  if (tag === 'asphalt') return 'asphalt';
-  if (['paved', 'concrete', 'concrete:lanes', 'concrete:plates'].includes(tag ?? '')) return 'paved';
-  if (['cobblestone', 'sett', 'paving_stones', 'wood'].includes(tag ?? '')) return 'rough';
-  if (['unpaved', 'gravel', 'fine_gravel', 'compacted', 'ground', 'dirt', 'earth', 'grass', 'sand', 'mud', 'clay', 'rock', 'pebblestone'].includes(tag ?? '')) return 'unpaved';
+  if (['asphalt', 'paved', 'concrete', 'concrete:lanes', 'concrete:plates', 'paving_stones'].includes(tag ?? '')) return 'paved';
+  if (['cobblestone', 'sett', 'unhewn_cobblestone', 'wood'].includes(tag ?? '')) return 'rough';
+  if (['unpaved', 'gravel', 'fine_gravel', 'compacted', 'ground', 'dirt', 'earth', 'grass', 'grass_paver', 'sand', 'mud', 'clay', 'rock',
+    'pebblestone', 'woodchips'].includes(tag ?? '')) return 'unpaved';
   return 'unknown';
 }
 
-// Classified roads in Austria are as good as always asphalt; without a surface tag they count as likely asphalt.
-const classifiedRoads = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link']);
+// Without a surface tag the groups know, the way's type: on the planner's loop suggestions (October 2026) tagged ways of
+// these types are 95–100 % paved, tracks of grade 2 to 5 95–99 % unpaved. Paths and tracks without a grade stay unknown.
+const likelyPavedWays = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link',
+  'unclassified', 'residential', 'service', 'cycleway']);
+export function surfaceByWayType(wayTags: string): Surface {
+  const highway = /(?:^|\s)highway=([^\s]+)/.exec(wayTags)?.[1] ?? '', grade = /(?:^|\s)tracktype=([^\s]+)/.exec(wayTags)?.[1];
+  if (likelyPavedWays.has(highway) || (highway === 'track' && grade === 'grade1')) return 'likelyPaved';
+  return highway === 'track' && /^grade[2-5]$/.test(grade ?? '') ? 'unpaved' : 'unknown';
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -55,7 +63,8 @@ export function parseBRouterLeg(raw: unknown): LegGeometry {
         if (end > start) {
           const wayTags = typeof row[tags] === 'string' ? row[tags] : '';
           const tag = /(?:^|\s)surface=([^\s]+)/.exec(wayTags)?.[1];
-          const surface = tag ? surfaceType(tag) : classifiedRoads.has(/(?:^|\s)highway=([^\s]+)/.exec(wayTags)?.[1] ?? '') ? 'likelyAsphalt' : 'unknown';
+          const tagged = surfaceType(tag);
+          const surface = tagged === 'unknown' ? surfaceByWayType(wayTags) : tagged;
           const previous = surfaces.at(-1);
           if (previous?.surface === surface && previous.surfaceTag === tag && previous.toIndex === start) previous.toIndex = end;
           else surfaces.push({ fromIndex: start, toIndex: end, surface, ...(tag ? { surfaceTag: tag } : {}) });

@@ -61,7 +61,7 @@ try {
         coordinates: Array.from({ length }, (_, n) => n === 0 ? from.coord : n === length - 1 ? to.coord : [15.45, 47.15]),
         elevations: Array.from({ length }, (_, n) => 300 + n % 50),
         distanceMeters: 565000, ascentMeters: 2000,
-        surfaces: [{ fromIndex: 0, toIndex: length - 1, surface: 'asphalt', surfaceTag: 'asphalt' }],
+        surfaces: [{ fromIndex: 0, toIndex: length - 1, surface: 'paved', surfaceTag: 'asphalt' }],
         status: 'routed', routingPolicy: routingPolicyVersion,
       };
     }
@@ -176,7 +176,7 @@ try {
     const length = 400000;
     leg.coordinates = Array.from({ length }, (_, i) => i === 0 ? leg.fromCoord : i === length - 1 ? leg.toCoord : [15.45123456789, 47.15123456789]);
     leg.elevations = Array.from({ length }, () => 300);
-    leg.surfaces = [{ fromIndex: 0, toIndex: length - 1, surface: 'asphalt' }];
+    leg.surfaces = [{ fromIndex: 0, toIndex: length - 1, surface: 'paved' }];
     const payload = JSON.stringify(data);
     const summary = await routeLibrary.save('Großer Speichertest', payload);
     const restored = await routeLibrary.read(summary.id);

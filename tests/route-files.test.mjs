@@ -21,7 +21,7 @@ function fixture() {
       coordinates: [[...from.coord], [15.401, 47.101], [...to.coord]],
       elevations: i === 1 ? [300, 305, 310] : [310, 305, 300],
       distanceMeters: 250, ascentMeters: i === 1 ? 10 : 0,
-      surfaces: [{ fromIndex: 0, toIndex: 2, surface: 'asphalt' }], status: 'routed',
+      surfaces: [{ fromIndex: 0, toIndex: 2, surface: 'paved' }], status: 'routed',
     };
   }
   return { points, legs, pendingLegCount: 0, pendingSnapCount: 0 };
