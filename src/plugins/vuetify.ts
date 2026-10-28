@@ -6,10 +6,10 @@ import {
   IconAlertCircle, IconAlertTriangle, IconChevronLeft, IconChevronRight, IconCircle, IconCircleDotFilled, IconSquare,
   IconSquareCheckFilled, IconSquareMinusFilled, IconX,
 } from '@/components/icons';
-import { routeStyle } from '@/config/mapStyle';
 
-// Material 3 through Vuetify, in the planner's colours: the green of paved roads on the map, compact controls for the sidebar,
-// and Vuetify's own icons drawn from the Tabler set the planner uses everywhere else. main.css takes its colours from here.
+// Material 3 through Vuetify, in the planner's colours: light grey surfaces and the markers' dark ink, which leave colour to
+// the route and its surfaces on the map; compact controls for the sidebar, and Vuetify's own icons drawn from the Tabler
+// set the planner uses everywhere else. main.css takes its colours from here.
 export const vuetify = createVuetify({
   blueprint: md3,
   locale: { locale: 'de', messages: { de } },
@@ -23,11 +23,12 @@ export const vuetify = createVuetify({
       planner: {
         dark: false,
         colors: {
-          primary: routeStyle.paved, secondary: '#4d6357', background: '#eef1f0', surface: '#fcfcfb', 'surface-variant': '#dde3e1',
-          'on-background': '#17262a', 'on-surface': '#17262a', 'on-surface-variant': '#56676b', error: '#a3261b', warning: '#7a5200',
+          primary: '#1c2421', secondary: '#4d5753', background: '#f6f7f7', surface: '#ffffff', 'surface-variant': '#e6e9e8',
+          'on-background': '#121816', 'on-surface': '#121816', 'on-surface-variant': '#5b6562', error: '#a3261b', warning: '#7a5200',
+          'inverse-surface': '#1c2421', 'inverse-primary': '#8fdcb8',
         },
         // Field labels, hints and placeholders reach a contrast of 4.5:1; hover shows with Material 3's state layer.
-        variables: { 'medium-emphasis-opacity': 0.75, 'hover-opacity': 0.08 },
+        variables: { 'medium-emphasis-opacity': 0.75, 'hover-opacity': 0.06 },
       },
     },
   },
@@ -39,9 +40,14 @@ export const vuetify = createVuetify({
     VCheckbox: { color: 'primary', density: 'compact' },
     VSwitch: { color: 'primary', density: 'compact', inset: true },
     VTabs: { grow: true },
-    // Tabs are buttons inside; their press and hover layers fill the square tab, not the blueprint's rounded button.
-    VTab: { rounded: 0 },
+    // Segmented tabs (AppSidebar): rounded, without a ripple, since the sliding field shows the choice.
+    VTab: { rounded: 'lg', ripple: false },
     VList: { density: 'compact' },
+    // Half a second's rest before a tooltip; plugins/tooltips.ts shortens it right after one has shown.
+    VTooltip: { openDelay: 500 },
+    // Confirmations of one's own actions, in Material's inverse colours: neither a warning nor an error, set apart from the
+    // panel and the map; they appear at the panel's foot, which they report on.
+    VSnackbar: { color: 'inverse-surface', attach: '#sidebar', contained: true, rounded: 'lg' },
     VAlert: { variant: 'tonal', density: 'compact', VBtn: { variant: 'outlined', size: 'small' } },
     VMapButton: { icon: true, size: 40, rounded: 'lg', elevation: 2, color: 'surface' },
     VIconButton: { icon: true, variant: 'text', size: 'small', color: 'on-surface-variant' },

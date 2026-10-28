@@ -68,7 +68,7 @@ try {
   assert.equal(await details.locator('.surfaces__sections button').count(), 10);
   await details.getByRole('button', { name: 'Weitere Abschnitte', exact: true }).click();
   assert.equal(await details.locator('.surfaces__sections button').count(), 20);
-  await details.getByRole('button', { name: 'Markierung aufheben', exact: true }).click();
+  await details.locator('.surfaces__sections button[aria-pressed=true]').click();
   await page.waitForFunction(async () => {
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return (await map.getSource('surface-focus-source').getData()).features.length === 0;

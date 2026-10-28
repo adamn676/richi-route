@@ -192,6 +192,8 @@ export const useRouteStore = defineStore('route', {
     pendingLegCount: 0,
     errorMessage: null as string | null,
     draftStatus: 'idle' as 'idle' | 'saving' | 'saved' | 'restored' | 'error',
+    // Set once the saved draft has been looked for, whether one was found or not.
+    draftLoaded: false,
     draftError: null as string | null,
     surfaceFocus: null as SurfaceFocus | null,
     surfaceReporting: false,
@@ -659,15 +661,16 @@ export const useRouteStore = defineStore('route', {
       }
     },
 
-    moveWaypoint(id: string, direction: -1 | 1) {
-      const via = this.waypoints.filter((point) => point.kind === 'via');
-      const index = via.findIndex((point) => point.id === id);
-      const other = via[index + direction];
-      if (index === -1 || !other) throw new Error('Der Stopp kann nicht weiter verschoben werden.');
-      const firstIndex = this.points.findIndex((point) => point.id === id);
-      const secondIndex = this.points.findIndex((point) => point.id === other.id);
+    // The intermediate stop to another place among them, as one step; shaping points stay where they are.
+    moveWaypointTo(id: string, to: number) {
+      const slots = this.points.flatMap((point, i) => point.type === 'stop' && point.kind === 'via' ? [i] : []);
+      const order = slots.map((slot) => this.points[slot]);
+      const from = order.findIndex((point) => point.id === id);
+      if (from === -1 || to < 0 || to >= order.length) throw new Error('Der Stopp kann nicht weiter verschoben werden.');
+      if (from === to) return;
+      order.splice(to, 0, ...order.splice(from, 1));
       const updated = [...this.points];
-      [updated[firstIndex], updated[secondIndex]] = [updated[secondIndex], updated[firstIndex]];
+      slots.forEach((slot, i) => { updated[slot] = order[i]; });
       this._remember();
       this.points = updated;
       this._reconcile();

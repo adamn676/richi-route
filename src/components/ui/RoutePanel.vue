@@ -15,38 +15,50 @@
             aria-label="GPX herunterladen" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></v-icon-button></span>
         </span>
       </div>
-      <ol class="planner__stops">
-        <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop">
-          <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
-          <span v-if="point.kind === 'via'" class="planner__stop-actions">
-            <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === 0"
-              :aria-label="`${stopLabel(point.kind, index)} nach oben verschieben`" v-tooltip:bottom="'Nach oben'"
-              @click="act(() => routeStore.moveWaypoint(point.id, -1))"><IconChevronUp :size="16" aria-hidden="true" /></v-icon-button>
-            <v-icon-button size="x-small" :disabled="viaIds.indexOf(point.id) === viaIds.length - 1"
-              :aria-label="`${stopLabel(point.kind, index)} nach unten verschieben`" v-tooltip:bottom="'Nach unten'"
-              @click="act(() => routeStore.moveWaypoint(point.id, 1))"><IconChevronDown :size="16" aria-hidden="true" /></v-icon-button>
-            <v-icon-button size="x-small" :aria-label="`${stopLabel(point.kind, index)} löschen`" v-tooltip:bottom="'Stopp löschen'"
-              @click="act(() => routeStore.removeWaypoint(point.id))"><IconX :size="16" aria-hidden="true" /></v-icon-button>
-          </span>
-          <div class="planner__stop-input">
-            <AddressSearchInput
-              :waypoint-id="point.id"
-              :label="stopLabel(point.kind, index)"
-              :model-value="point.userInput"
-              :placeholder="placeholderFor(point)"
-              @update:model-value="(value) => routeStore.setWaypointQuery(point.id, value)"
-              @item-select="(place) => run(() => routeStore.setWaypointPlace(point.id, place))"
-              @text-submit="(query) => run(() => routeStore.searchAndSetWaypointAddress(point.id, query))"
-              @clear="run(() => routeStore.clearWaypoint(point.id))"
-            />
-            <small v-if="point.isGeocoding">Adresse wird ermittelt …</small>
-            <small v-else-if="point.address && point.address !== point.userInput">Bisher: {{ point.address }}</small>
-            <small v-if="point.snapPending">Straßenpunkt wird gesucht …</small>
-            <small v-if="point.snapError" class="planner__stop-error" role="alert">{{ point.snapError }}</small>
-          </div>
-        </li>
-      </ol>
-      <v-btn variant="text" class="planner__add" :prepend-icon="IconPlus" :disabled="!hasEndpoints" @click="addStop">Zwischenstopp hinzufügen</v-btn>
+      <!-- Until the saved route is loaded, its shape stands in for the empty start, which would flash before it. -->
+      <ul v-if="!routeStore.draftLoaded" class="planner__skeleton" aria-busy="true" aria-label="Route wird geladen">
+        <li v-for="width in [62, 48]" :key="width"><span class="skeleton planner__skeleton-marker" />
+          <span class="planner__skeleton-text"><span class="skeleton" style="width: 22%" /><span class="skeleton" :style="{ width: `${width}%` }" /></span></li>
+      </ul>
+      <div v-else>
+        <!-- While a stop is dragged, the rows follow the pointer; the snap into place runs on the drop. -->
+        <TransitionGroup tag="ol" name="planner__stop" :move-class="stopDrag ? 'planner__stop-held' : 'planner__stop-move'" class="planner__stops"
+          :class="{ 'planner__stops--settling': stopSettling }"
+          @enter="(_el: Element, done: () => void) => done()" @leave="(_el: Element, done: () => void) => done()">
+          <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop" :data-stop="point.id"
+            :class="{ 'planner__stop--lifted': stopDrag?.id === point.id }"
+            :style="point.kind === 'via' && stopDrag ? { translate: `0 ${offset(viaIds.indexOf(point.id))}px` } : undefined">
+            <button v-if="point.kind === 'via'" type="button" class="planner__grip" :aria-label="`${stopLabel(point.kind, index)} verschieben`"
+              @pointerdown="startDrag($event, point.id, viaIds)" @keydown.up.prevent="nudge(point.id, -1)" @keydown.down.prevent="nudge(point.id, 1)">
+              <IconGripVertical :size="14" aria-hidden="true" />
+            </button>
+            <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
+            <div class="planner__stop-input">
+              <AddressSearchInput
+                :waypoint-id="point.id"
+                :label="stopLabel(point.kind, index)"
+                :model-value="point.userInput"
+                :placeholder="placeholderFor(point)"
+                :persistent-placeholder="Boolean(point.coord && !point.userInput)"
+                @update:model-value="(value) => routeStore.setWaypointQuery(point.id, value)"
+                @item-select="(place) => run(() => routeStore.setWaypointPlace(point.id, place))"
+                @text-submit="(query) => run(() => routeStore.searchAndSetWaypointAddress(point.id, query))"
+                @clear="run(() => routeStore.clearWaypoint(point.id))"
+              />
+              <small v-if="point.isGeocoding">Adresse wird ermittelt …</small>
+              <small v-else-if="point.address && point.address !== point.userInput">Bisher: {{ point.address }}</small>
+              <small v-if="point.snapPending">Straßenpunkt wird gesucht …</small>
+              <small v-if="point.snapError" class="planner__stop-error" role="alert">{{ point.snapError }}</small>
+            </div>
+            <!-- The field's × empties a stop; an intermediate stop goes with its own button, filled or not. -->
+            <v-icon-button v-if="point.kind === 'via'" class="planner__remove" size="x-small" :aria-label="`${stopLabel(point.kind, index)} entfernen`"
+              v-tooltip:bottom="'Zwischenstopp entfernen'" @click="removeStop(point.id)"><IconTrash :size="16" aria-hidden="true" /></v-icon-button>
+          </li>
+        </TransitionGroup>
+        <button v-if="hasEndpoints" type="button" class="planner__add-row" @click="addStop">
+          <span class="planner__add-mark" aria-hidden="true"><IconPlus :size="14" /></span><span>Zwischenstopp hinzufügen</span>
+        </button>
+      </div>
       <!-- Until the rider has changed a route on the map once, it says how; offered loops take the map's clicks instead. -->
       <p v-if="routeStore.route && !shaped && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
         {{ touch ? 'Tipp: Route auf der Karte gedrückt halten und ziehen, um sie zu formen; Antippen setzt einen Zwischenstopp.'
@@ -62,20 +74,26 @@
       <v-alert v-else-if="airHint" type="warning" role="status">Gestrichelte Abschnitte warten auf Routing oder haben keine Straßenverbindung.</v-alert>
     </div>
 
-    <LoopSuggestions v-if="!hasEndpoints || loops.suggestions" />
+    <LoopSuggestions v-if="routeStore.draftLoaded && (!hasEndpoints || loops.suggestions)" />
     <section v-if="hasEndpoints" class="planner__section">
       <dl class="stats planner__stats" aria-label="Streckendaten" aria-live="polite">
         <div><dt>Distanz</dt><dd>{{ distanceLabel }}</dd></div>
-        <div><dt>Anstiege</dt><dd>{{ ascentLabel }}</dd></div>
+        <div><dt>Anstiege</dt><dd><span v-if="ascentLabel === '…'" class="skeleton planner__stat-skeleton" aria-label="wird berechnet" />
+          <template v-else>{{ ascentLabel }}</template></dd></div>
       </dl>
       <SurfaceDetails />
     </section>
+    <!-- A removed stop can come back at once. -->
+    <v-snackbar v-model="removed" :timeout="5000">
+      Zwischenstopp entfernt
+      <template #actions><v-btn variant="text" color="inverse-primary" aria-label="Entfernten Zwischenstopp zurückholen" @click="restoreStop">Rückgängig</v-btn></template>
+    </v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconChevronUp, IconDownload, IconEraser, IconPlus, IconWand, IconX } from '@/components/icons';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconGripVertical, IconPlus, IconTrash, IconWand } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import { stopBadge, stopLabel } from '@/domain/route-model';
@@ -86,6 +104,7 @@ import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 import { formatKm, formatMeters } from '@/utils/format';
+import { useStopDragging } from '@/composables/useStopDragging';
 
 const routeStore = useRouteStore();
 const loops = useLoopSuggestionsStore();
@@ -113,6 +132,25 @@ function downloadGpx() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const viaIds = computed(() => routeStore.waypoints.filter((point) => point.kind === 'via').map((point) => point.id));
+// The offer to undo a removal ends with the next step in the history; the route's recalculation is none.
+const removed = ref(false);
+let removal: unknown;
+async function removeStop(id: string) {
+  await run(() => routeStore.removeWaypoint(id));
+  removal = routeStore.undoStack;
+  removed.value = true;
+}
+watch(() => routeStore.undoStack, stack => { if (stack !== removal) removed.value = false; });
+function restoreStop() {
+  removed.value = false;
+  routeStore.undo();
+}
+// Moving a stop keeps the focus where it is: on its grip, which moves along.
+const { drag: stopDrag, settling: stopSettling, start: startDrag, offset } = useStopDragging((id, to) => run(() => routeStore.moveWaypointTo(id, to)));
+function nudge(id: string, direction: -1 | 1) {
+  const to = viaIds.value.indexOf(id) + direction;
+  if (to >= 0 && to < viaIds.value.length) void run(() => routeStore.moveWaypointTo(id, to));
+}
 const hasEndpoints = computed(() => {
   const stops = routeStore.waypoints;
   return Boolean(stops[0]?.coord && stops[stops.length - 1]?.coord);
@@ -139,7 +177,7 @@ async function run(action: () => void | Promise<void>): Promise<void> {
   }
 }
 
-// A button that disables, moves or removes itself (the last undo, a deleted stop) leaves the focus in the toolbar.
+// A button that disables itself (the last undo, the last shaping point removed) leaves the focus in the toolbar.
 const tools = ref<HTMLElement>();
 async function act(action: () => void): Promise<void> {
   await run(action);
@@ -174,19 +212,65 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 
 <style scoped>
 .planner { display: flex; flex-direction: column; }
-.planner__section { display: grid; gap: .75rem; padding: 1rem var(--gutter); border-bottom: 1px solid var(--border); }
-.planner__heading { display: flex; align-items: center; gap: .75rem; }
-.planner__tools { display: flex; margin-left: auto; }
-.planner__stops { display: grid; gap: .85rem; margin: 0; padding: 0; list-style: none; }
-/* Badge, field (its label floats inside) and the actions of an intermediate stop share one row. */
-.planner__stop { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: start; column-gap: .6rem; }
-.planner__badge { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; margin-top: .5rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .72rem; font-weight: 700; }
+/* On a 4 px grid: a 24 px marker column at the edge, text 36 px in; headings 36 px tall with 12 px to their content; stop
+   rows 64 px with the address line from 30 to 54 px, list rows 44 px; hover areas 8 px wider than the content. */
+/* One column no wider than the panel: wide content shrinks or wraps instead of stretching it past its edge. */
+.planner__section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--gutter);
+  border-bottom: 1px solid var(--border); }
+.planner__heading { display: flex; align-items: center; gap: var(--space-3); min-height: 36px; }
+.planner__heading h2 { margin: 0; }
+.planner__tools { display: flex; align-items: center; margin-left: auto; }
+.planner__tools > span { display: flex; }
+/* Five tools beside the heading fit the narrowest panel at 36 px each. */
+.planner__tools :deep(.v-btn) { width: 36px; height: 36px; }
+.planner__stops { display: grid; margin: 0; padding: 0; list-style: none; }
+/* Marker, field (its label above the address) and an intermediate stop's trash button; the button's column is kept in
+   every row, so that the fields' × line up. */
+.planner__stop { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; align-items: start; column-gap: var(--space-3);
+  min-height: 64px; padding: var(--space-2) 0; transition: translate .16s cubic-bezier(.2, .8, .2, 1), box-shadow .16s, background-color .16s; }
+.planner__stop + .planner__stop::before { content: ''; position: absolute; top: 0; left: 36px; right: 0; border-top: 1px solid var(--border); }
+/* Dots from marker to marker, with some room around each. */
+.planner__stop:not(:last-child)::after { content: ''; position: absolute; top: 60px; bottom: -24px; left: 10px; width: 4px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--text-muted) 70%, transparent) 1.3px, transparent 1.7px) center top / 4px 7px repeat-y; }
+.planner__badge { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 22px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: .72rem; font-weight: 700; }
 .planner__badge--empty { border: 2px dashed var(--border-input); background: none; color: var(--text-muted); }
-.planner__stop-actions { display: flex; grid-column: 3; grid-row: 1; margin-top: .25rem; }
 .planner__stop-input { grid-column: 2; grid-row: 1; display: grid; gap: .3rem; }
+/* Vuetify's input adds 8 px above the address line: 14 + 8 put it 22 px below the row's padding, level with the marker. */
+.planner__stop-input :deep(.v-field--variant-plain) { --v-field-padding-top: 14px; --v-field-padding-bottom: 2px; }
+.planner__stop-input :deep(.v-field-label--floating) { top: 0; transform: none; color: var(--text-muted); opacity: 1; }
+/* The × level with the address line (the input sits 8 px below the field's padding, the × half of that), its icon flush
+   with the right edge, as the Untergrund figures are. */
+.planner__stop-input :deep(.v-field__clearable) { align-items: center; padding-top: var(--v-field-padding-top); padding-bottom: var(--v-field-padding-bottom);
+  margin-inline-end: calc(-1 * var(--space-2)); color: var(--text-muted); }
+.planner__stop-input :deep(.v-field__clearable > *) { translate: 0 var(--space-1); }
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
-.planner__add { justify-self: start; margin-left: 1.6rem; }
-.planner__notices { display: grid; gap: .5rem; padding: 1rem var(--gutter) 0; }
+.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 18px -4px 0; color: var(--text-muted); }
+.planner__grip { position: absolute; top: 42px; left: -18px; display: flex; padding: var(--space-1) 0; border: 0; background: none;
+  color: var(--text-muted); opacity: .75; transform: translateY(-50%); cursor: grab; touch-action: none; }
+.planner__grip:active { cursor: grabbing; }
+/* Dragging a stop: lifted under the pointer, the others making room; the drop snaps it into place by the list's move
+   transition alone. */
+.planner__stop--lifted { z-index: 3; border-radius: var(--radius); background: var(--surface); transition: box-shadow .16s, background-color .16s;
+  box-shadow: 0 0 0 var(--space-2) var(--surface), 0 6px 18px var(--space-2) rgb(16 24 22 / .14), 0 1px 3px var(--space-2) rgb(16 24 22 / .1); }
+.planner__stop--lifted::before, .planner__stop--lifted::after { display: none; }
+.planner__stops--settling .planner__stop, .planner__stop-move { transition: transform .26s cubic-bezier(.2, 1.1, .3, 1.15); }
+@media (prefers-reduced-motion: reduce) { .planner__stop, .planner__stops--settling .planner__stop, .planner__stop-move { transition: none; } }
+.planner__add-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; column-gap: var(--space-3);
+  width: calc(100% + 2 * var(--space-2)); min-height: 44px; margin-inline: calc(-1 * var(--space-2)); padding: 0 var(--space-2); border: 0;
+  border-radius: var(--radius); background: none; color: var(--text-muted); font: inherit; font-size: .95rem; text-align: left; cursor: pointer; }
+.planner__add-row:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
+.planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }
+.planner__notices { display: grid; gap: var(--space-2); padding: var(--space-4) var(--gutter) 0; }
+.planner__stats dt { margin-bottom: var(--space-1); }
 .planner__stats dd { font-size: 1.5rem; }
+.planner__stat-skeleton { width: 5rem; height: 1.6rem; margin-top: var(--space-1); }
+.planner__skeleton { display: grid; margin: 0; padding: 0; list-style: none; }
+.planner__skeleton li { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: end; column-gap: var(--space-3); min-height: 64px;
+  padding: var(--space-2) 0; }
+.planner__skeleton-marker { width: 24px; height: 24px; border-radius: 50%; }
+.planner__skeleton-text { display: grid; gap: var(--space-2); }
+.planner__skeleton-text .skeleton { height: .7rem; }
+.planner__skeleton-text .skeleton + .skeleton { height: 1rem; }
 </style>

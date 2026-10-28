@@ -414,6 +414,16 @@ tapped while only the header shows raises the sheet to half the screen. On touch
 screens a finger on the route pans the map; holding it still for a moment picks
 the route up to drag it.
 
+The **Route** tab lists the stops beside their markers; **Zwischenstopp
+hinzufügen** below them adds an empty stop to fill by search or on the map. An
+intermediate stop changes its place among the others by dragging its grip, or
+with the arrow keys on the grip. Its trash can removes it, and the notice at the
+panel's foot brings it back (**Rückgängig**) until the next change. Until the
+saved route has loaded, the list shows its shape instead of the empty start.
+Tooltips appear after the pointer has rested half a second on a control, and at
+once while it moves on to the next one; on touch screens a tap only acts, and a
+long press shows the control's label instead.
+
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway
 stations over all base maps. Only cycle paths are on at first; points are labelled
@@ -625,8 +635,9 @@ Queries stay on this computer. Suggestions load after three characters and a
 350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
 loaded result. Results of the same name within 200 m (a square, its street and
 its stops) show once. The × in a stop's field removes the stop's point as well as
-its text (a start or destination also its shaping points); undo restores it. No routing geometry is sent to the search service, and unavailable
-local search never falls back to `photon.komoot.io`.
+its text (a start or destination also its shaping points) and leaves the stop
+empty; undo restores it. No routing geometry is sent to the search service, and
+unavailable local search never falls back to `photon.komoot.io`.
 
 An address with a house number starts on its own street: the planner takes the
 nearest point on the road of that name from its map tiles (within 150 m), since
@@ -929,10 +940,9 @@ every other unpaved material) and a light grey for **Unbekannt**. Ways without
 a surface tag count by their type: roads and cycleways as likely paved, tracks
 of grade 2 to 5 as unpaved. Select a group to see its sections along the route,
 and select it again to close them. Select a section to frame it on the map,
-drawn in its colour above the route, which fades meanwhile. **Weitere
-Abschnitte** shows ten more entries; **Markierung aufheben** removes the
-highlight. Lengths follow the drawn coordinates and can differ slightly from
-the engine's total. Tags describe the map data, not the current condition of a
+drawn in its colour above the route, which fades meanwhile; select it again to
+remove the highlight. **Weitere Abschnitte** shows ten more entries. Lengths
+follow the drawn coordinates and can differ slightly from the engine's total. Tags describe the map data, not the current condition of a
 road.
 
 Inspection does not change the route, undo history or saved draft. Edits and

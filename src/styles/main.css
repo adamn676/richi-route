@@ -2,7 +2,7 @@
   color-scheme: light;
   --font: system-ui, sans-serif;
   --v-font-body: var(--font);
-  /* The theme's colours (src/plugins/vuetify.ts); the accent is the green of asphalt on the map. */
+  /* The theme's colours (src/plugins/vuetify.ts); the accent is the markers' ink. */
   --bg: rgb(var(--v-theme-background));
   --surface: rgb(var(--v-theme-surface));
   --border: rgb(var(--v-theme-surface-variant));
@@ -10,14 +10,18 @@
   --text: rgb(var(--v-theme-on-surface));
   --text-muted: rgb(var(--v-theme-on-surface-variant));
   --accent: rgb(var(--v-theme-primary));
-  --accent-soft: #e6f2ec;
+  --accent-soft: #eef0ef;
   --danger: rgb(var(--v-theme-error));
   /* Material 3 shapes: small controls, then cards, menus and floating buttons. */
   --radius: 8px;
   --radius-lg: 12px;
   /* Material 3 elevation level 2, for menus and floating buttons. */
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
+  --skeleton: color-mix(in srgb, var(--border) 85%, transparent);
+  --skeleton-light: color-mix(in srgb, var(--border) 35%, transparent);
   --gutter: 1.25rem;
+  /* One spacing scale on a 4 px grid for paddings, gaps and columns. */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   accent-color: var(--accent);
   font-family: var(--font);
   color: var(--text);
@@ -34,7 +38,7 @@
 /* Vuetify marks keyboard focus on its buttons, list items and choices with a faint tint only. */
 .v-btn:focus-visible, .v-list-item:focus-visible, .v-selection-control--focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Placeholders say what a field takes, such as a search or a point on the map, so they read like labels. */
-.v-field input::placeholder { opacity: var(--v-medium-emphasis-opacity); }
+.v-field:is(.v-field--active, .v-field--no-label) input::placeholder { opacity: var(--v-medium-emphasis-opacity); }
 .maplibregl-map { width: 100%; height: 100%; }
 svg.tabler-icon { stroke-width: 1.75; }
 
@@ -81,3 +85,23 @@ svg.tabler-icon { stroke-width: 1.75; }
 .cycling-popup strong { display: block; padding-right: 1rem; font-size: .9rem; }
 .cycling-popup p { margin: .45rem 0; }
 .cycling-popup a { color: var(--accent); }
+
+/* Where content is still loading and none was there before: its shape, shimmering gently. It shows only after a quarter
+   of a second, so that quick answers leave no flash; its room is kept from the start. */
+.skeleton { display: block; border-radius: 6px;
+  background: linear-gradient(90deg, var(--skeleton) 0%, var(--skeleton-light) 50%, var(--skeleton) 100%) 0 0 / 200% 100%;
+  animation: skeleton-appear .2s ease .25s both, skeleton 1.4s ease-in-out .25s infinite; }
+@keyframes skeleton-appear { from { opacity: 0; } }
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: skeleton-appear 0s .25s both; } }
+/* Tooltips in the markers' ink: legible on the white panel and on the map. */
+.v-tooltip > .v-overlay__content { padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--accent); color: #fff;
+  font-size: .75rem; line-height: 1.35; box-shadow: 0 2px 8px rgb(16 24 22 / .22); }
+/* The panel's snackbars: as wide as the panel's content and clear of its edges; the text reads at body size. Inside the
+   panel, Vuetify's room for the panel itself (the layout's padding) is none. */
+.v-snackbar.v-overlay--contained { margin: 0; padding: 0; }
+.v-snackbar.v-overlay--contained .v-snackbar__wrapper { min-width: 0; width: calc(100% - 2 * var(--gutter)); max-width: none;
+  margin: 0 var(--gutter) var(--space-4); box-shadow: 0 4px 16px rgb(16 24 22 / .24), 0 1px 3px rgb(16 24 22 / .2); }
+.v-snackbar.v-overlay--contained .v-snackbar__content { padding: var(--space-3) var(--space-4); font-size: .875rem; line-height: 1.4; }
+.v-snackbar.v-overlay--contained .v-snackbar__actions { margin-inline-end: var(--space-2); }
+.v-snackbar.v-overlay--contained .v-snackbar__actions .v-btn { font-weight: 600; letter-spacing: 0; }

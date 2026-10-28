@@ -57,6 +57,8 @@ export function startDraftPersistence(store: RouteStore) {
     } catch {
       blocked = true;
       fail('Gespeicherte Route konnte nicht geladen werden. Der bisherige Entwurf wurde nicht überschrieben.');
+    } finally {
+      if (!stopped) store.draftLoaded = true;
     }
   }
 

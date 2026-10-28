@@ -6,4 +6,5 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './config/map-worker';
 import App from './App.vue';
 import { vuetify } from './plugins/vuetify';
+import './plugins/tooltips';
 createApp(App).use(createPinia()).use(vuetify).mount('#app');

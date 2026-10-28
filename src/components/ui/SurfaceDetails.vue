@@ -1,6 +1,7 @@
 <template>
-  <section v-if="totals.length" class="surfaces" aria-labelledby="surfaces-title">
-    <h3 id="surfaces-title" class="text-label-large text-medium-emphasis">Untergrund</h3>
+  <section v-if="totals.length" class="surfaces" :class="{ 'surfaces--stale': store.routingPending }" :aria-busy="store.routingPending"
+    aria-labelledby="surfaces-title">
+    <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
     <!-- The whole route in one bar; a chosen surface stands out in it. -->
     <div class="surfaces__bar" aria-hidden="true">
       <i v-for="total in totals" :key="total.surface" :class="{ 'surfaces__part--faded': selected && selected !== total.surface }"
@@ -10,7 +11,8 @@
       <v-list-item v-for="total in totals" :key="total.surface" tag="button" type="button" role="button" :aria-pressed="selected === total.surface"
         :active="selected === total.surface" color="primary" rounded="lg" @click="selectSurface(total.surface)">
         <template #prepend><i class="surfaces__dot" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
-        <span>{{ surfaceLabels[total.surface] }}</span>
+        <!-- A long label may break after its slash. -->
+        <span class="surfaces__label"><template v-for="(part, i) in surfaceLabels[total.surface].split('/')" :key="i"><template v-if="i">/<wbr></template>{{ part }}</template></span>
         <template #append><span class="surfaces__amount"><strong>{{ formatLength(total.meters) }}</strong><span>{{ share(total.meters) }}</span></span></template>
       </v-list-item>
     </v-list>
@@ -23,16 +25,24 @@
           <template #append><strong>{{ formatLength(section.toMeters - section.fromMeters) }}</strong></template>
         </v-list-item>
       </v-list>
-      <div class="surfaces__more">
-        <v-btn v-if="matching.length > visibleCount" variant="outlined" size="small" @click="visibleCount += 10">Weitere Abschnitte</v-btn>
-        <v-btn v-if="store.focusedSurface" variant="text" size="small" @click="store.surfaceFocus = null">Markierung aufheben</v-btn>
+      <div v-if="matching.length > visibleCount" class="surfaces__more">
+        <v-btn variant="outlined" size="small" @click="visibleCount += 10">Weitere Abschnitte</v-btn>
       </div>
     </template>
+  </section>
+  <!-- The first calculation of a route: the surfaces' shape until they are known. -->
+  <section v-else-if="store.routingPending" class="surfaces" aria-busy="true" aria-labelledby="surfaces-title">
+    <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
+    <span class="skeleton surfaces__skeleton-bar" />
+    <ul class="surfaces__skeleton-rows" aria-hidden="true">
+      <li v-for="width in [52, 70, 40]" :key="width"><span class="skeleton surfaces__skeleton-dot" /><span class="skeleton" :style="{ width: `${width}%` }" />
+        <span class="skeleton surfaces__skeleton-amount" /></li>
+    </ul>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
@@ -40,7 +50,11 @@ import { formatKm, formatLength } from '@/utils/format';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();
-const inspection = computed(() => store.routingPending ? null : inspectSurfaces(store.points, store.legs));
+// While the route is being recalculated, the last surfaces stay, faded, so the panel keeps its height.
+const inspection = shallowRef<ReturnType<typeof inspectSurfaces>>(null);
+watch(() => store.routingPending ? undefined : inspectSurfaces(store.points, store.legs), value => {
+  if (value !== undefined) inspection.value = value;
+}, { immediate: true });
 const totals = computed(() => inspection.value?.totals ?? []);
 const selected = ref<Surface | null>(null);
 const visibleCount = ref(10);
@@ -50,8 +64,10 @@ function share(meters: number) {
   const percent = meters / inspection.value!.distanceMeters * 100;
   return percent < 1 ? '< 1 %' : `${Math.round(percent)} %`;
 }
+// Choosing the highlighted section again removes the highlight, as choosing its surface again closes its sections.
 function focus(section: SurfaceSection) {
-  store.inspectSurface(section.legId, section.fromIndex, section.toIndex, section.surface);
+  if (isFocused(section)) store.surfaceFocus = null;
+  else store.inspectSurface(section.legId, section.fromIndex, section.toIndex, section.surface);
 }
 // Selecting a surface again closes its sections and removes the highlight.
 function selectSurface(surface: Surface) {
@@ -76,17 +92,41 @@ watch(inspection, value => {
 </script>
 
 <style scoped>
-.surfaces { display: grid; gap: .5rem; }
+/* In the stops' columns: the dot where the markers are, the text where the addresses are; 44 px rows whose hover and
+   selection reach 8 px past the content. */
+.surfaces { display: grid; gap: var(--space-3); margin-top: var(--space-3); transition: opacity .2s; }
+.surfaces--stale { opacity: .45; pointer-events: none; }
+h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
 .surfaces__bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 5px; }
 .surfaces__bar i { min-width: 3px; transition: opacity .15s; }
 .surfaces__bar .surfaces__part--faded { opacity: .25; }
 .surfaces__dot { width: .625rem; height: .625rem; border-radius: 50%; }
+.surfaces__label { display: block; padding-block: var(--space-2); white-space: normal; line-height: 1.3; }
 .surfaces__amount { display: inline-flex; align-items: baseline; gap: .5rem; }
-.surfaces__amount span { min-width: 2.5rem; color: var(--text-muted); font-size: .75rem; text-align: right; font-variant-numeric: tabular-nums; }
-.surfaces__totals, .surfaces__sections { margin: 0 -.5rem; padding: 0; font-size: .8rem; }
-p { margin: 0; color: var(--text-muted); font-size: .75rem; line-height: 1.45; }
-h4 { margin: .4rem 0 0; font-size: .8rem; }
-.v-list-item { width: 100%; min-height: 2rem; text-align: left; }
+.surfaces__amount span { min-width: 2.6rem; color: var(--text-muted); font-size: .75rem; text-align: right; font-variant-numeric: tabular-nums; }
+.surfaces__totals, .surfaces__sections { margin: 0; padding: 0; overflow: visible; font-size: .9rem; }
+.v-list-item { width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: 44px; margin-inline: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2); text-align: left; }
+.v-list-item :deep(.v-list-item__overlay) { display: none; }
+/* Fine lines between the rows, from the text column on; none next to a highlighted row. */
+.v-list-item + .v-list-item { background-image: linear-gradient(var(--border), var(--border)); background-position: right var(--space-2) top;
+  background-size: calc(100% - 52px) 1px; background-repeat: no-repeat; }
+.v-list-item:hover { background-color: color-mix(in srgb, var(--border) 45%, transparent); }
+.v-list-item--active { background-color: color-mix(in srgb, var(--border) 80%, transparent); color: var(--text); font-weight: 600; }
+.v-list-item:hover + .v-list-item, .v-list-item--active + .v-list-item { background-image: none; }
+.surfaces__totals :deep(.v-list-item__prepend) { display: flex; justify-content: center; width: 24px; margin-inline-end: var(--space-3); }
+.surfaces__totals :deep(.v-list-item__prepend > *) { margin: 0; }
+.surfaces__totals :deep(.v-list-item__spacer) { display: none; }
+.surfaces__sections .v-list-item { padding-left: 44px; }
+h4 { margin: var(--space-3) 0 0 36px; color: var(--text-muted); font-size: .8rem; font-weight: 400; }
 strong { font-variant-numeric: tabular-nums; font-weight: 600; }
-.surfaces__more { display: flex; gap: .4rem; }
+.surfaces__more { margin-left: 28px; }
+.surfaces__more .v-btn { padding-inline: var(--space-2); color: var(--text); }
+.surfaces__skeleton-bar { height: 10px; border-radius: 5px; }
+.surfaces__skeleton-rows { display: grid; margin: 0; padding: 0; list-style: none; }
+.surfaces__skeleton-rows li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 4.5rem; align-items: center; column-gap: var(--space-3);
+  min-height: 44px; }
+.surfaces__skeleton-rows .skeleton { height: .8rem; }
+.surfaces__skeleton-rows .surfaces__skeleton-dot { justify-self: center; width: .625rem; height: .625rem; border-radius: 50%; }
+.surfaces__skeleton-amount { justify-self: end; width: 100%; }
 </style>

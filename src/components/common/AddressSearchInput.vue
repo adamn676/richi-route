@@ -1,7 +1,7 @@
 <template>
   <!-- A combobox keeps typed text and offers matching places; Vuetify handles the menu and its keys, Enter in the field is
-       handled here. Empty text is no value, so the field shows its placeholder, which says what to do, and no clear
-       button. That button is our own, since it empties the stop rather than only its text. -->
+       handled here. Empty text is no value, so the field shows no clear button. That button is our own, since it empties
+       the stop rather than only its text. -->
   <v-combobox
     :id="`address-${waypointId}`"
     :model-value="inputValue || null"
@@ -11,7 +11,8 @@
     no-filter
     :label="label"
     :placeholder="placeholder"
-    persistent-placeholder
+    :persistent-placeholder="persistentPlaceholder"
+    variant="plain"
     :disabled="disabled"
     :loading="isLoading"
     :hide-no-data="!errorMessage && !nothingFound"
@@ -27,7 +28,7 @@
   >
     <template #clear>
       <!-- Its keys stay away from the combobox, which would take Enter for a search. -->
-      <v-icon-button icon="$clear" size="x-small" :aria-label="`${label} entfernen`" @click="clearStop" @keydown.stop />
+      <v-icon-button icon="$clear" size="x-small" :aria-label="`${label} leeren`" @click="clearStop" @keydown.stop />
     </template>
     <template #no-data>
       <v-list-item v-if="errorMessage" role="alert" base-color="error" :title="errorMessage" />
@@ -46,6 +47,8 @@ const props = withDefaults(defineProps<{
   waypointId: string;
   label: string;
   placeholder?: string;
+  // Shows the placeholder also without the focus; otherwise an empty field shows only its label until it has the focus.
+  persistentPlaceholder?: boolean;
   disabled?: boolean;
 }>(), {
   placeholder: 'Adresse suchen',

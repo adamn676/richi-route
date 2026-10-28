@@ -16,6 +16,9 @@
     <template v-if="!collapsed">
       <ElevationChart v-if="inspection.track" :heading="false" :track="inspection.track" :color-runs="inspection.colorRuns" :focus="inspection.focus"
         on-route label="Position in der Route" chart-label="Höhenprofil der Route" @inspect="inspection.focusAt" />
+      <div v-else-if="routeStore.route && routeStore.routingPending" class="profile__skeleton" role="status">
+        <span class="skeleton" aria-hidden="true" /><span class="sr-only">{{ message }}</span>
+      </div>
       <p v-else class="profile__empty text-body-small text-medium-emphasis">{{ message }}</p>
     </template>
   </section>
@@ -49,4 +52,7 @@ const message = computed(() => !routeStore.route ? 'Plane eine Route, um ihr Hö
 @media (max-width: 760px) { .profile__header:has(.profile__summary:not(:empty)) > strong { display: none; } }
 .profile > .elevation-chart { flex: 1; min-height: 0; --elevation-chart-height: minmax(0, 1fr); }
 .profile__empty { flex: 1; display: grid; place-items: center; text-align: center; }
+.profile__skeleton { flex: 1; display: grid; min-height: 0; padding: .4rem 0 .6rem 2.6rem; }
+.profile__skeleton .skeleton { border-radius: var(--radius); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>

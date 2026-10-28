@@ -13,7 +13,7 @@ Austria. The planner currently has a German interface.
 
 - Get three loop suggestions from your start for a distance and climbing target, inspect each with its profile and surfaces, and keep one as an editable route.
 - Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
-- Drag points or route sections, with undo and redo.
+- Drag points, route sections or intermediate stops in the list, with undo and redo.
 - Inspect distance, ascent, elevation and the surface along the route: paved, likely paved, cobblestones or wooden bridges, unpaved, or unknown.
 - Highlight individual surface sections on the map, and report where the map data is wrong by tapping the stretch on the route; routing uses the correction from then on.
 - Choose the calm local map with shaded relief, or an aerial view with street names, or switch to OpenTopoMap online.
@@ -47,7 +47,8 @@ npm run dev:local
 
 Open **http://127.0.0.1:5173/**. Click the map to place a start and destination;
 further clicks extend the route. Drag the route to choose different roads (on a
-phone, hold it briefly first); the × in a stop's field removes that stop. Ctrl+C stops the planner,
+phone, hold it briefly first); the × in a stop's field empties it, and an
+intermediate stop's trash can removes it. Ctrl+C stops the planner,
 routing engine, search and map services. The launcher is included in `scripts/start-local.sh`.
 
 Without the routing bundle, the frontend and unit tests can still be built
