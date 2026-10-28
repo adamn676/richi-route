@@ -8,7 +8,6 @@
 //! While a request uses a profile, the profile is out of its slot, which is Java's "busy" flag.
 
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -111,9 +110,8 @@ impl ProfileCache {
         let key_values: Vec<(String, String)> =
             rc.key_values.entries().into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         let mut way = WayContext::new(rc.memoryclass as usize * 512);
-        if let Some(rules) = &self.local_rules {
-            let rules = rules.clone();
-            way.set_local_access(Rc::new(move |tags| rules.may_access(tags)));
+        if let Some(rules) = self.local_rules.clone() {
+            way.set_local_access(Box::new(move |tags| rules.may_access(tags)));
         }
         let mut node = NodeContext::new();
         read_meta_data(&lookup_file, Some(&mut way), Some(&mut node))

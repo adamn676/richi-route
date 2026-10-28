@@ -56,7 +56,8 @@ Subsequent app commands use the new runtime.
 The repository launcher, `scripts/start-local.sh`, verifies the original bundle,
 builds the routing engine (`cargo build --release`, quick after the first time)
 and prepares the shared local rules and their profile. It then starts the engine
-with six routing threads and the rules (`richi-engine serve`, BRouter's server
+with twelve routing threads (the planner's six requests at a time, with room to run a request's sections
+side by side) and the rules (`richi-engine serve`, BRouter's server
 protocol), bound to `127.0.0.1:17777`. Photon runs on GraalVM Community 25.4.4.1.1
 at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
 `127.0.0.1:5173`. It checks readiness before opening

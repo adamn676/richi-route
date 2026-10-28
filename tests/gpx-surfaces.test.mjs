@@ -134,6 +134,6 @@ test('likely paved carries over to a track and counts as its own group', () => {
   const spans = matchGpxSurfaces(track, portion, candidate(coordinates, [{ fromIndex: 0, toIndex: 100, surface: 'likelyPaved' }]));
   assert.deepEqual(spans, [{ fromIndex: 0, toIndex: 100, surface: 'likelyPaved' }]);
   const inspection = inspectGpxSurfaces(track, [spans]);
-  assert.deepEqual(inspection.totals.map(t => [t.surface, t.label]), [['likelyPaved', 'Vermutlich befestigt']]);
+  assert.deepEqual(inspection.totals.map(t => t.surface), ['likelyPaved']);
   assert.ok(Math.abs(inspection.estimatedMeters - track.distanceMeters) < 1e-6);
 });

@@ -30,9 +30,9 @@ done
 mkdir -p "$out"
 [ -d "$classes/pristine" ] && [ "$classes/router/RouteReference.class" -nt "$engine/parity/java/router/RouteReference.java" ] ||
   "$engine/parity/build-reference.sh"
-classpath="$classes/pristine:$jar:$classes/router"
-[ -n "${RICHIROUTE_RULES:-}" ] &&
-  classpath="${RICHIROUTE_RULES_JAR:-$app/experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar}:$jar:$classes/router"
+base="$classes/pristine"
+[ -n "${RICHIROUTE_RULES:-}" ] && base="${RICHIROUTE_RULES_JAR:-$app/experiments/routing/.local/brouter-local-rules/brouter-local-rules.jar}"
+classpath="$base:$jar:$classes/router"
 cd "$engine"
 export PATH="$app/.cache/runtime/rust/bin:$PATH" CARGO_HOME="${CARGO_HOME:-$app/.cache/cargo}"
 release="${CARGO_TARGET_DIR:-$engine/target}/release"

@@ -47,7 +47,7 @@
         <template v-if="reference.surfaces && reference.surfaceInspection">
           <p class="text-body-small text-medium-emphasis">{{ formatKm(reference.surfaceInspection.estimatedMeters) }} von {{ formatKm(track.distanceMeters) }} km mit zugeordnetem Belag.</p>
           <ul aria-label="Beläge des GPX-Tracks">
-            <li v-for="item in reference.surfaceInspection.totals" :key="item.surface"><span><i class="swatch" :style="{ backgroundColor: item.color }" />{{ item.label }}</span><span>{{ formatKm(item.meters) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
+            <li v-for="item in reference.surfaceInspection.totals" :key="item.surface"><span><i class="swatch" :style="{ backgroundColor: routeStyle[item.surface] }" />{{ surfaceLabels[item.surface] }}</span><span>{{ formatKm(item.meters) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
           </ul>
         </template>
       </div>
@@ -70,6 +70,8 @@ import { elevationColors, gradientBands, unknownGpxColor } from '../../domain/gp
 import GpxElevationProfile from './GpxElevationProfile.vue';
 import { formatKm, formatMeters } from '@/utils/format';
 import { surfaceLegend } from '../../domain/gpx-surfaces';
+import { surfaceLabels } from '../../domain/route-surfaces';
+import { routeStyle } from '../../config/mapStyle';
 
 const emit = defineEmits<{ 'open-route': [] }>();
 const reference = useGpxReferenceStore();

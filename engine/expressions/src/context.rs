@@ -3,11 +3,10 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::hash::{BuildHasherDefault, Hasher};
 use std::path::Path;
 use std::rc::Rc;
 
-use brouter_util::{BitCoderContext, BitWriter, Description, crc};
+use brouter_util::{BitCoderContext, BitWriter, Description, FxBuildHasher, crc};
 
 use crate::error::{ExpressionError, Failure};
 use crate::expression::{self, Env, EvalError, Expr, ExprId, Parser};
@@ -153,7 +152,7 @@ struct ResultMemo {
     by_address: Box<[Option<AddressedEntry>]>,
 }
 
-type VariablesByDescription = HashMap<Description, Rc<[f32]>, BuildHasherDefault<FxHasher>>;
+type VariablesByDescription = HashMap<Description, Rc<[f32]>, FxBuildHasher>;
 
 struct AddressedEntry {
     inverse_direction: bool,
@@ -192,33 +191,6 @@ impl ResultMemo {
             self.by_address.fill_with(|| None);
         }
         map.insert(ab.into(), vars.into());
-    }
-}
-
-/// A fast hash for short byte strings (descriptions are a few bytes).
-#[derive(Default)]
-pub(crate) struct FxHasher(u64);
-
-impl Hasher for FxHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        for chunk in bytes.chunks(8) {
-            let mut word = [0u8; 8];
-            word[..chunk.len()].copy_from_slice(chunk);
-            self.write_u64(u64::from_le_bytes(word));
-        }
-    }
-
-    fn write_u64(&mut self, v: u64) {
-        self.0 = (self.0.rotate_left(5) ^ v).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
-    }
-
-    fn write_usize(&mut self, v: usize) {
-        self.write_u64(v as u64);
-    }
-
-    fn finish(&self) -> u64 {
-        // the table picks buckets by the low bits, which the multiplication fills from low bits only
-        self.0.rotate_left(26)
     }
 }
 

@@ -11,13 +11,12 @@ export interface SurfaceSection {
   toIndex: number;
   fromMeters: number;
   toMeters: number;
-  label: string;
   surface: Surface;
 }
 
-// From paved to unknown, as the map's colours.
-const surfaceRank: Record<Surface, number> = { paved: 0, likelyPaved: 1, rough: 2, unpaved: 3, unknown: 4 };
-export const bySurface = (a: { surface: Surface }, b: { surface: Surface }) => surfaceRank[a.surface] - surfaceRank[b.surface];
+// From paved to unknown, the order of the labels above.
+export const surfaces = Object.keys(surfaceLabels) as Surface[];
+export const bySurface = (a: { surface: Surface }, b: { surface: Surface }) => surfaces.indexOf(a.surface) - surfaces.indexOf(b.surface);
 
 export function inspectSurfaces(points: RoutePoint[], legs: Record<string, RouteLeg>) {
   const placed = points.filter(isPlaced);
@@ -43,8 +42,7 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
       }
       sections.push({
         id: `${leg.id}:${fromIndex}:${toIndex}`, legId: leg.id, fromIndex, toIndex,
-        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex],
-        label: surfaceLabels[surface], surface,
+        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface,
       });
     }
     let cursor = 0;
@@ -57,11 +55,10 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     offset += distances.at(-1)!;
   }
 
-  const totals = new Map<Surface, { label: string; surface: Surface; meters: number; count: number }>();
+  const totals = new Map<Surface, { surface: Surface; meters: number }>();
   for (const section of sections) {
-    const total = totals.get(section.surface) ?? { label: section.label, surface: section.surface, meters: 0, count: 0 };
+    const total = totals.get(section.surface) ?? { surface: section.surface, meters: 0 };
     total.meters += section.toMeters - section.fromMeters;
-    total.count++;
     totals.set(section.surface, total);
   }
   return { sections, distanceMeters: offset, totals: [...totals.values()].sort(bySurface) };

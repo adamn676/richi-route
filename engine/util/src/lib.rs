@@ -7,6 +7,7 @@ pub mod cheap_ruler;
 #[rustfmt::skip]
 mod cheap_ruler_table;
 mod crc32;
+mod fx_hash;
 pub mod jmath;
 mod long_map;
 mod sorted_heap;
@@ -16,6 +17,7 @@ pub use byte_array_cache::ByteArrayCache;
 pub use byte_data::{ByteDataReader, ByteDataWriter};
 pub use cheap_ruler::CheapAngleMeter;
 pub use crc32::crc;
+pub use fx_hash::{FxBuildHasher, FxHasher};
 pub use long_map::CompactLongMap;
 pub use sorted_heap::SortedHeap;
 

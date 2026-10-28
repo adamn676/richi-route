@@ -69,7 +69,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 RICHIROUTE_RULES="$rules_dir/rules.tsv" "$engine_dir/target/release/richi-engine" serve \
-  "$bundle_dir/data" "$rules_dir/profiles" 17777 6 127.0.0.1 > "$log_dir/native-routing.log" 2>&1 &
+  "$bundle_dir/data" "$rules_dir/profiles" 17777 12 127.0.0.1 > "$log_dir/native-routing.log" 2>&1 &
 router_pid=$!
 "$node_bin" "$app_dir/scripts/start-search.mjs" > "$log_dir/native-search.log" 2>&1 &
 search_pid=$!

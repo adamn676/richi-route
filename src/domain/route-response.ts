@@ -13,7 +13,7 @@ export function surfaceType(tag: string | undefined): Surface {
 // these types are 95–100 % paved, tracks of grade 2 to 5 95–99 % unpaved. Paths and tracks without a grade stay unknown.
 const likelyPavedWays = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link',
   'unclassified', 'residential', 'service', 'cycleway']);
-export function surfaceByWayType(wayTags: string): Surface {
+function surfaceByWayType(wayTags: string): Surface {
   const highway = /(?:^|\s)highway=([^\s]+)/.exec(wayTags)?.[1] ?? '', grade = /(?:^|\s)tracktype=([^\s]+)/.exec(wayTags)?.[1];
   if (likelyPavedWays.has(highway) || (highway === 'track' && grade === 'grade1')) return 'likelyPaved';
   return highway === 'track' && /^grade[2-5]$/.test(grade ?? '') ? 'unpaved' : 'unknown';

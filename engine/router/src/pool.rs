@@ -38,9 +38,9 @@ impl RouterPool {
         threads: usize,
         local_rules: Option<Arc<LocalRules>>,
     ) -> Self {
-        let profile_dir = profile_dir.into();
-        let pool = Pool(Arc::new(Shared { queue: Mutex::default(), work: Condvar::new(), threads: threads.max(1) }));
-        let threads = (0..threads.max(1))
+        let (profile_dir, threads) = (profile_dir.into(), threads.max(1));
+        let pool = Pool(Arc::new(Shared { queue: Mutex::default(), work: Condvar::new(), threads }));
+        let threads = (0..threads)
             .map(|_| {
                 let (pool, segments, profile_dir, rules) =
                     (pool.clone(), segments.clone(), profile_dir.clone(), local_rules.clone());
@@ -53,9 +53,7 @@ impl RouterPool {
     /// Answers the request (see `Router::answer`) on a free thread and hands the outcome and the time
     /// taken to `reply`, on that thread.
     pub fn submit(&self, query: String, max_running_time: i64, reply: impl FnOnce(Outcome, Duration) + Send + 'static) {
-        let mut queue = self.pool.queue();
-        queue.requests.push_back(Request { query, max_running_time, reply: Box::new(reply) });
-        drop(queue);
+        self.pool.queue().requests.push_back(Request { query, max_running_time, reply: Box::new(reply) });
         self.pool.0.work.notify_one();
     }
 
@@ -124,9 +122,15 @@ impl Pool {
                         router.answer_in(&request.query, request.max_running_time, Some(self))
                     }));
                     let time = start.elapsed();
-                    // the request adds no more searches, whatever its reply does
-                    self.queue().answering -= 1;
-                    self.0.work.notify_all();
+                    // the request adds no more searches, whatever its reply does; the last one of a closed
+                    // pool lets the threads end
+                    let mut queue = self.queue();
+                    queue.answering -= 1;
+                    let ended = queue.closed && queue.answering == 0;
+                    drop(queue);
+                    if ended {
+                        self.0.work.notify_all();
+                    }
                     (request.reply)(outcome, time);
                 }
             }
@@ -155,10 +159,10 @@ impl Pool {
         let helpers = jobs.len().saturating_sub(1).min(self.0.threads - 1);
         let batch = Arc::new(Batch::new(jobs));
         if helpers > 0 {
-            let mut queue = self.queue();
-            queue.batches.extend(std::iter::repeat_n(&batch, helpers).cloned());
-            drop(queue);
-            self.0.work.notify_all();
+            self.queue().batches.extend(std::iter::repeat_n(&batch, helpers).cloned());
+            for _ in 0..helpers {
+                self.0.work.notify_one();
+            }
         }
         let results = batch.finish(&mut local);
         self.queue().batches.retain(|b| !Arc::ptr_eq(b, &batch));

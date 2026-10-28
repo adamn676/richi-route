@@ -1,11 +1,11 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type { Coord, LegGeometry, Surface, SurfaceSpan } from './route-model.ts';
 import type { GpxTrack } from './gpx-track.ts';
-import { bySurface, surfaceLabels } from './route-surfaces.ts';
+import { bySurface, surfaceLabels, surfaces } from './route-surfaces.ts';
 import { routeStyle } from '../config/mapStyle.ts';
 
 export interface GpxPortion { segment: number; from: number; to: number; points: Coord[] }
-export const surfaceLegend = (Object.entries(surfaceLabels) as [Surface, string][]).map(([surface, label]) => ({ color: routeStyle[surface], label }));
+export const surfaceLegend = surfaces.map(surface => ({ color: routeStyle[surface], label: surfaceLabels[surface] }));
 
 // Portions of about 2 km are traced through a point every 100 m. Denser points snap onto sidewalks and side
 // streets and send the trace on detours; a portion that does not match is split and traced again.
@@ -104,7 +104,7 @@ export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate
 
 export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
   const features: Feature<LineString | Point>[] = [];
-  const totals = new Map<Surface, { label: string; surface: Surface; color: string; meters: number }>();
+  const totals = new Map<Surface, { surface: Surface; meters: number }>();
   let estimatedMeters = 0;
   track.geojson.features.forEach((feature, s) => {
     if (feature.geometry.type === 'Point') {
@@ -116,7 +116,7 @@ export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
       if (to <= from) return;
       const surface = span?.surface ?? 'unknown', color = routeStyle[surface];
       const meters = track.distances[s][to] - track.distances[s][from];
-      const total = totals.get(surface) ?? { label: surfaceLabels[surface], surface, color, meters: 0 };
+      const total = totals.get(surface) ?? { surface, meters: 0 };
       total.meters += meters; totals.set(surface, total);
       if (surface !== 'unknown') estimatedMeters += meters;
       const previous = features.at(-1);

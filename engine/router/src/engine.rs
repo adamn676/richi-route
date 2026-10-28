@@ -74,6 +74,16 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
         .unwrap_or_else(|| "internal error".to_string())
 }
 
+/// Beyond this many paths a searcher's arenas are dropped, not kept: a thread would otherwise hold on to
+/// the memory of its biggest search for good (about twice that of a long round trip).
+const KEPT_PATHS: usize = (64 << 20) / std::mem::size_of::<OsmPath>();
+
+/// Beyond this many paths a search stops with BRouter's memory error, as a search past Java's heap
+/// (`-Xmx`) would end: a runaway search fails alone instead of taking the program down. Searches on the
+/// planner's loops stay below half of it; the arena of a runaway one peaks at about 1.3 GB (a doubling
+/// and its copy), so a few at once stay below the heap ceiling.
+const MAX_SEARCH_PATHS: usize = 1 << 22;
+
 /// The search arenas. A worker keeps them between requests: they grow to tens of megabytes, which
 /// would otherwise be allocated and faulted in again for every request. The nodes cache keeps only
 /// its allocations: each request opens its files again.
@@ -153,7 +163,7 @@ impl JobResult {
     /// A job that ended with an internal error (a panic) outside its search, which ends the request.
     pub(crate) fn panicked(panic: &(dyn Any + Send)) -> Self {
         Self {
-            outcome: Err(Abort::Error(panic_message(panic))),
+            outcome: Err(error(panic_message(panic))),
             island_node_pairs: OsmNodePairSet::new(MAXNODES_ISLAND_CHECK as usize),
             air_distance_cost_factor: 0.0,
             last_air_distance_cost_factor: 0.0,
@@ -674,6 +684,9 @@ impl Searcher {
     /// next searcher, with the nodes cache's files and cells dropped.
     fn release(self, profiles: &mut ProfileCache) -> Arenas {
         profiles.release_profile(self.profile, &self.rc);
+        if self.paths.capacity() > KEPT_PATHS {
+            return Arenas::default();
+        }
         let mut nodes_cache = self.nodes_cache;
         if let Some(cache) = &mut nodes_cache {
             cache.forget_files();
@@ -707,7 +720,7 @@ impl Searcher {
         self.direct_segment = 1;
         self.start_time = start_time;
         let outcome = catch_unwind(AssertUnwindSafe(|| self.run(kind)))
-            .unwrap_or_else(|panic| Err(Abort::Error(panic_message(&*panic))));
+            .unwrap_or_else(|panic| Err(error(panic_message(&*panic))));
         JobResult {
             outcome,
             island_node_pairs: self.island_node_pairs.clone(),
@@ -925,9 +938,6 @@ impl Searcher {
             self.nodes_cache.as_mut().expect("cache was reset").nodes_map.cleanup_mode = cleanup_mode;
             self.search(operation_name, start, end, cost_cutting_track, ref_track)
         });
-        if let Some(areas) = &mut self.rc.nogos.local_areas {
-            areas.restore();
-        }
         if let Some(cache) = &mut self.nodes_cache {
             cache.clean(false); // clean only non-virgin caches
         }
@@ -1019,9 +1029,12 @@ impl Searcher {
             // the watchdog never terminates this engine; the clock is read every 256 steps (Java: every
             // step), which delays a timeout by well under a millisecond
             iterations = iterations.wrapping_add(1);
-            if *max_running_time > 0 && iterations.is_multiple_of(256) {
+            if iterations.is_multiple_of(256) {
+                if paths.len() > MAX_SEARCH_PATHS {
+                    return Err(error("memory limit reached"));
+                }
                 let timeout = *max_running_time;
-                if start_time.elapsed().as_millis() as i64 > timeout {
+                if timeout > 0 && start_time.elapsed().as_millis() as i64 > timeout {
                     return Err(error(format!("{operation_name} timeout after {} seconds", timeout / 1000)));
                 }
             }

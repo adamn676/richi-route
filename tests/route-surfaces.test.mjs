@@ -27,7 +27,7 @@ test('surface totals cover the entire out-and-back geometry including unknown ta
   const expected = leg.coordinates.slice(1).reduce((sum, coord, i) => sum + distanceMeters(leg.coordinates[i], coord), 0);
   assert.ok(Math.abs(result.distanceMeters - expected) < 1e-8);
   assert.ok(Math.abs(result.totals.reduce((sum, t) => sum + t.meters, 0) - expected) < 1e-8);
-  assert.equal(result.totals.find(t => t.surface === 'unpaved').label, 'Unbefestigt');
+  assert.deepEqual(result.totals.map(t => t.surface), ['unpaved', 'unknown']);
   assert.equal(result.sections.at(-1).toIndex, leg.coordinates.length - 1);
   assert.equal(result.sections.at(-1).surface, 'unknown');
   assert.equal(result.sections[1].fromMeters, result.sections[0].toMeters);
@@ -40,7 +40,7 @@ test('neighbouring stretches of one group form one section, whatever their mater
     { fromIndex: 2, toIndex: 3, surface: 'rough' },
   ];
   const result = inspectSurfaces(points, legs);
-  assert.deepEqual(result.sections.map(s => [s.label, s.fromIndex, s.toIndex]), [['Unbekannt', 0, 2], ['Kopfsteinpflaster/Holzbrücke', 2, 3]]);
+  assert.deepEqual(result.sections.map(s => [s.surface, s.fromIndex, s.toIndex]), [['unknown', 0, 2], ['rough', 2, 3]]);
   const unknown = distanceMeters(leg.coordinates[0], leg.coordinates[1]) + distanceMeters(leg.coordinates[1], leg.coordinates[2]);
   assert.ok(Math.abs(result.totals.find(t => t.surface === 'unknown').meters - unknown) < 1e-8);
 });
@@ -74,9 +74,11 @@ test('drafts preserve precise surface tags and reject overlapping or malformed s
   const old = JSON.parse(serializeDraft(points, legs));
   old.legs['stop-a:stop-b'].surfaces = [
     { fromIndex: 0, toIndex: 1, surface: 'asphalt' }, { fromIndex: 1, toIndex: 2, surface: 'rough', surfaceTag: 'paving_stones' },
-    { fromIndex: 2, toIndex: 3, surface: 'likelyAsphalt' },
+    { fromIndex: 2, toIndex: 3, surface: 'likelyPaved', surfaceTag: 'unknown' },
   ];
   assert.deepEqual(parseDraft(JSON.stringify(old)).legs['stop-a:stop-b'].surfaces.map(s => s.surface), ['paved', 'paved', 'likelyPaved']);
+  old.legs['stop-a:stop-b'].surfaces = [{ fromIndex: 0, toIndex: 1, surface: 'likelyAsphalt' }];
+  assert.deepEqual(parseDraft(JSON.stringify(old)).legs['stop-a:stop-b'].surfaces.map(s => s.surface), ['likelyPaved']);
   for (const mutate of [
     spans => spans.push({ fromIndex: 0, toIndex: 2, surface: 'asphalt' }),
     spans => { spans[0].surfaceTag = {}; },

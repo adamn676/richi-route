@@ -1,7 +1,7 @@
 <template>
   <section v-if="totals.length" class="surfaces" aria-labelledby="surfaces-title">
     <h3 id="surfaces-title" class="text-label-large text-medium-emphasis">Untergrund</h3>
-    <!-- The whole route in one bar; a chosen material stands out in it. -->
+    <!-- The whole route in one bar; a chosen surface stands out in it. -->
     <div class="surfaces__bar" aria-hidden="true">
       <i v-for="total in totals" :key="total.surface" :class="{ 'surfaces__part--faded': selected && selected !== total.surface }"
         :style="{ flexGrow: total.meters, background: routeStyle[total.surface] }" />
@@ -10,12 +10,12 @@
       <v-list-item v-for="total in totals" :key="total.surface" tag="button" type="button" role="button" :aria-pressed="selected === total.surface"
         :active="selected === total.surface" color="primary" rounded="lg" @click="selectSurface(total.surface)">
         <template #prepend><i class="surfaces__dot" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
-        <span>{{ total.label }}</span>
+        <span>{{ surfaceLabels[total.surface] }}</span>
         <template #append><span class="surfaces__amount"><strong>{{ lengthLabel(total.meters) }}</strong><span>{{ share(total.meters) }}</span></span></template>
       </v-list-item>
     </v-list>
     <template v-if="selected">
-      <h4>{{ selectedLabel }} · {{ matching.length }} {{ matching.length === 1 ? 'Abschnitt' : 'Abschnitte' }}</h4>
+      <h4>{{ surfaceLabels[selected] }} · {{ matching.length }} {{ matching.length === 1 ? 'Abschnitt' : 'Abschnitte' }}</h4>
       <v-list class="surfaces__sections">
         <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
           :aria-pressed="isFocused(section)" :active="isFocused(section)" color="primary" rounded="lg" @click="focus(section)">
@@ -34,7 +34,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { routeStyle } from '@/config/mapStyle';
-import { inspectSurfaces, type SurfaceSection } from '@/domain/route-surfaces';
+import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
 import { formatKm } from '@/utils/format';
 import { useRouteStore } from '@/stores/route.store';
@@ -45,7 +45,6 @@ const totals = computed(() => inspection.value?.totals ?? []);
 const selected = ref<Surface | null>(null);
 const visibleCount = ref(10);
 const matching = computed(() => inspection.value?.sections.filter(section => section.surface === selected.value) ?? []);
-const selectedLabel = computed(() => totals.value.find(total => total.surface === selected.value)?.label);
 
 function share(meters: number) {
   const percent = meters / inspection.value!.distanceMeters * 100;

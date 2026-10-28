@@ -27,7 +27,7 @@ pub enum Answer {
 pub struct Router {
     segments: Arc<SegmentStore>,
     profiles: ProfileCache,
-    arenas: Option<Arenas>,
+    arenas: Arenas,
 }
 
 impl Router {
@@ -46,7 +46,7 @@ impl Router {
         local_rules: Option<Arc<LocalRules>>,
     ) -> Self {
         // BRouter shares 2 × threads profile slots among its worker threads; a router keeps 2
-        Self { segments, profiles: ProfileCache::new(profile_dir, 2, local_rules), arenas: Some(Arenas::default()) }
+        Self { segments, profiles: ProfileCache::new(profile_dir, 2, local_rules), arenas: Arenas::default() }
     }
 
     /// `RouteReference.answer`: the server's memory class (128), the profile named by `profile`, the
@@ -73,7 +73,7 @@ impl Router {
         params.remove("profile");
         let engine_mode = params.get("engineMode").map_or(Ok(0), java::parse_int)?;
         set_params(&mut rc, &mut wplist, &mut params)?;
-        let arenas = self.arenas.take().unwrap_or_default();
+        let arenas = std::mem::take(&mut self.arenas);
         let mut engine =
             RoutingEngine::with_arenas(&self.segments, wplist, rc, engine_mode, &mut self.profiles, arenas)?;
         engine.set_pool(pool);
@@ -84,7 +84,7 @@ impl Router {
         };
         // Java releases the profile only when doRun gets to doRouting; that only changes what the
         // cache holds, not results
-        self.arenas = Some(engine.finish(&mut self.profiles));
+        self.arenas = engine.finish(&mut self.profiles);
         run?;
         Ok(answer)
     }
@@ -92,9 +92,6 @@ impl Router {
     /// Runs another request's search with this router's profile cache and arenas (see
     /// `engine::run_pool_job`).
     pub(crate) fn run_job(&mut self, job: Job) -> Result<JobResult, Box<Job>> {
-        let mut arenas = self.arenas.take().unwrap_or_default();
-        let result = engine::run_pool_job(job, &self.segments, &mut self.profiles, &mut arenas);
-        self.arenas = Some(arenas);
-        result
+        engine::run_pool_job(job, &self.segments, &mut self.profiles, &mut self.arenas)
     }
 }

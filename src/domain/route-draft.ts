@@ -65,16 +65,18 @@ function leg(value: unknown): RouteLeg {
   const surfaces: SurfaceSpan[] = l.surfaces.map(value => {
     const s = object(value);
     const fromIndex = number(s.fromIndex), toIndex = number(s.toIndex);
-    const group = Object.hasOwn(savedSurfaces, text(s.surface)) ? savedSurfaces[text(s.surface)] : undefined;
+    const saved = text(s.surface), group = Object.hasOwn(savedSurfaces, saved) ? savedSurfaces[saved] : undefined;
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || fromIndex < previousEnd ||
         toIndex <= fromIndex || toIndex >= coordinates.length || !group) throw new Error('Invalid draft surface');
     previousEnd = toIndex;
     if (s.surfaceTag !== undefined && (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200)) {
       throw new Error('Invalid draft surface tag');
     }
-    // A recorded material is grouped as today; without one, an older draft's group is translated
-    return s.surfaceTag !== undefined ? { fromIndex, toIndex, surface: surfaceType(s.surfaceTag as string), surfaceTag: s.surfaceTag as string }
-      : { fromIndex, toIndex, surface: group };
+    // A material the groups know is grouped as today; otherwise the saved group stands (translated, for older drafts),
+    // which also keeps what the way's type told when the span was routed
+    if (s.surfaceTag === undefined) return { fromIndex, toIndex, surface: group };
+    const tagged = surfaceType(s.surfaceTag as string);
+    return { fromIndex, toIndex, surface: tagged === 'unknown' ? group : tagged, surfaceTag: s.surfaceTag as string };
   });
   const result: RouteLeg = {
     id: text(l.id), fromId: text(l.fromId), toId: text(l.toId),

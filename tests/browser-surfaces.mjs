@@ -116,7 +116,7 @@ try {
   assert.equal(legacyRequests, 0, 'Drafts without recorded materials load without rerouting');
   assert.deepEqual(errors, []);
   await writeFile(new URL('result.json', directory), JSON.stringify({ route: 'Graz-Virgen', requests, legacyRequests,
-    desktop: '1440x1000', mobile: '390x844', errors, checks: ['exact material highlight', 'unknown sections', 'pagination',
+    desktop: '1440x1000', mobile: '390x844', errors, checks: ['exact section highlight', 'likely paved sections', 'pagination',
       'draft unchanged by inspection', 'undo and redo', 'saved reload', 'legacy draft'] }, null, 2));
   console.log('Surface inspection passed on desktop and mobile, including saved and legacy drafts; three routing requests total.');
 } finally {

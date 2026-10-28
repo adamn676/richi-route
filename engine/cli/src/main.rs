@@ -13,13 +13,14 @@
 //! per connection, `GET /brouter?<query>`. 200 with the GeoJSON, 400 with the routing error or the
 //! rules version mismatch, 500 for any other exception, 404 without `lonlats` and `profile`. Unlike
 //! Java it queues requests beyond `<threads>` instead of stopping the oldest, never compresses, and
-//! answers GeoJSON whatever `format` asks for (`trackname` names only the file).
-//! It listens on 127.0.0.1 unless `<bindAddress>` says otherwise.
+//! answers GeoJSON whatever `format` asks for (`trackname` names only the file). It listens on
+//! 127.0.0.1 unless `<bindAddress>` says otherwise, and sends no `Access-Control-Allow-Origin`: the
+//! planner reaches it through its own server, so other web pages cannot read its answers.
 //!
 //! The local rules come from the prepared rule file named by `RICHIROUTE_RULES` (Java:
-//! `-Drichiroute.rules`); `serve` needs them, `lines` without them routes as BRouter does. Like the
-//! Java reference's `-Xmx`, the heap has a ceiling (`HEAP_CEILING`): a search that runs away ends the
-//! program, not the machine.
+//! `-Drichiroute.rules`); `serve` needs them, `lines` without them routes as BRouter does. A search
+//! that runs away ends with BRouter's memory error at its own budget; behind that, the heap has a
+//! ceiling (`HEAP_CEILING`), so that a fault elsewhere ends the program, not the machine.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::io::{BufRead, BufReader, Write};
@@ -36,8 +37,8 @@ use brouter_router::{
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 const MAX_RUNNING_TIME_MS: i64 = 60_000;
 
-/// About four times what the planner's loop suggestions take with 6 threads.
-const HEAP_CEILING: usize = 4 << 30;
+/// About five times what the planner's loop suggestions take with 12 threads.
+const HEAP_CEILING: usize = 8 << 30;
 
 /// The system allocator, refusing allocations beyond `HEAP_CEILING`.
 struct Ceiling;
@@ -119,12 +120,7 @@ fn main() {
         let address = args.get(6).map_or("127.0.0.1", String::as_str);
         let listener = TcpListener::bind((address, port)).unwrap_or_else(|e| fail(&format!("{address}:{port}: {e}")));
         let segments = Arc::new(SegmentStore::new(&args[2], SegmentStore::DEFAULT_CELL_CACHE_BYTES));
-        let pool = Arc::new(RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules)));
-        for stream in listener.incoming().flatten() {
-            let pool = pool.clone();
-            std::thread::spawn(move || respond(stream, &pool));
-        }
-        unreachable!("the listener accepts connections forever");
+        serve(&listener, RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules)));
     }
 
     let threads = number(4, 1, 1, "threads");
@@ -161,6 +157,15 @@ fn fail(message: &str) -> ! {
     std::process::exit(2);
 }
 
+fn serve(listener: &TcpListener, pool: RouterPool) -> ! {
+    let pool = Arc::new(pool);
+    for stream in listener.incoming().flatten() {
+        let pool = pool.clone();
+        std::thread::spawn(move || respond(stream, &pool));
+    }
+    unreachable!("the listener accepts connections forever");
+}
+
 /// `RouteServer.run` for one connection.
 fn respond(stream: TcpStream, pool: &RouterPool) {
     // the request line, then the headers up to the first empty line; a client that stops sending ends
@@ -175,10 +180,7 @@ fn respond(stream: TcpStream, pool: &RouterPool) {
     let file_name = match get_url_params(&format!("/brouter?{query}")) {
         Ok(params) if params.contains_key("lonlats") && params.contains_key("profile") => file_name(&params),
         Ok(_) => return send(stream, "404 Not Found", ""),
-        Err(exception) => {
-            eprintln!("RouteServer got exception (will continue): {exception}");
-            return send(stream, "500 Internal Server Error", "");
-        }
+        Err(exception) => return internal_error(stream, exception),
     };
     let (sender, receiver) = mpsc::channel();
     pool.submit(query, MAX_RUNNING_TIME_MS, move |outcome, _| sender.send(outcome).unwrap_or_default());
@@ -198,25 +200,25 @@ fn respond(stream: TcpStream, pool: &RouterPool) {
         Ok(Err(exception)) if exception.class == VERSION_MISMATCH => {
             send(stream, "400 Bad Request", &format!("{}\n", exception.message.unwrap_or_default()));
         }
-        failure => {
-            let reason = match failure {
-                Ok(Err(exception)) => exception.to_string(),
-                Err(panic) => panic_message(&*panic),
-                Ok(Ok(_)) => unreachable!("answers are sent above"),
-            };
-            eprintln!("RouteServer got exception (will continue): {reason}");
-            send(stream, "500 Internal Server Error", "");
-        }
+        Ok(Err(exception)) => internal_error(stream, exception),
+        Err(panic) => internal_error(stream, panic_message(&*panic)),
     }
 }
 
+/// `RouteServer`'s answer to any other exception.
+fn internal_error(stream: TcpStream, reason: impl std::fmt::Display) {
+    eprintln!("RouteServer got exception (will continue): {reason}");
+    send(stream, "500 Internal Server Error", "");
+}
+
 /// `ServerHandler.getFileName`: `<trackname or "brouter">.<format>` (the body is GeoJSON whatever
-/// `format` asks for).
+/// `format` asks for). Unlike Java, `format` is filtered too: it must not end the header line.
 fn file_name(params: &UrlParams) -> Option<String> {
-    let track =
-        |name: &str| name.chars().filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c)).collect::<String>();
-    let format = params.get("format")?;
-    Some(format!("{}.{format}", params.get("trackname").map_or_else(|| "brouter".into(), track)))
+    let only = |name: &str, extra: &str| {
+        name.chars().filter(|c| c.is_ascii_alphanumeric() || extra.contains(*c)).collect::<String>()
+    };
+    let format = only(params.get("format")?, "");
+    Some(format!("{}.{format}", params.get("trackname").map_or_else(|| "brouter".into(), |name| only(name, " ._-"))))
 }
 
 fn send(stream: TcpStream, status: &str, text: &str) {
@@ -225,10 +227,8 @@ fn send(stream: TcpStream, status: &str, text: &str) {
 
 /// `writeHttpHeader` with the extra `headers`, then the body; the connection closes with the stream.
 fn send_body(mut stream: TcpStream, status: &str, mime_type: &str, headers: &str, body: &str) {
-    let head = format!(
-        "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: {mime_type}; charset=utf-8\r\n{headers}\
-         Access-Control-Allow-Origin: *\r\n\r\n"
-    );
+    let head =
+        format!("HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: {mime_type}; charset=utf-8\r\n{headers}\r\n");
     // a client that went away needs no answer
     let _ = stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(body.as_bytes()));
 }

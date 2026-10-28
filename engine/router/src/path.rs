@@ -7,11 +7,12 @@
 //! the link-holder handle stored in the graph.
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext};
-use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos, TurnRestriction};
+use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos};
 use brouter_util::cheap_ruler;
 
 use crate::java::{max_f32, min_f32, min_f64};
 use crate::libm;
+use crate::local_rules;
 use crate::message_data::MessageData;
 use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
 use crate::routing_context::RoutingContext;
@@ -272,10 +273,11 @@ impl OsmPath {
         self.message = detail_mode.then(Box::default);
 
         let is_reverse = map.link(link).is_reverse(source);
+        let tags_reverse = rc.inverse_direction ^ is_reverse;
 
         // evaluate the way tags
         let Profile { way, node } = &mut *env.profile;
-        way.evaluate(rc.inverse_direction ^ is_reverse, description)?;
+        way.evaluate(tags_reverse, description)?;
 
         // calculate the costfactor inputs (`wayCostfactor`: a local passage may open a closed link)
         let costfactor = match &rc.local_rules {
@@ -283,7 +285,7 @@ impl OsmPath {
                 let (from, to) =
                     if rc.inverse_direction { (target_node, source_node) } else { (source_node, target_node) };
                 rules.passage_costfactor(Pos::new(from.ilon, from.ilat), Pos::new(to.ilon, to.ilat), || {
-                    way.key_value_description(rc.inverse_direction ^ is_reverse, description)
+                    way.key_value_description(tags_reverse, description)
                 })
             }
             _ => way.costfactor(),
@@ -362,21 +364,16 @@ impl OsmPath {
                 } else {
                     (Pos::new(lon0, lat0), Pos::new(lon2, lat2))
                 };
-                let forbidden = match &rc.local_rules {
-                    Some(rules) => {
-                        let via = Pos::new(source_node.ilon, source_node.ilat);
-                        rules.is_turn_forbidden(via, restrictions, from, to, bike_or_foot, rc.car_mode)
-                    }
-                    None => TurnRestriction::is_turn_forbidden(
-                        restrictions,
-                        from.ilon,
-                        from.ilat,
-                        to.ilon,
-                        to.ilat,
-                        bike_or_foot,
-                        rc.car_mode,
-                    ),
-                };
+                let via = Pos::new(source_node.ilon, source_node.ilat);
+                let forbidden = local_rules::is_turn_forbidden(
+                    rc.local_rules.as_deref(),
+                    via,
+                    restrictions,
+                    from,
+                    to,
+                    bike_or_foot,
+                    rc.car_mode,
+                );
                 if forbidden {
                     self.cost = -1;
                     return Ok(());

@@ -80,15 +80,13 @@ pub mod java;
 mod lru_map;
 
 use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
-use std::rc::Rc;
 
 use brouter_codec::TagValueValidator;
-use brouter_util::{ByteArrayUnifier, Description};
+use brouter_util::{ByteArrayUnifier, Description, FxBuildHasher};
 
-use context::{ContextKind, FxHasher};
+use context::ContextKind;
 pub use context::{ExpressionContext, MetaData};
 pub use error::ExpressionError;
 use error::Failure;
@@ -100,11 +98,11 @@ pub struct WayContext {
     deferred_error: Option<ExpressionError>,
     local_access: Option<LocalAccess>,
     /// Its answers by description: the tags of a description never change.
-    local_access_memo: HashMap<Box<[u8]>, bool, BuildHasherDefault<FxHasher>>,
+    local_access_memo: HashMap<Box<[u8]>, bool, FxBuildHasher>,
 }
 
 /// The local rules' `mayAccess(tags)` (see `WayContext::set_local_access`).
-pub type LocalAccess = Rc<dyn Fn(&str) -> bool>;
+pub type LocalAccess = Box<dyn Fn(&str) -> bool>;
 
 /// The node context (`BExpressionContextNode`). Shared context methods come through `Deref`.
 pub struct NodeContext {
@@ -174,14 +172,7 @@ impl WayContext {
                 min_cost_factor = reverse_cost_factor;
             }
         }
-        let var = |name: &str| self.variable_value(name, 0.0);
-        let local_access = || {
-            var("richiroute_local_rules") == 1.0
-                && var("validForBikes") != 0.0
-                && var("validForCars") == 0.0
-                && var("validForFoot") == 0.0
-        };
-        if min_cost_factor == 9999.0 && self.local_access.is_some() && local_access() && self.may_access(description) {
+        if min_cost_factor == 9999.0 && self.may_access(description) {
             return Ok(2);
         }
         Ok(if min_cost_factor < 9999.0 {
@@ -193,12 +184,20 @@ impl WayContext {
         })
     }
 
-    /// `mayAccess(getKeyValueDescription(false, description))`.
+    /// `mayAccess(getKeyValueDescription(false, description))`, for bicycle profiles that opt in.
     fn may_access(&mut self, description: &[u8]) -> bool {
+        let Some(may_access) = &self.local_access else { return false };
+        let var = |name: &str| self.variable_value(name, 0.0);
+        if var("richiroute_local_rules") != 1.0
+            || var("validForBikes") == 0.0
+            || var("validForCars") != 0.0
+            || var("validForFoot") != 0.0
+        {
+            return false;
+        }
         if let Some(&known) = self.local_access_memo.get(description) {
             return known;
         }
-        let may_access = self.local_access.as_ref().expect("checked by the caller");
         let known = may_access(&self.key_value_description(false, description));
         self.local_access_memo.insert(description.into(), known);
         known

@@ -8,14 +8,18 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
+use brouter_expressions::java::parse_float;
 use brouter_mapaccess::{OsmPos, Pos, TurnRestriction};
-use brouter_util::cheap_ruler;
+use brouter_util::{FxBuildHasher, cheap_ruler};
 
-use crate::java::JavaException;
+use crate::java::{self, JavaException};
 use crate::param_collector::UrlParams;
 
 /// `VersionMismatchException`, which the server answers with HTTP 400 and its message.
 pub const VERSION_MISMATCH: &str = "btools.router.LocalRoutingRules$VersionMismatchException";
+
+const REVISION_KEYS: [&str; 4] =
+    ["richiroute_rules_0", "richiroute_rules_1", "richiroute_rules_2", "richiroute_rules_3"];
 
 pub struct LocalRules {
     revision: String,
@@ -23,9 +27,9 @@ pub struct LocalRules {
     revision_parts: [String; 4],
     guards: Vec<Guard>,
     /// The guard of each passage by its directed link endpoints; a later record replaces an earlier one.
-    segments: HashMap<(Pos, Pos), usize>,
+    segments: HashMap<(Pos, Pos), usize, FxBuildHasher>,
     /// (via, from, to) of each turn exception.
-    turns: HashSet<(Pos, Pos, Pos)>,
+    turns: HashSet<(Pos, Pos, Pos), FxBuildHasher>,
     /// In file order: a later area wins.
     areas: Vec<Area>,
     /// The areas' envelopes together: most sections lie outside.
@@ -86,15 +90,15 @@ impl LocalRules {
             revision,
             revision_parts,
             guards: Vec::new(),
-            segments: HashMap::new(),
-            turns: HashSet::new(),
+            segments: HashMap::default(),
+            turns: HashSet::default(),
             areas: Vec::new(),
             bounds: Envelope { min_lon: i32::MAX, max_lon: i32::MIN, min_lat: i32::MAX, max_lat: i32::MIN },
         };
         let mut guard_ids = HashMap::new();
         for line in lines.filter(|l| !l.is_empty()) {
             let row: Vec<&str> = line.split('\t').collect();
-            let int = |i: usize| row[i].parse::<i32>().map_err(|e| format!("{e}: {}", row[i]));
+            let int = |i: usize| java::parse_int(row[i]).map_err(|e| e.to_string());
             let pos = |i: usize| Ok::<_, String>(Pos::new(int(i)?, int(i + 1)?));
             let require = |len: usize| if row.len() == len { Ok(()) } else { Err("Malformed local rule record") };
             match row[0] {
@@ -117,7 +121,7 @@ impl LocalRules {
                 }
                 "avoidance" => {
                     require(6)?;
-                    let number = |i: usize| row[i].parse::<f64>().map_err(|e| format!("{e}: {}", row[i]));
+                    let number = |i: usize| java::parse_double(row[i]).map_err(|e| e.to_string());
                     let area = Area::new(pos(2)?, number(4)?, number(5)?)?;
                     rules.bounds = rules.bounds.union(area.envelope);
                     rules.areas.push(area);
@@ -134,7 +138,7 @@ impl LocalRules {
 
     /// The version check of `configure`: a request that names a revision must name this one.
     pub(crate) fn check_revision(&self, key_values: &UrlParams) -> Result<(), JavaException> {
-        let param = |i: usize| key_values.get(&format!("richiroute_rules_{i}"));
+        let param = |i: usize| key_values.get(REVISION_KEYS[i]);
         if (0..4).any(|i| param(i).is_some()) && (0..4).any(|i| param(i) != Some(&self.revision_parts[i])) {
             return Err(JavaException {
                 class: VERSION_MISMATCH,
@@ -161,58 +165,58 @@ impl LocalRules {
             _ => 9999.0,
         }
     }
+}
 
-    /// `isTurnForbidden` with the restrictions at `via`: a turn exception adds the bicycle exception to
-    /// the matching negative restrictions, on copies.
-    pub(crate) fn is_turn_forbidden<'a>(
-        &self,
-        via: Pos,
-        restrictions: impl IntoIterator<Item = &'a TurnRestriction>,
-        from: Pos,
-        to: Pos,
-        bike_mode: bool,
-        car_mode: bool,
-    ) -> bool {
-        let (from_lon, from_lat, to_lon, to_lat) = (from.ilon, from.ilat, to.ilon, to.ilat);
-        if !self.turns.contains(&(via, from, to)) {
-            return TurnRestriction::is_turn_forbidden(
-                restrictions,
-                from_lon,
-                from_lat,
-                to_lon,
-                to_lat,
-                bike_mode,
-                car_mode,
-            );
-        }
-        let excepted: Vec<TurnRestriction> = restrictions
-            .into_iter()
-            .map(|tr| {
-                let mut tr = tr.clone();
-                if !tr.is_positive
-                    && (tr.from_lon, tr.from_lat, tr.to_lon, tr.to_lat) == (from_lon, from_lat, to_lon, to_lat)
-                {
-                    tr.exceptions |= 1;
-                }
-                tr
-            })
-            .collect();
-        TurnRestriction::is_turn_forbidden(&excepted, from_lon, from_lat, to_lon, to_lat, bike_mode, car_mode)
+/// `LocalRoutingRules.isTurnForbidden`: `TurnRestriction.isTurnForbidden` over the restrictions at `via`,
+/// where a turn exception of the request's `rules` adds the bicycle exception to the matching negative
+/// restrictions, on copies.
+pub(crate) fn is_turn_forbidden<'a>(
+    rules: Option<&LocalRules>,
+    via: Pos,
+    restrictions: impl IntoIterator<Item = &'a TurnRestriction>,
+    from: Pos,
+    to: Pos,
+    bike_mode: bool,
+    car_mode: bool,
+) -> bool {
+    let (from_lon, from_lat, to_lon, to_lat) = (from.ilon, from.ilat, to.ilon, to.ilat);
+    // most junctions have no restriction to lift (Java: `original == null`)
+    let mut restrictions = restrictions.into_iter().peekable();
+    if restrictions.peek().is_none() || !rules.is_some_and(|r| r.turns.contains(&(via, from, to))) {
+        return TurnRestriction::is_turn_forbidden(
+            restrictions,
+            from_lon,
+            from_lat,
+            to_lon,
+            to_lat,
+            bike_mode,
+            car_mode,
+        );
     }
+    let excepted: Vec<TurnRestriction> = restrictions
+        .map(|tr| {
+            let mut tr = tr.clone();
+            if !tr.is_positive
+                && (tr.from_lon, tr.from_lat, tr.to_lon, tr.to_lat) == (from_lon, from_lat, to_lon, to_lat)
+            {
+                tr.exceptions |= 1;
+            }
+            tr
+        })
+        .collect();
+    TurnRestriction::is_turn_forbidden(&excepted, from_lon, from_lat, to_lon, to_lat, bike_mode, car_mode)
 }
 
 impl Guard {
     fn new(required: &str, forbidden: &str, absent: &str, costfactor: &str) -> Result<Self, String> {
-        // Java's split drops trailing empty tokens
         let tokens = |text: &str, end: &str| -> Vec<String> {
-            let mut tokens: Vec<&str> = if text.is_empty() { Vec::new() } else { text.split(';').collect() };
-            while tokens.last() == Some(&"") {
-                tokens.pop();
+            if text.is_empty() {
+                return Vec::new();
             }
-            tokens.iter().map(|t| format!(" {t}{end}")).collect()
+            java::split(text, |c| c == ';').iter().map(|t| format!(" {t}{end}")).collect()
         };
-        let costfactor = costfactor.parse::<f32>().map_err(|e| format!("{e}: {costfactor}"))?;
-        if !costfactor.is_finite() || !(1.0..9999.0).contains(&costfactor) {
+        let costfactor = parse_float(costfactor)?;
+        if !(1.0..9999.0).contains(&costfactor) {
             return Err("Invalid local passage cost".into());
         }
         Ok(Self {
@@ -337,22 +341,19 @@ impl ActiveAreas {
         }
     }
 
-    /// `restore()`.
-    pub(crate) fn restore(&mut self) {
-        self.excluded.clear();
-    }
-
     /// `apply`: the nogo cost of the last circle the section passes through, if any.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn cost(&self, lon1: i32, lat1: i32, lon2: i32, lat2: i32, d: f64, sx: f64, sy: f64) -> Option<f64> {
         if !self.rules.bounds.may_touch(lon1, lat1, lon2, lat2) {
             return None;
         }
-        self.rules.areas.iter().enumerate().rev().find_map(|(i, area)| {
-            (!self.excluded.contains(&i) && area.envelope.may_touch(lon1, lat1, lon2, lat2))
-                .then(|| area.cost(lon1, lat1, lon2, lat2, d, sx, sy))
-                .flatten()
-        })
+        self.rules
+            .areas
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(i, area)| !self.excluded.contains(i) && area.envelope.may_touch(lon1, lat1, lon2, lat2))
+            .find_map(|(_, area)| area.cost(lon1, lat1, lon2, lat2, d, sx, sy))
     }
 }
 
@@ -417,7 +418,7 @@ mod tests {
         (no_turn.from_lon, no_turn.from_lat, no_turn.to_lon, no_turn.to_lat) = (from.ilon, from.ilat, to.ilon, to.ilat);
         // car and mixed modes never get here: `configure` leaves the rules off for them
         let forbidden = |via: Pos, restrictions: &[TurnRestriction], bike: bool| {
-            rules.is_turn_forbidden(via, restrictions, from, to, bike, !bike)
+            is_turn_forbidden(Some(&rules), via, restrictions, from, to, bike, !bike)
         };
         assert!(!forbidden(via, &[no_turn.clone()], true), "configured bicycle turn");
         assert!(forbidden(via, &[no_turn.clone()], false), "the exception is for bicycles");
@@ -466,8 +467,8 @@ mod tests {
         assert_eq!(cost(&areas, 120.0), None, "beside both");
         areas.clean(&[center]);
         assert_eq!(cost(&areas, 0.0), None, "a waypoint in the circles leaves them out");
-        areas.restore();
-        assert!(cost(&areas, 0.0).is_some());
+        areas.clean(&[]);
+        assert!(cost(&areas, 0.0).is_some(), "the next search's waypoints decide afresh");
     }
 
     #[test]
