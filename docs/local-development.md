@@ -395,6 +395,7 @@ The map's tool column at the top right holds the basemap choice (layers icon),
 **Rad-Infos** (bike icon), **Street View** (figure icon) and **Auf Route zoomen**
 (focus icon); hover for their names. Zoom buttons sit at the bottom right; a
 compass joins them once the map is turned or tilted and turns it back north.
+Phones zoom with two fingers and show only the compass there.
 Opening an example, a saved route or a
 GPX track as a route, or starting or completing one by address, also shows the whole
 route (or the first stop alone): nearby the map
@@ -414,15 +415,15 @@ tapped while only the header shows raises the sheet to half the screen. On touch
 screens a finger on the route pans the map; holding it still for a moment picks
 the route up to drag it.
 
-The **Route** tab lists the stops beside their markers; **Zwischenstopp
-hinzufügen** below them adds an empty stop to fill by search or on the map. An
-intermediate stop changes its place among the others by dragging its grip, or
-with the arrow keys on the grip. Its trash can removes it, and the notice at the
-panel's foot brings it back (**Rückgängig**) until the next change. Until the
-saved route has loaded, the list shows its shape instead of the empty start.
-Tooltips appear after the pointer has rested half a second on a control, and at
-once while it moves on to the next one; on touch screens a tap only acts, and a
-long press shows the control's label instead.
+The **Route** tab lists the stops beside their markers; the + below them
+(**Zwischenstopp hinzufügen**) adds an empty stop to fill by search or on the
+map. An intermediate stop changes its place among the others by dragging its
+grip, or with the arrow keys on the grip. Its trash can removes it, and the
+notice at the panel's foot brings it back (**Rückgängig**) until the next
+change. Until the saved route has loaded, the list shows its shape instead of
+the empty start. Tooltips appear after the pointer has rested half a second on a
+control, and at once while it moves on to the next one; on touch screens a tap
+only acts, and a long press shows the control's label instead.
 
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway

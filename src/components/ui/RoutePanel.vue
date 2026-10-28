@@ -55,9 +55,8 @@
               v-tooltip:bottom="'Zwischenstopp entfernen'" @click="removeStop(point.id)"><IconTrash :size="16" aria-hidden="true" /></v-icon-button>
           </li>
         </TransitionGroup>
-        <button v-if="hasEndpoints" type="button" class="planner__add-row" @click="addStop">
-          <span class="planner__add-mark" aria-hidden="true"><IconPlus :size="14" /></span><span>Zwischenstopp hinzufügen</span>
-        </button>
+        <button v-if="hasEndpoints" type="button" class="planner__add" aria-label="Zwischenstopp hinzufügen"
+          v-tooltip:end="'Zwischenstopp hinzufügen'" @click="addStop"><span class="planner__add-mark" aria-hidden="true"><IconPlus :size="14" /></span></button>
       </div>
       <!-- Until the rider has changed a route on the map once, it says how; offered loops take the map's clicks instead. -->
       <p v-if="routeStore.route && !shaped && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
@@ -257,10 +256,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop--lifted::before, .planner__stop--lifted::after { display: none; }
 .planner__stops--settling .planner__stop, .planner__stop-move { transition: transform .26s cubic-bezier(.2, 1.1, .3, 1.15); }
 @media (prefers-reduced-motion: reduce) { .planner__stop, .planner__stops--settling .planner__stop, .planner__stop-move { transition: none; } }
-.planner__add-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; column-gap: var(--space-3);
-  width: calc(100% + 2 * var(--space-2)); min-height: 44px; margin-inline: calc(-1 * var(--space-2)); padding: 0 var(--space-2); border: 0;
-  border-radius: var(--radius); background: none; color: var(--text-muted); font: inherit; font-size: .95rem; text-align: left; cursor: pointer; }
-.planner__add-row:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
+/* The next stop's empty marker in the marker column, inside a round 44 px target. */
+.planner__add { display: grid; place-items: center; width: 44px; height: 44px; margin-left: -10px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--text-muted); cursor: pointer; }
+.planner__add:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
 .planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }
 .planner__notices { display: grid; gap: var(--space-2); padding: var(--space-4) var(--gutter) 0; }
 .planner__stats dt { margin-bottom: var(--space-1); }
