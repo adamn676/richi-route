@@ -1,7 +1,7 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { AttributionControl, Map, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
 import { aerialVectorLayers, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
-import { MAP_LABELS_ANCHOR } from '@/config/map.config';
+import { MAP_BOUNDS, MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 
 const hillshadeKey = 'richiroute.hillshade';
@@ -113,7 +113,8 @@ export function useMap(container: string, creditsContainer: string) {
   });
   onMounted(() => {
     const instance = new Map({
-      container, center: [15.4395, 47.0707], zoom: 13, maxZoom: 21, fadeDuration: 100, attributionControl: false,
+      container, center: [15.4395, 47.0707], zoom: 13, maxZoom: 21, maxBounds: MAP_BOUNDS, renderWorldCopies: false,
+      fadeDuration: 100, attributionControl: false,
       style: {
         version: 8,
         sources: {

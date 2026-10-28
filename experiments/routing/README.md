@@ -6,6 +6,39 @@ record experiments and earlier setups; their commands and package versions do
 not replace the current guide. Raw results under `.local/` are retained locally
 and are not part of the Git checkout.
 
+## Refinement coefficient 1, 28 October 2026
+
+`src/config/routing-search.json` now sends `pass2coefficient=1` instead of `0.7`;
+`pass1coefficient` stays `2`. With `0.7`, two long sections stopped with
+`memory limit reached`, the native engine's cap of 4,194,304 search paths:
+Virgen–Mistelbach, which this guide measured on 22 October before the cap
+existed, and Kötschach-Mauthen–Hohenems, whose straight line crosses South Tyrol,
+the Vinschgau and the Engadin. A larger memory class (128 to 1024 MB) changed
+nothing; a stronger first pass (`3` or `4`) did not help either.
+
+The refinement heads more directly for the destination with `1`. Every way in
+the profile costs at least its length (cost factor 1.0 for tertiary roads, with
+non-negative penalties), so the coefficient still respects the route costs. All
+164 parity requests (round trips, A–B routes, every local rule, error cases)
+returned identical geometry and costs on the native engine, 23.8 s → 18.8 s in
+total. Single sections, native engine, one request at a time:
+
+| Section | `0.7` | `1` |
+| --- | --- | --- |
+| Graz–Virgen | 338.8 km, cost 451292, 2.6 s | 338.8 km, cost 451396, 2.2 s |
+| Graz–Mistelbach, 252 km | 251.8 km, 2.2 s | identical, 1.9 s |
+| Virgen–Mistelbach | memory limit, 4.2 s | 523.3 km, 3.3 s |
+| Neusiedl–Styrian shaping point | 182.3 km, 0.9 s | identical, 0.7 s |
+| Styrian shaping point–Kötschach | 263.3 km, 1.5 s | identical, 0.9 s |
+| Kötschach–Hohenems | memory limit, 5.7 s | 407.8 km, 5.0 s |
+
+Graz–Virgen keeps its length and climbing; its cost is 0.02% higher, the only
+difference found. `0.9` gave the same results as `1`, while `0.95` stopped at the
+cap on Kötschach–Hohenems: sections this demanding remain close to the cap, and a
+stop splits them as before. A changed routing policy recalculates saved legs
+when they are opened. A profile change must keep every way at a cost of at least
+1 per metre; the bundle check for the base profile says so.
+
 ## Configurable local routing rules, 23 October 2026
 
 The native editor now uses `richi-local-v1` and the `local-rules-v1` comparison

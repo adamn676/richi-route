@@ -25,7 +25,9 @@ const bundleManifest = JSON.parse(await readFile(path.join(bundle, 'manifest.jso
 const baseProfile = await readFile(path.join(bundle, 'profiles/richi-weidweg-v1.brf'), 'utf8');
 const lookups = await readFile(path.join(bundle, 'profiles/lookups.dat'), 'utf8');
 for (const [file, text] of [['profiles/richi-weidweg-v1.brf', baseProfile], ['profiles/lookups.dat', lookups]]) {
-  if (createHash('sha256').update(text).digest('hex') !== bundleManifest.files[file]) throw new Error(`Base routing asset changed: ${file}. Review the profile/data migration first.`);
+  // The search's refinement (src/config/routing-search.json) finds the cheapest route only while no way costs less than
+  // that coefficient per metre; a changed profile has to keep it so.
+  if (createHash('sha256').update(text).digest('hex') !== bundleManifest.files[file]) throw new Error(`Base routing asset changed: ${file}. Review the profile/data migration first, including that no way costs less per metre than pass2coefficient in src/config/routing-search.json.`);
 }
 validateLookupTags(data, lookups);
 const profile = localRulesProfile(baseProfile, compiled.retainedTags);

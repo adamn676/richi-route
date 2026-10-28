@@ -42,6 +42,7 @@ export function validateRules(data) {
     }
     if (rule.kind === 'passage') {
       if (!['forward', 'both'].includes(rule.direction) || !Array.isArray(rule.segments) || !rule.segments.length) error('segments and direction are required');
+      // At least 1, as every way in the profile: the search's refinement relies on no way costing less than its length.
       if (rule.originalCostfactor !== 9999 || !finite(rule.costfactor) || rule.costfactor < 1 || rule.costfactor >= 9999) error('invalid passage cost');
       if (typeof rule.notice !== 'string' || !rule.notice.trim() || rule.notice.length > 500) error('a passage notice is required');
       if (!object(rule.requiredTags) || !Object.keys(rule.requiredTags).length || !object(rule.forbiddenTags) || !Array.isArray(rule.absentTags)) error('tag guards are required');

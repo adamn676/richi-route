@@ -5,6 +5,7 @@ import {
   airLeg,
   distanceMeters,
   insertBetween,
+  isOutdated,
   isPlaced,
   legId,
   LegScheduler,
@@ -27,7 +28,6 @@ import { routingEngine } from '../services/route.service.ts';
 import { forwardGeocode, reverseGeocode, type Place } from '../services/geocoding.service.ts';
 import { pointOnStreet } from '../services/street-point.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
-import { isRoutingPolicyCurrent } from '../config/routing-policy.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
 import { gpxSections, sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
 import { loopSections } from '../domain/loop-suggestions.ts';
@@ -477,7 +477,7 @@ export const useRouteStore = defineStore('route', {
         ? result.requests
         : Object.values(result.legs)
             .filter((leg) =>
-              (leg.status === 'air' || !isRoutingPolicyCurrent(leg.routingPolicy)) &&
+              (leg.status === 'air' || isOutdated(leg)) &&
               !leg.error &&
               !operations.snaps.has(leg.fromId) &&
               !operations.snaps.has(leg.toId))

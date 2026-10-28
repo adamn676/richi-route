@@ -8,6 +8,7 @@ import {
   reconcileLegs,
 } from '../src/domain/route-model.ts';
 import { getSegments } from '../src/utils/geometry.ts';
+import { routingPolicyVersion } from '../src/config/routing-policy.ts';
 
 const stop = (id, coord, kind = 'via') => ({
   id,
@@ -52,6 +53,7 @@ function routed(request, vertices = 4) {
       request.fromCoord[1] + ((request.toCoord[1] - request.fromCoord[1]) * index) / (vertices - 1),
     ]),
     status: 'routed',
+    routingPolicy: routingPolicyVersion,
   };
 }
 
@@ -74,6 +76,17 @@ test('moving a stop requests only its two adjacent legs and retains the others e
   assert.equal(changed.legs[legId('a', 'b')], existing[legId('a', 'b')]);
   assert.equal(changed.legs[legId('d', 'e')], existing[legId('d', 'e')]);
   assert.equal(changed.legs[legId('b', 'c')].status, 'air');
+});
+
+test('other routing settings recalculate routed legs, never a recorded track or a placeholder', () => {
+  const points = [stop('start', [15.40, 47.05], 'start'), stop('via', [15.41, 47.06]), stop('end', [15.42, 47.07], 'end')];
+  const [first, second] = reconcileLegs(points, {}).requests;
+  const legs = {
+    [first.id]: { ...routed(first), routingPolicy: 'earlier-settings' },
+    [second.id]: { ...routed(second), routingPolicy: 'earlier-settings', recorded: true },
+  };
+  assert.deepEqual(reconcileLegs(points, legs).requests.map(request => request.id), [first.id]);
+  assert.deepEqual(reconcileLegs(points, { ...legs, [first.id]: airLeg(first) }).requests, []);
 });
 
 test('inserting a shaping point splits only its leg; IDs do not depend on geometry vertices', () => {

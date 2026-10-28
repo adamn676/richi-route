@@ -173,6 +173,11 @@ export function sameEndpoints(leg: RouteLeg, request: LegRequest): boolean {
   );
 }
 
+// A leg calculated with other routing settings is calculated again; a recorded track and a straight placeholder are not.
+export function isOutdated(leg: RouteLeg): boolean {
+  return leg.status === 'routed' && !leg.recorded && !isRoutingPolicyCurrent(leg.routingPolicy);
+}
+
 export function reconcileLegs(
   points: RoutePoint[],
   previous: Record<string, RouteLeg>,
@@ -195,7 +200,7 @@ export function reconcileLegs(
     const existing = previous[request.id];
     if (existing && sameEndpoints(existing, request)) {
       legs[request.id] = existing;
-      if (optimize || !isRoutingPolicyCurrent(existing.routingPolicy)) {
+      if (optimize || isOutdated(existing)) {
         requests.push(request);
       }
     } else {

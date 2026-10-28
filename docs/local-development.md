@@ -23,6 +23,15 @@ runtime that can bootstrap installation. Its map files and patched engine are
 checked by content hash. Fresh downloads or a newly built JAR are not
 interchangeable with this reviewed baseline.
 
+The bundle's map data covers 5–20° E and 45–50° N: `E10_N45.rd5` and
+`E15_N45.rd5` from the original snapshot, and `E5_N45.rd5` (BRouter segments of
+28 October 2026, SHA-256 `1ae307c1…88e7a5e7`), added for Vorarlberg and for
+routes whose search crosses 10° E. Routes on the original tiles stay identical
+with it. To add it to another copy of the bundle, place the tile from
+`https://brouter.de/brouter/segments4/E5_N45.rd5` in `data/`, record its
+checksum in `manifest.json` and `SHA256SUMS`, and restart the planner. A later
+download differs from this one, since BRouter rebuilds its segments weekly.
+
 The bundle is not stored in Git, and there is currently no repository command
 to download that exact snapshot. A new clone can install frontend dependencies,
 run unit tests and build both frontends without it; native route calculation
@@ -207,14 +216,17 @@ installation can skip these setup steps. `src/config/thal-preference.json` remai
 the fixed Thal preference for historical comparison presets. The active editor
 uses the shared rule configuration.
 
-The editor sends `profile:pass1coefficient=2` and `profile:pass2coefficient=0.7`
+The editor sends `profile:pass1coefficient=2` and `profile:pass2coefficient=1`
 from `src/config/routing-search.json` to guide the initial search and refinement.
+The refinement finds the cheapest route only while no way costs less than its
+length, which holds for the current profile; a profile change has to keep it.
 The comparison preset `local-rules-v1` uses those settings and the shared rules.
 The historical preset `weidweg-search-v3` retains its earlier profile and Thal
 preference. Presets `weidweg-search-v1` and `weidweg-search-v2`
 retain the earlier refinement-only settings `0.5` and `0.7`. Search parameters
-apply per request; a changed routing policy recalculates cached legs. See the
-[latest initial-route measurements](../experiments/routing/README.md#runtime-and-search-optimization-22-october-2026).
+apply per request; a changed routing policy recalculates cached legs, while
+imported GPX tracks keep their recorded geometry. See the
+[refinement measurements](../experiments/routing/README.md#refinement-coefficient-1-28-october-2026).
 
 When updating an existing installation, stop BRouter before rebuilding the patch
 on Windows so its JAR is not locked. Start it again with `npm run bench:up`.
@@ -293,7 +305,9 @@ preserve the route and profile overlays. Karte uses a calm light palette, so the
 route, cycle paths and points stand out: off-white land, soft greens, white minor
 roads with light outlines, pale main roads and grey motorways, which bicycles may
 not use. These are road classes, not traffic measurements or a guarantee of paved
-surfaces. Labels remain above route geometry.
+surfaces. Country borders are dashed in the place names' dark grey and thicken
+with the zoom, so they stay readable in the overview; regional borders are
+lighter. Labels remain above route geometry.
 Map labels fade over 100 ms. MapLibre allows eight outstanding image requests
 in detailed aerial mode and 32 in the other modes. The shorter queue prevents
 slow regional exports from delaying local labels on HTTP/1.1; the browser's
@@ -395,7 +409,9 @@ The map's tool column at the top right holds the basemap choice (layers icon),
 **Rad-Infos** (bike icon), **Street View** (figure icon) and **Auf Route zoomen**
 (focus icon); hover for their names. Zoom buttons sit at the bottom right; a
 compass joins them once the map is turned or tilted and turns it back north.
-Phones zoom with two fingers and show only the compass there.
+Phones zoom with two fingers and show only the compass there. The map shows no
+more than the local map data's area, Europe: zooming out stops once Europe
+fills the map, and the world never repeats.
 Opening an example, a saved route or a
 GPX track as a route, or starting or completing one by address, also shows the whole
 route (or the first stop alone): nearby the map

@@ -11,3 +11,5 @@ export const SEGMENTS_FORMER_OUTLINE_LAYER = 'segments-former-outline';
 export const SEGMENTS_FORMER_LAYER = 'segments-former';
 export const SEGMENTS_BASE_LAYER = 'segments-base';
 export const LOOP_OUTLINE_LAYER = 'loop-suggestions-outline';
+// The local map's coverage, its Europe extract: the map shows no more than that, so the world never repeats.
+export const MAP_BOUNDS: [[number, number], [number, number]] = [[-25, 34], [45, 72]];

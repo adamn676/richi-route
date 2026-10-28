@@ -21,7 +21,7 @@ test('editor and comparison share the rule revision and search settings; histori
   const comparison = new URL(requestFor('brouter', points, 'local-rules-v1').url).searchParams;
   assert.deepEqual([...requests[1]].sort(), [...comparison].sort());
   assert.equal(requests[0].get('profile:pass1coefficient'), '2');
-  assert.equal(requests[0].get('profile:pass2coefficient'), '0.7');
+  assert.equal(requests[0].get('profile:pass2coefficient'), '1');
   assert.equal(comparison.has('nogos'), false, 'Local avoidance rules are loaded by the engine');
   assert.ok(comparison.has('profile:richiroute_rules_3'), 'The complete revision accompanies each request');
   const baseline = new URL(requestFor('brouter', points, 'weidweg-local-v1').url).searchParams;

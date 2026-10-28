@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { distanceMeters } from '../src/domain/route-model.ts';
+import { routingPolicyVersion } from '../src/config/routing-policy.ts';
 import { inspectStretch, inspectSurfaces } from '../src/domain/route-surfaces.ts';
 import { parseDraft, serializeDraft } from '../src/domain/route-draft.ts';
 import { useRouteStore } from '../src/stores/route.store.ts';
@@ -15,7 +16,7 @@ function route(coords = [[15, 47], [15.001, 47], [15.002, 47], [15, 47]]) {
   const leg = {
     id: 'stop-a:stop-b', fromId: 'stop-a', toId: 'stop-b',
     fromCoord: coords[0], toCoord: coords.at(-1), coordinates: coords,
-    distanceMeters: 999, ascentMeters: 0, elevations: null, status: 'routed',
+    distanceMeters: 999, ascentMeters: 0, elevations: null, status: 'routed', routingPolicy: routingPolicyVersion,
     surfaces: [{ fromIndex: 0, toIndex: 1, surface: 'unpaved', surfaceTag: 'fine_gravel' }],
   };
   return { points, legs: { [leg.id]: leg }, leg };

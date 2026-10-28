@@ -114,6 +114,12 @@ const style = Buffer.from(JSON.stringify({
       'fill-opacity': 1, 'fill-outline-color': '#d4d1ca' } }];
     if (layer.id === 'landuse_park') return [{ ...layer, paint: { ...layer.paint,
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 6, .25, 9, 1] } }];
+    // Borders in the place names' ink, dashed as maps mark them: countries growing with the zoom, so that they read in
+    // the overview; regions lighter and thinner.
+    if (layer.id === 'boundaries_country') return [{ ...layer, layout: { ...layer.layout, 'line-join': 'round' }, paint: { ...layer.paint,
+      'line-color': flavor.country_label, 'line-width': ['interpolate', ['linear'], ['zoom'], 4, .9, 8, 1.3, 12, 1.6], 'line-dasharray': [4, 2] } }];
+    if (layer.id === 'boundaries') return [{ ...layer, paint: { ...layer.paint,
+      'line-color': '#a9aea9', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, .5, 10, .8] } }];
     return [layer];
   }),
 }));
