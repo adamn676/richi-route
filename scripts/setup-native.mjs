@@ -19,7 +19,7 @@ async function digest(file) {
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
 }
-for (const name of ['node', 'java']) {
+for (const name of ['node', 'java', 'rust']) {
   const release = versions[name];
   const target = path.join(directory, name);
   const marker = path.join(target, 'richiroute-runtime.json');
@@ -34,16 +34,27 @@ for (const name of ['node', 'java']) {
   }
   if (await digest(archive) !== release.sha256) throw new Error(`Checksum mismatch: ${archive}`);
   const staging = await mkdtemp(path.join(directory, `${name}-staging-`));
+  const installed = `${staging}-installed`;
   const previous = `${target}-previous`;
   try {
     execFileSync('tar', ['-xf', archive, '--strip-components=1', '-C', staging]);
-    await writeFile(path.join(staging, 'richiroute-runtime.json'), JSON.stringify(release, null, 2) + '\n');
+    let tree = staging;
+    // Rust ships its components with an installer rather than as one ready tree.
+    if (name === 'rust') {
+      execFileSync('sh', [path.join(staging, 'install.sh'), `--prefix=${installed}`, '--disable-ldconfig',
+        '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview,clippy-preview'], { stdio: 'ignore' });
+      tree = installed;
+    }
+    await writeFile(path.join(tree, 'richiroute-runtime.json'), JSON.stringify(release, null, 2) + '\n');
     await rm(previous, { recursive: true, force: true });
     if (await exists(target)) await rename(target, previous);
-    try { await rename(staging, target); }
+    try { await rename(tree, target); }
     catch (error) { if (await exists(previous)) await rename(previous, target); throw error; }
     await rm(previous, { recursive: true, force: true });
-  } finally { await rm(staging, { recursive: true, force: true }); }
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+    await rm(installed, { recursive: true, force: true });
+  }
 }
 const node = path.join(directory, 'node/bin/node');
 const npm = path.join(directory, 'node/lib/node_modules/npm/bin/npm-cli.js');
@@ -51,4 +62,4 @@ const env = { ...process.env, PATH: `${path.dirname(node)}${path.delimiter}${pro
 if (execFileSync(node, [npm, '--version'], { encoding: 'utf8', env }).trim() !== versions.npm) {
   execFileSync(node, [npm, 'install', '--global', '--prefix', path.join(directory, 'node'), `npm@${versions.npm}`], { stdio: 'inherit', env });
 }
-console.log(`Ready: Node ${versions.node.version}, npm ${versions.npm}, GraalVM Community ${versions.java.version}.`);
+console.log(`Ready: Node ${versions.node.version}, npm ${versions.npm}, GraalVM Community ${versions.java.version}, Rust ${versions.rust.version}.`);

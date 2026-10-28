@@ -1,0 +1,25 @@
+# RichiRoute's routing engine: a Rust port of BRouter 1.7.10 (MIT, see LICENSE-BROUTER).
+# The crates follow BRouter's packages, so each layer can be checked against the Java original.
+[workspace]
+resolver = "3"
+members = ["util", "codec", "expressions", "mapaccess", "router", "cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.99"
+
+[workspace.dependencies]
+brouter-util = { path = "util" }
+brouter-codec = { path = "codec" }
+brouter-expressions = { path = "expressions" }
+brouter-mapaccess = { path = "mapaccess" }
+brouter-router = { path = "router" }
+
+[profile.release]
+debug = "line-tables-only"
+# The router's hot loop calls into util, mapaccess and expressions for every step; cross-crate
+# optimisation makes the engine about 6% faster.
+lto = "fat"
+codegen-units = 1

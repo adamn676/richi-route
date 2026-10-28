@@ -1,0 +1,43 @@
+# Profile-language features the standard profiles leave out. Run with lookups_test.dat.
+---model:btools.router.KinematicModel
+
+---context:global
+
+assign validForBikes = true
+assign check_start_way = 1
+assign injected_global = 5
+assign twice 1
+assign twice = add twice 1
+assign quarter = divide 10 4
+assign flags = add xor true false multiply 2 xor 1 1
+assign folded = if and true not false then 3 else 4
+
+---context:way   # noStartWay | ways the router must | not start on | noStartWay=highway,motorway;highway,trunk;surface,gravel
+
+# reads its own value from the previous evaluation
+assign stale = add stale 1
+
+assign speed = v:maxspeed
+assign height = v:maxheight
+assign never = switch false v:no_such_key 1
+
+assign isprimary = highway=primary|secondary
+assign nospeed = maxspeed=
+assign mixed = or ( and isprimary not nospeed ) xor highway=residential surface=asphalt
+
+assign costfactor =
+  if ( greater speed 100 ) then 10000
+  else if ( lesser speed 30 ) then add 1.5 divide 100 add 1 speed
+  else if mixed then max speed height
+  else min speed sub height 0.25
+
+assign turncost = multiply stale 10
+assign priorityclassifier = if equal height 2.5 then 9 else 3
+assign initialcost = max 0 multiply injected_global quarter
+assign uphillcostfactor = min speed height
+assign classifiermask = add flags twice
+
+---context:node
+
+assign initialcost = add way:costfactor multiply way:priorityclassifier way:turncost
+assign extra = highway=traffic_signals

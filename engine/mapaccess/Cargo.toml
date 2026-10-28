@@ -1,0 +1,18 @@
+[package]
+name = "brouter-mapaccess"
+description = "Port of btools.mapaccess"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brouter-util.workspace = true
+brouter-codec.workspace = true
+
+[dev-dependencies]
+brouter-expressions.workspace = true
+
+[[example]]
+name = "data_parity"
+test = true

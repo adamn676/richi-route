@@ -1,0 +1,5 @@
+---context:global
+assign check_start_way = 1
+# a | b | c | noStartWay=highway
+---context:way
+assign costfactor = 1

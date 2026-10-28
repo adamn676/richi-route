@@ -1,0 +1,6 @@
+---context:global
+assign a = 1
+---context:way
+assign costfactor = 1
+---context:node
+assign initialcost = way:nosuchvar

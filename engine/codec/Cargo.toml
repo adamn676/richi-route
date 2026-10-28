@@ -1,0 +1,10 @@
+[package]
+name = "brouter-codec"
+description = "Port of btools.codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brouter-util.workspace = true

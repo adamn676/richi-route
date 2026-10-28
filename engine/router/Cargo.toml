@@ -1,0 +1,13 @@
+[package]
+name = "brouter-router"
+description = "Port of btools.router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brouter-util.workspace = true
+brouter-codec.workspace = true
+brouter-expressions.workspace = true
+brouter-mapaccess.workspace = true

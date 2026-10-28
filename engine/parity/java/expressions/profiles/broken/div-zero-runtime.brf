@@ -1,0 +1,6 @@
+---context:global
+assign a = 1
+---context:way
+assign costfactor = divide 1 sub highway=primary highway=primary
+---context:node
+assign initialcost = 0

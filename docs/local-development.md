@@ -43,8 +43,10 @@ npm run terrain:setup
 npm run dev:local
 ```
 
-`native:setup` downloads checksum-verified Node and GraalVM archives into
-`.cache/runtime/`. It is specific to Linux x64. `.nvmrc` records the Node version
+`native:setup` downloads checksum-verified Node, GraalVM and Rust archives into
+`.cache/runtime/`. It is specific to Linux x64. Rust builds the routing engine
+port in `engine/` (see [its porting notes](../engine/PORTING.md)), which is
+not used by the planner yet. `.nvmrc` records the Node version
 for other development environments. Use an existing Node 22 or newer
 to run the installer. In the prepared workspace, the equivalent bootstrap is
 `../richiroute-ubuntu-benchmark/runtime/node/bin/node scripts/setup-native.mjs`.

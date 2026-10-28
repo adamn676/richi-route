@@ -1,0 +1,6 @@
+---context:global
+assign a = 1
+---context:way
+assign costfactor = highway=nosuchvalue
+---context:node
+assign initialcost = 0

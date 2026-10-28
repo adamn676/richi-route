@@ -1,0 +1,25 @@
+# A small profile for the unit tests.
+---context:global
+
+assign validForBikes = true
+assign pass1coefficient = 1.5
+assign check_start_way = 1
+assign speedlimit = 40
+
+---context:way   # check | for | noStartWay | noStartWay=highway,track
+
+assign isprimary = highway=primary
+assign speed = v:maxspeed
+assign costfactor =
+  switch reversedirection=yes 2.5
+  switch isprimary 1.5
+  switch highway=track 3
+  switch greater speed speedlimit 4
+  switch width= 1 add 1 v:width
+assign turncost = if isprimary then 0 else 90
+assign priorityclassifier = 5
+assign dead = switch false surface=gravel 0
+
+---context:node
+
+assign initialcost = switch highway=traffic_signals add 10 way:priorityclassifier 0

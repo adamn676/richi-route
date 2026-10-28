@@ -1,0 +1,4 @@
+---context:global
+assign a = 1
+---context:way
+assign x:y = 1

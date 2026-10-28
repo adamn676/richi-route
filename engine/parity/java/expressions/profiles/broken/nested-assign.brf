@@ -1,0 +1,4 @@
+---context:global
+assign a = 1
+---context:way
+assign costfactor = add 1 assign b 2

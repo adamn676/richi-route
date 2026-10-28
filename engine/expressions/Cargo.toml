@@ -1,0 +1,11 @@
+[package]
+name = "brouter-expressions"
+description = "Port of btools.expressions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brouter-util.workspace = true
+brouter-codec.workspace = true

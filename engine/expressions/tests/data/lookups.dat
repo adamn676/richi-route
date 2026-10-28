@@ -1,0 +1,20 @@
+---lookupversion:11
+---minorversion:2
+
+---context:way
+
+highway;0000000300 residential
+highway;0000000200 primary
+highway;0000000100 track road yes
+surface;0000000100 asphalt
+surface;0000000050 gravel
+maxspeed;0000000100 30
+maxspeed;0000000090 50
+maxspeed;0000000080 none
+width;0000000001 *
+
+---context:node
+
+highway;0000000100 traffic_signals
+highway;0000000010 unknown
+barrier;0000000050 gate
