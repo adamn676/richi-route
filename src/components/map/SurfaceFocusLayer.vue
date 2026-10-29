@@ -8,10 +8,10 @@ import type { Coord, Surface } from '@/domain/route-model';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { routeStyle } from '@/config/mapStyle';
 
-// The chosen section in its surface colour, lifted above the route on a white outline and a soft shadow, with its ends
-// marked; the rest of the route fades meanwhile, as the other parts of the surface bar do. A section chosen in the list
-// is framed; a stretch being reported stays where it was tapped.
-const props = defineProps<{ map: Map; focus: { coordinates: Coord[]; surface: Surface } | null; frame: boolean }>();
+// The chosen section in its surface colour (or a stretch of the profile in its own), lifted above the route on a white
+// outline and a soft shadow, with its ends marked; the rest of the route fades meanwhile, as the other parts of the
+// surface bar do. A section chosen in the list is framed; a stretch being reported stays where it was tapped.
+const props = defineProps<{ map: Map; focus: { coordinates: Coord[]; surface?: Surface; color?: string } | null; frame: boolean }>();
 const source = 'surface-focus-source';
 const layers = ['surface-focus-shadow', 'surface-focus-outline', 'surface-focus-line', 'surface-focus-ends'];
 let ready = false;
@@ -19,7 +19,7 @@ function update() {
   if (!ready) return;
   const focus = props.focus, ends = focus ? [...new Set([focus.coordinates[0], focus.coordinates.at(-1)!])] : [];
   const data: FeatureCollection<LineString | Point> = { type: 'FeatureCollection', features: [
-    ...focus && focus.coordinates.length > 1 ? [{ type: 'Feature' as const, properties: { color: routeStyle[focus.surface] },
+    ...focus && focus.coordinates.length > 1 ? [{ type: 'Feature' as const, properties: { color: focus.color ?? routeStyle[focus.surface!] },
       geometry: { type: 'LineString' as const, coordinates: focus.coordinates } }] : [],
     ...ends.map(coordinates => ({ type: 'Feature' as const, properties: {}, geometry: { type: 'Point' as const, coordinates } })),
   ] };

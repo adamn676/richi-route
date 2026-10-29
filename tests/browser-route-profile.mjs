@@ -95,6 +95,24 @@ try {
   await chart.press('Escape'); await waitDot(0);
   assert.equal(await page.locator('input[type=range]').count(), 0);
 
+  // Dragging across the profile zooms into a stretch, with its figures and its course framed on the map; Escape shows all.
+  const plot = await chart.boundingBox();
+  await page.mouse.move(plot.x + plot.width * .2, plot.y + plot.height / 2); await page.mouse.down();
+  await page.mouse.move(plot.x + plot.width * .45, plot.y + plot.height / 2, { steps: 8 }); await page.mouse.up();
+  await page.locator('.elevation-range').waitFor();
+  const zoomed = () => page.evaluate(async () => {
+    const profile = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route-profile');
+    const source = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('surface-focus-source');
+    return { range: profile.range && { ...profile.range }, marked: source ? (await source.getData()).features.length : 0 };
+  });
+  const stretch = await zoomed();
+  assert.ok(stretch.range.to - stretch.range.from > 200 && stretch.range.to - stretch.range.from < 600, JSON.stringify(stretch.range));
+  assert.ok(stretch.marked > 0, 'The stretch is marked on the map');
+  assert.equal((await current()).draft, before.draft, 'Zooming changes nothing in the route');
+  await chart.press('Escape');
+  await page.locator('.elevation-range').waitFor({ state: 'detached' });
+  assert.deepEqual(await zoomed(), { range: null, marked: 0 });
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chart.scrollIntoViewIfNeeded();

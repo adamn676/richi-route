@@ -41,3 +41,4 @@ export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash
 export { default as IconUpload } from '@tabler/icons-vue/dist/esm/icons/IconUpload.mjs';
 export { default as IconWand } from '@tabler/icons-vue/dist/esm/icons/IconWand.mjs';
 export { default as IconX } from '@tabler/icons-vue/dist/esm/icons/IconX.mjs';
+export { default as IconZoomOut } from '@tabler/icons-vue/dist/esm/icons/IconZoomOut.mjs';

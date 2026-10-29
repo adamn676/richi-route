@@ -5,7 +5,10 @@
     <div class="profile__header">
       <strong>Höhenprofil</strong>
       <!-- Distance and climbing stay in view when the phone sheet is folded or the drawer is closed. -->
-      <span class="profile__summary text-medium-emphasis"><template v-if="inspection.track">{{ formatKm(routeStore.distanceMeters, 1, true) }} km<template
+      <!-- A zoomed stretch shows its own figures instead. -->
+      <ElevationRange v-if="inspection.track && inspection.range" :track="inspection.track" :gradients="inspection.gradients" :range="inspection.range"
+        @reset="inspection.range = null" />
+      <span v-else class="profile__summary text-medium-emphasis"><template v-if="inspection.track">{{ formatKm(routeStore.distanceMeters, 1, true) }} km<template
         v-if="routeStore.ascentMeters !== null"> · {{ formatMeters(routeStore.ascentMeters) }} Anstieg</template></template></span>
       <SlopeScale v-if="!collapsed && inspection.track && inspection.colorRuns.length" />
       <v-icon-button v-tooltip:top="toggleLabel" :aria-label="toggleLabel" :aria-expanded="!collapsed" aria-controls="elevation-profile"
@@ -14,8 +17,9 @@
       </v-icon-button>
     </div>
     <template v-if="!collapsed">
-      <ElevationChart v-if="inspection.track" :heading="false" :track="inspection.track" :color-runs="inspection.colorRuns" :focus="inspection.focus"
-        on-route label="Position in der Route" chart-label="Höhenprofil der Route" @inspect="inspection.focusAt" />
+      <ElevationChart v-if="inspection.track" v-model:range="inspection.range" :heading="false" :track="inspection.track" :color-runs="inspection.colorRuns"
+        :gradients="inspection.gradients" :focus="inspection.focus" on-route label="Position in der Route" chart-label="Höhenprofil der Route"
+        @inspect="inspection.focusAt" />
       <div v-else-if="routeStore.route && routeStore.routingPending" class="profile__skeleton" role="status">
         <span class="skeleton" aria-hidden="true" /><span class="sr-only">{{ message }}</span>
       </div>
@@ -25,9 +29,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { IconChevronDown, IconChevronUp } from '@/components/icons';
 import ElevationChart from './ElevationChart.vue';
+import ElevationRange from './ElevationRange.vue';
 import SlopeScale from './SlopeScale.vue';
 import { formatKm, formatMeters } from '@/utils/format';
 import { useRouteProfileStore } from '../../stores/route-profile.store';
@@ -36,6 +41,8 @@ import { useRouteStore } from '../../stores/route.store';
 const inspection = useRouteProfileStore();
 const routeStore = useRouteStore();
 const collapsed = ref(false);
+// A folded profile leaves no stretch marked on the map.
+watch(collapsed, folded => { if (folded) inspection.range = null; });
 const toggleLabel = computed(() => collapsed.value ? 'Höhenprofil anzeigen' : 'Höhenprofil ausblenden');
 const message = computed(() => !routeStore.route ? 'Plane eine Route, um ihr Höhenprofil zu sehen.'
   : routeStore.routingPending ? 'Höhenprofil wird berechnet …'
@@ -48,8 +55,12 @@ const message = computed(() => !routeStore.route ? 'Plane eine Route, um ihr Hö
 .profile__header { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
 .profile__header > strong { font-weight: 600; }
 .profile__summary { margin-right: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* Phones show distance and climbing in the title's place, so they share one line with the scale. */
-@media (max-width: 760px) { .profile__header:has(.profile__summary:not(:empty)) > strong { display: none; } }
+/* Phones show distance and climbing in the title's place, so they share one line with the scale; a zoomed stretch's
+   figures take the scale's place too. */
+@media (max-width: 760px) {
+  .profile__header:has(.profile__summary:not(:empty), .elevation-range) > strong { display: none; }
+  .profile__header:has(.elevation-range) .slope-scale { display: none; }
+}
 .profile > .elevation-chart { flex: 1; min-height: 0; --elevation-chart-height: minmax(0, 1fr); }
 .profile__empty { flex: 1; display: grid; place-items: center; text-align: center; }
 .profile__skeleton { flex: 1; display: grid; min-height: 0; padding: .4rem 0 .6rem 2.6rem; }

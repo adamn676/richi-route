@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildGpxTrack } from '../src/domain/gpx-track.ts';
-import { colorGpxTrack, elevationColors, gpxEndpoints, gpxGradients, gradientBands, gradientColor, gradientRuns, inspectGpxDistance, unknownGpxColor } from '../src/domain/gpx-inspection.ts';
+import { buildGpxTrack, drawProfile } from '../src/domain/gpx-track.ts';
+import { colorGpxTrack, elevationColors, gpxEndpoints, gpxGradients, gradientBands, gradientColor, gradientRuns, inspectGpxDistance, sectionStats,
+  trackCoordinates, unknownGpxColor } from '../src/domain/gpx-inspection.ts';
 
 const segment = (coordinates, elevations) => ({ name: '', coordinates, elevations });
 const build = (...segments) => buildGpxTrack('Inspection', 'test.gpx', segments);
@@ -101,4 +102,29 @@ test('endpoints distinguish open tracks, closed loops and isolated points', () =
   const endpoints = gpxEndpoints(track).features;
   assert.deepEqual(endpoints.map(f => f.properties.icon), ['gpx-start', 'gpx-end', 'gpx-both', 'gpx-both']);
   assert.deepEqual(endpoints.map(f => f.geometry.coordinates), [[15, 47], [16, 47], [17, 47], [19, 47]]);
+});
+
+test('a zoomed stretch is drawn, coloured and measured from its own points', () => {
+  // 2 km flat, 1 km at 6 %, 2 km flat.
+  const coords = Array.from({ length: 501 }, (_, i) => [15 + i / 7600, 47]);
+  const distances = build(segment(coords, coords.map(() => 0))).distances[0];
+  const height = d => 300 + Math.min(Math.max(d - 2000, 0), 1000) * .06;
+  const track = build(segment(coords, distances.map(height)));
+  const gradients = gpxGradients(track), climb = { from: 2000, to: 3000 };
+
+  const profile = drawProfile(track.samples, climb.from, climb.to);
+  assert.ok(Math.abs(profile.minimum - 300) < 1 && Math.abs(profile.maximum - 360) < 1, 'The axis spans the stretch, not the track');
+  const xs = [...profile.path.matchAll(/[ML]([\d.]+),/g)].map(match => Number(match[1]));
+  assert.ok(xs[0] <= 5 && xs.at(-1) >= 295 && xs.slice(1, -1).every(x => x > 5 && x < 295), 'One point beyond each edge reaches it');
+  assert.equal(gradientRuns(track, gradients, climb.from + 100, climb.to - 100).length, 1, 'Only the climb colours the zoomed stretch');
+
+  const stats = sectionStats(track, gradients, climb.from, climb.to);
+  close(stats.distance, 1000);
+  assert.ok(Math.abs(stats.ascent - 60) < 1 && stats.descent === 0);
+  assert.ok(Math.abs(stats.gradient - 6) < .2 && Math.abs(stats.steepest - 6) < .2);
+
+  const course = trackCoordinates(track, gradients, climb.from, climb.to);
+  assert.deepEqual(course[0], inspectGpxDistance(track, gradients, climb.from).coordinate);
+  assert.deepEqual(course.at(-1), inspectGpxDistance(track, gradients, climb.to).coordinate);
+  assert.ok(course.length > 90 && course.every(([lon]) => lon >= course[0][0] && lon <= course.at(-1)[0]));
 });

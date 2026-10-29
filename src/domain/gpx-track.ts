@@ -18,8 +18,61 @@ export function niceStep(rough: number) {
   return magnitude * ([1, 2, 2.5, 5].find(factor => factor * magnitude >= rough) ?? 10);
 }
 
-interface ProfileSample { distance: number; height: number; index: number; run: number }
+export interface ProfileSample { distance: number; height: number; index: number; run: number }
 interface ProfileBucket { first: ProfileSample; last: ProfileSample; min: ProfileSample; max: ProfileSample }
+
+// The number of samples before a distance, or up to and including it.
+function samplesBefore(samples: readonly ProfileSample[], distance: number, including = false): number {
+  let low = 0, high = samples.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (including ? samples[middle].distance <= distance : samples[middle].distance < distance) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+// The profile between two distances, in the chart's units: x from 5 to 295, its lowest point at y 78 and its highest at
+// y 10. The work is bounded by the chart's width, retaining extremes; runs break the path at missing heights. One
+// sample beyond each end lets the line reach the edges, where the chart clips it.
+export function drawProfile(samples: readonly ProfileSample[], from: number, to: number) {
+  const shown = samples.slice(Math.max(0, samplesBefore(samples, from) - 1), samplesBefore(samples, to, true) + 1);
+  if (!shown.length) return null;
+  const span = to - from;
+  let minimum = Infinity, maximum = -Infinity;
+  for (const sample of shown) { minimum = Math.min(minimum, sample.height); maximum = Math.max(maximum, sample.height); }
+  const buckets: (ProfileBucket | undefined)[] = Array(profileColumns);
+  for (const sample of shown) {
+    const index = Math.max(0, profileColumn(sample.distance - from, span));
+    const bucket = buckets[index];
+    if (!bucket) buckets[index] = { first: sample, last: sample, min: sample, max: sample };
+    else {
+      bucket.last = sample;
+      if (sample.height < bucket.min.height) bucket.min = sample;
+      if (sample.height > bucket.max.height) bucket.max = sample;
+    }
+  }
+  const selected = shown.length <= 1200 ? shown : buckets.flatMap(bucket =>
+    !bucket ? [] : [...new Set([bucket.first, bucket.min, bucket.max, bucket.last])].sort((a, b) => a.index - b.index));
+  // The fill closes far below the profile (y 78); the chart clips it at its bottom axis.
+  const fillBase = 1000;
+  let path = '', areaPath = '', previousRun = -1, endX = 0;
+  for (const sample of selected) {
+    const x = 5 + (span > 0 ? (sample.distance - from) / span * 290 : 0);
+    const y = 78 - (sample.height - minimum) / Math.max(1, maximum - minimum) * 68;
+    if (sample.run !== previousRun) {
+      if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},${fillBase} Z `;
+      areaPath += `M${x.toFixed(1)},${fillBase} `;
+    }
+    areaPath += `L${x.toFixed(1)},${y.toFixed(1)} `;
+    path += `${sample.run === previousRun ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
+    if (sample.run !== previousRun) path += 'l0.01,0 ';
+    previousRun = sample.run;
+    endX = x;
+  }
+  if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},${fillBase} Z`;
+  return { minimum, maximum, path, areaPath };
+}
 
 // Connected segments (route legs) continue one another, so the profile joins them instead of breaking at each start.
 export function buildGpxTrack(name: string, fileName: string, segments: GpxSegment[], { connected = false } = {}) {
@@ -70,42 +123,11 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     throw new Error('Die GPX-Höhenwerte sind für eine Auswertung zu groß.');
   }
 
-  // Bound the SVG work by chart width, retaining extrema; runs still break the path at missing heights.
-  const buckets: (ProfileBucket | undefined)[] = Array(profileColumns);
-  for (const sample of samples) {
-    const index = profileColumn(sample.distance, distance);
-    const bucket = buckets[index];
-    if (!bucket) buckets[index] = { first: sample, last: sample, min: sample, max: sample };
-    else {
-      bucket.last = sample;
-      if (sample.height < bucket.min.height) bucket.min = sample;
-      if (sample.height > bucket.max.height) bucket.max = sample;
-    }
-  }
-  const selected = samples.length <= 1200 ? samples : buckets.flatMap(bucket =>
-    !bucket ? [] : [...new Set([bucket.first, bucket.min, bucket.max, bucket.last])].sort((a, b) => a.index - b.index));
-  // The fill closes far below the profile (y 78); the chart clips it at its bottom axis.
-  const fillBase = 1000;
-  let path = '', areaPath = '', previousRun = -1, endX = 0;
-  for (const sample of selected) {
-    const x = 5 + (distance > 0 ? sample.distance / distance * 290 : 0);
-    const y = 78 - (sample.height - minimum) / Math.max(1, maximum - minimum) * 68;
-    if (sample.run !== previousRun) {
-      if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},${fillBase} Z `;
-      areaPath += `M${x.toFixed(1)},${fillBase} `;
-    }
-    areaPath += `L${x.toFixed(1)},${y.toFixed(1)} `;
-    path += `${sample.run === previousRun ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
-    if (sample.run !== previousRun) path += 'l0.01,0 ';
-    previousRun = sample.run;
-    endX = x;
-  }
-  if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},${fillBase} Z`;
   const mapLatitude = (latitude: number) => Math.max(-85.051129, Math.min(85.051129, latitude));
   return {
     name, fileName, segments, distances, pointCount, elevationCount, distanceMeters: distance,
     ascentMeters: elevationCount === pointCount && pointCount > segments.length ? ascent : null,
-    profile: elevationCount ? { minimum, maximum, path, areaPath } : null,
+    samples, profile: elevationCount ? drawProfile(samples, 0, distance) : null,
     bounds: [[west, mapLatitude(south)], [east, mapLatitude(north)]] as [Coord, Coord],
     geojson: { type: 'FeatureCollection', features } as FeatureCollection<LineString | Point>,
   };

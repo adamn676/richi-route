@@ -801,22 +801,28 @@ turn instructions. Physical cycling-computer imports have not been tested.
 
 The planned route and imported GPX use the same interactive chart. The route's
 profile spans the width of the map below it, names the route's distance and
-climbing in its header, and can be hidden with its arrow button; the GPX profile stays in the **GPX** tab. Move the
-pointer or drag a finger across **Höhenprofil** to see distance, elevation and
-estimated gradient beside the cursor, with the corresponding position marked on
-the map. The line and a light tint beneath it are coloured by climb, with the
-bands of the GPX **Steigung** track colours and a compact scale beside the
-title; descents share the colour of flat ground. Both axes use round steps on
-dotted grid lines, with more distance marks on wider screens. A click (or
-Enter) pins the position; the tooltip then links to Google Street View there,
-until Escape, another click or leaving the chart. A right-click on the map, or
-a long press on phones, offers Street View for any point. Without a key these
-links open Google Maps in a new tab; with a Google Maps Embed API key, Street
-View appears in place of the map and closes with ✕ or Escape. Opened on the
-route, it looks in the direction of travel and the elevation profile keeps
-marking that spot (pointing elsewhere on the profile returns to it). Google's
-frame does not report walking or turning inside Street View, so the mark stays
-where Street View was opened:
+climbing in its header, and can be hidden with its arrow button; the GPX profile
+stays in the **GPX** tab. Move the pointer or drag a finger across
+**Höhenprofil** to see distance, elevation and estimated gradient beside the
+cursor, with the corresponding position marked on the map. The line and a light
+tint beneath it are coloured by climb, with the bands of the GPX **Steigung**
+track colours and a compact scale beside the title; descents share the colour of
+flat ground. Both axes use round steps on dotted grid lines, with more distance
+marks on wider screens. A click (or Enter) pins the position; the tooltip then
+links to Google Street View there, until Escape, another click or leaving the
+chart. Dragging across the profile with a mouse, or after a long press on
+phones, zooms into that stretch: the profile shows its own detail, axes and
+colours, the header its length, climbing, mean gradient and steepest climb, and
+the map frames its course while the rest of the route fades. A double click,
+Escape or the zoom-out button shows the whole profile again; so does a changed
+route. The GPX profile zooms the same way. A right-click on the map, or a long
+press on phones, offers Street View for any point. Without a key these links
+open Google Maps in a new tab; with a Google Maps Embed API key, Street View
+appears in place of the map and closes with ✕ or Escape. Opened on the route, it
+looks in the direction of travel and the elevation profile keeps marking that
+spot (pointing elsewhere on the profile returns to it). Google's frame does not
+report walking or turning inside Street View, so the mark stays where Street
+View was opened:
 
 1. In the Google Cloud console, enable the **Maps Embed API** and create an API
    key. Google asks for a billing account; Maps Embed API use is free and

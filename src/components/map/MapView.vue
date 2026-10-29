@@ -4,7 +4,7 @@
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" :former="routeStore.formerRoute" />
       <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
-      <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? focusedSurface" :frame="!surfacePreview" />
+      <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? focusedSurface ?? profileRange" :frame="!surfacePreview" />
       <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected"
         @highlight="index => loopSuggestions.highlighted = index" />
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
@@ -78,6 +78,7 @@ import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import GpxReferenceLayer from '@/components/map/GpxReferenceLayer.vue';
 import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
+import { routeStyle } from '@/config/mapStyle';
 import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
 import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
@@ -95,7 +96,9 @@ const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label
 ];
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
-const { focus: routeProfileFocus } = storeToRefs(useRouteProfileStore());
+const { focus: routeProfileFocus, rangeCoordinates } = storeToRefs(useRouteProfileStore());
+// The stretch the profile zooms into, in the markers' ink.
+const profileRange = computed(() => rangeCoordinates.value && { coordinates: rangeCoordinates.value, color: routeStyle.waiting });
 const routeStore = useRouteStore();
 const { route, legs, waypoints, routingPending, focusedSurface, surfaceReporting, surfacePicking, surfacePreview, surfaceSelection,
   surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);

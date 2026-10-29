@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import type { Coord } from './route-model.ts';
+import { cumulativeAscent, type Coord } from './route-model.ts';
 import { profileColumn, profileColumns, type GpxTrack } from './gpx-track.ts';
 
 export type GpxColorMode = 'plain' | 'elevation' | 'gradient' | 'surface';
@@ -81,14 +81,14 @@ function colorFor(track: GpxTrack, mode: GpxColorMode, value: number | null): st
   return elevationColors[Math.max(0, Math.min(elevationColors.length - 1, bin))];
 }
 
-// Profile colour runs, each from an offset (0–1) along the distance, by the mean gradient per profile column.
+// Profile colour runs, each from an offset (0–1) along the distance shown, by the mean gradient per profile column.
 // Columns without points continue the previous run, so sparse points on straight roads stay coloured.
-export function gradientRuns(track: GpxTrack, gradients: (number | null)[][]) {
+export function gradientRuns(track: GpxTrack, gradients: (number | null)[][], from = 0, to = track.distanceMeters) {
   const sums = new Float64Array(profileColumns), counts = new Uint32Array(profileColumns);
   track.distances.forEach((distances, s) => distances.forEach((distance, i) => {
     const gradient = gradients[s][i];
-    if (gradient === null) return;
-    const column = profileColumn(distance, track.distanceMeters);
+    if (gradient === null || distance < from || distance > to) return;
+    const column = profileColumn(distance - from, to - from);
     sums[column] += gradient;
     counts[column]++;
   }));
@@ -101,6 +101,31 @@ export function gradientRuns(track: GpxTrack, gradients: (number | null)[][]) {
   return runs;
 }
 export type GradientRun = ReturnType<typeof gradientRuns>[number];
+
+// A stretch between two distances: its length, climbing and descent, its mean gradient from end to end and its steepest
+// climb.
+export function sectionStats(track: GpxTrack, gradients: (number | null)[][], from: number, to: number) {
+  const heights: (number | null)[] = [];
+  let steepest: number | null = null;
+  track.distances.forEach((distances, s) => distances.forEach((distance, i) => {
+    if (distance < from || distance > to) return;
+    heights.push(track.segments[s].elevations[i]);
+    const gradient = gradients[s][i];
+    if (gradient !== null && (steepest === null || gradient > steepest)) steepest = gradient;
+  }));
+  const start = inspectGpxDistance(track, gradients, from).elevation, end = inspectGpxDistance(track, gradients, to).elevation;
+  return { distance: to - from, ascent: cumulativeAscent(heights).at(-1) ?? 0, descent: cumulativeAscent([...heights].reverse()).at(-1) ?? 0,
+    gradient: start !== null && end !== null && to > from ? (end - start) / (to - from) * 100 : null, steepest };
+}
+
+// The track between two distances, ending exactly there.
+export function trackCoordinates(track: GpxTrack, gradients: (number | null)[][], from: number, to: number): Coord[] {
+  const inside = track.geojson.features.flatMap((feature, s) => {
+    const coords = feature.geometry.type === 'Point' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+    return track.distances[s].flatMap((distance, i) => distance > from && distance < to ? [coords[i] as Coord] : []);
+  });
+  return [inspectGpxDistance(track, gradients, from).coordinate, ...inside, inspectGpxDistance(track, gradients, to).coordinate];
+}
 
 export function colorGpxTrack(track: GpxTrack, mode: Exclude<GpxColorMode, 'surface'>, gradients: (number | null)[][]): FeatureCollection<LineString | Point> {
   if (mode === 'plain') return track.geojson;
