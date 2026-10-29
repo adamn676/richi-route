@@ -220,7 +220,7 @@ test('a leg landing on a parallel road at an interior point stays an explicit ga
   store.resetRoute([[15.4, 47], [15.5, 47], [15.6, 47]]);
   await settle();
   assert.equal(store.hasAirLines, true);
-  assert.match(store.errorMessage, /anderen Weg/);
+  assert.match(store.errorMessage, /zwischen zwei Straßen/);
   assert.deepEqual(store.waypoints[1].coord, [15.5, 47]);
 });
 

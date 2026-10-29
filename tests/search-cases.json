@@ -448,6 +448,761 @@
       "group": "Über die Grenze",
       "query": "Gornja Radgona",
       "expect": "^(Gornja Radgona|Oberradkersburg)"
+    },
+    {
+      "group": "Ort",
+      "query": "Feldbach",
+      "expect": "^Feldbach, (8330|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Fürstenfeld",
+      "expect": "^Fürstenfeld, (8280|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Leoben",
+      "expect": "^Leoben, (8700|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Bruck an der Mur",
+      "expect": "^Bruck an der Mur, (8600|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Kapfenberg",
+      "expect": "^Kapfenberg, (8605|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Voitsberg",
+      "expect": "^Voitsberg, (8570|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Judenburg",
+      "expect": "^Judenburg, (8750|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Murau",
+      "expect": "^Murau, (8850|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Schladming",
+      "expect": "^Schladming, (8970|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Mariazell",
+      "expect": "^Mariazell, (8630|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Birkfeld",
+      "expect": "^Birkfeld, (8190|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Anger",
+      "expect": "^Anger, (8184|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Fehring",
+      "expect": "^Fehring, (8350|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Mureck",
+      "expect": "^Mureck, (8480|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Stainz",
+      "expect": "^Stainz, (8510|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Eibiswald",
+      "expect": "^Eibiswald, (8552|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Gamlitz",
+      "expect": "^Gamlitz, (8462|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Semriach",
+      "expect": "^Semriach, (8102|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Pöllau",
+      "expect": "^Pöllau, (8225|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Vorau",
+      "expect": "^Vorau, (8250|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Riegersburg",
+      "expect": "^Riegersburg, (8333|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Lieboch",
+      "expect": "^Lieboch, (8501|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Wildon",
+      "expect": "^Wildon, (8410|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Kumberg",
+      "expect": "^Kumberg, (8062|Steiermark)"
+    },
+    {
+      "group": "Dorf",
+      "query": "Mixnitz",
+      "expect": "^Mixnitz, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Rinnegg",
+      "expect": "^Rinnegg, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Andritz",
+      "expect": "^Andritz, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Mariatrost",
+      "expect": "^Mariatrost, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Puntigam",
+      "expect": "^Puntigam, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Stattegg",
+      "expect": "^Stattegg, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Kainbach bei Graz",
+      "expect": "^Kainbach bei Graz, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Tulwitz",
+      "expect": "^Tulwitz, "
+    },
+    {
+      "group": "Dorf",
+      "query": "Arzberg",
+      "expect": "^Arzberg, .*8162"
+    },
+    {
+      "group": "Dorf",
+      "query": "Thal",
+      "expect": "^Thal, "
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Peter-Rosegger-Straße 9 Feldbach",
+      "expect": "^Peter-Rosegger-Straße 9, 8330 Feldbach"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Altessestraße 3 Fürstenfeld",
+      "expect": "^Altessestraße 3, 8280 Fürstenfeld"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Straußgasse 15 Leoben",
+      "expect": "(^|, )Straußgasse 15, 8700 Leoben",
+      "note": "The address, or a shop named at it."
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Burggasse 1 Bruck",
+      "expect": "^Burggasse 1, 8600 Bruck"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Grazer Straße 27 Kapfenberg",
+      "expect": "^Grazer Straße 27, 8605 Kapfenberg"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Schachtweg 12 Voitsberg",
+      "expect": "^Schachtweg 12, 8570 Voitsberg"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Ferdinand-Raimund-Gasse 17 Judenburg",
+      "expect": "^Ferdinand-Raimund-Gasse 17, 8750 Judenburg"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Radmannsdorfgasse 18 Weiz",
+      "expect": "^Radmannsdorfgasse 18, 8160 Weiz"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Flurgasse 11 Gleisdorf",
+      "expect": "^Flurgasse 11, 8200 Gleisdorf"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Flurgasse 15 Hartberg",
+      "expect": "^Flurgasse 15, 8230 Hartberg"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Grazergasse 1 Leibnitz",
+      "expect": "^Grazergasse 1, 8430 Leibnitz"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Hauptplatz 2 Deutschlandsberg",
+      "expect": "^Hauptplatz 2, 8530 Deutschlandsberg"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Anton-Tax-Gasse 40 Köflach",
+      "expect": "^Anton-Tax-Gasse 40, 8580 Köflach"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Hauptplatz 6 Knittelfeld",
+      "expect": "^Hauptplatz 6, 8720 Knittelfeld"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Grazer Straße 25 Mürzzuschlag",
+      "expect": "(^|, )Grazer Straße 25, 8680 Mürzzuschlag",
+      "note": "The address, or a shop named at it."
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Bahnhofstraße 23 Stainz",
+      "expect": "^Bahnhofstraße 23, 8510 Stainz"
+    },
+    {
+      "group": "Adresse Ort",
+      "query": "Berggasse 16 Frohnleiten",
+      "expect": "^Berggasse 16, 8130 Frohnleiten"
+    },
+    {
+      "group": "Adresse",
+      "query": "Veilchenstraße 2",
+      "expect": "^Veilchenstraße 2, 8053 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Theodor-Körner-Straße 150",
+      "expect": "^Theodor-Körner-Straße 150, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Ferdinand-von-Saar-Weg 10",
+      "expect": "^Ferdinand-von-Saar-Weg 10, 8042 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Hohlweg 5",
+      "expect": "^Hohlweg 5, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Triester Straße 224",
+      "expect": "^Triester Straße 224, 8055 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Hafnerriegel 47",
+      "expect": "^Hafnerriegel 47, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Harter Straße 61",
+      "expect": "^Harter Straße 61, 8053 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Fruhmannweg 26",
+      "expect": "^Fruhmannweg 26, 8042 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Joanneumring 3",
+      "expect": "^Joanneumring 3, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Rosenberggasse 19",
+      "expect": "^Rosenberggasse 19, 8010 Graz"
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Lieschen 48",
+      "expect": "^Lieschen 48, 8455 "
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Weng 43 Admont",
+      "expect": "^Weng 43, 8913 "
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Matzelsdorf 36",
+      "expect": "^Matzelsdorf 36, 8411 "
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Gaißeregg 57",
+      "expect": "^Gaißeregg 57, 8551 "
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Vockenberg 86",
+      "expect": "^Vockenberg 86, 8223 "
+    },
+    {
+      "group": "Adresse Dorf",
+      "query": "Graschuh 149",
+      "expect": "^Graschuh 149, 8510 "
+    },
+    {
+      "group": "Straße",
+      "query": "Keplerstraße",
+      "expect": "^Keplerstraße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Conrad-von-Hötzendorf-Straße",
+      "expect": "^Conrad-von-Hötzendorf-Straße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Petersgasse",
+      "expect": "^Petersgasse, 80\\d\\d Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Münzgrabenstraße",
+      "expect": "^Münzgrabenstraße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Plüddemanngasse",
+      "expect": "^Plüddemanngasse, 80\\d\\d Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Ragnitzstraße",
+      "expect": "^Ragnitzstraße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Rennfeld",
+      "expect": "^Rennfeld, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Hochschwab",
+      "expect": "^Hochschwab, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Zirbitzkogel",
+      "expect": "^Zirbitzkogel, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Hochwechsel",
+      "expect": "^Hochwechsel, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Masenberg",
+      "expect": "^Masenberg, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Präbichl",
+      "expect": "^Präbichl"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Seebergsattel",
+      "expect": "^Seeberg"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Pogusch",
+      "expect": "^Pogusch"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Alpl",
+      "expect": "^Alpl"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Obdacher Sattel",
+      "expect": "^Obdacher Sattel"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Soboth",
+      "expect": "^Soboth"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Gleinalm",
+      "expect": "^Gleina(lm|lpe)",
+      "note": "Gleinalpe is the range's map name."
+    },
+    {
+      "group": "Berg & See",
+      "query": "Grüner See",
+      "expect": "^Grüner See"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Grundlsee",
+      "expect": "^Grundlsee"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Leopoldsteiner See",
+      "expect": "^Leopoldsteiner ?[Ss]ee"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Schwarzlsee",
+      "expect": "^Schwarzlsee"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Bruck an der Mur Bahnhof",
+      "expect": "^(Bruck an der Mur|Bahnhof Bruck)"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Leoben Hbf",
+      "expect": "^Leoben Hauptbahnhof"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Graz Ostbahnhof",
+      "expect": "^Graz Ostbahnhof"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Graz Don Bosco",
+      "expect": "^Graz Don Bosco",
+      "note": "A railway stop; the planner hides public_transport objects, so it is missing."
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Feldbach Bahnhof",
+      "expect": "^(Feldbach|Bahnhof Feldbach), .*8330"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Weiz Bahnhof",
+      "expect": "^(Weiz|Bahnhof Weiz|Weiz Bahnhof), .*8160"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Schloss Eggenberg",
+      "expect": "^Schloss Eggenberg, .*Graz"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Basilika Mariatrost",
+      "expect": "^(Basilika|Wallfahrtskirche) Mariatrost"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Kunsthaus Graz",
+      "expect": "^Kunsthaus"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Stift Rein",
+      "expect": "^Stift Rein",
+      "note": "Mapped as a building without a house number, which the planner hides."
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Stift Admont",
+      "expect": "^((Benediktiner)?[Ss]tift(skirche)?|Museum Stift) Admont",
+      "note": "The abbey, its church or its museum."
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Lurgrotte",
+      "expect": "^Lurgrotte"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Bärenschützklamm",
+      "expect": "^Bärenschützklamm"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Therme Loipersdorf",
+      "expect": "^Therme Loipersdorf"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Burg Riegersburg",
+      "expect": "^(Burg |Schloss )?Riegersburg, .*8333",
+      "note": "The castle, not the village of the same name."
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Feldbch",
+      "expect": "^Feldbach, "
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Fürstenfled",
+      "expect": "^Fürstenfeld, "
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Kapfenbreg",
+      "expect": "^Kapfenberg, "
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Juddenburg",
+      "expect": "^Judenburg, "
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Herrengase 5",
+      "expect": "^Herrengasse 5, 8010 Graz"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Schloss Egenberg",
+      "expect": "^Schloss Eggenberg"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Zirbitzkoge",
+      "expect": "^Zirbitzkogel"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Mariazel",
+      "expect": "^Mariazell, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Fürstenf",
+      "expect": "^Fürstenfeld, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Kapfenb",
+      "expect": "^Kapfenberg, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Schloss Eggen",
+      "expect": "^Schloss Eggenberg"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Zirbitz",
+      "expect": "^Zirbitzkogel"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Conrad-von-H",
+      "expect": "^Conrad-von-Hötzendorf-Straße, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Petersg",
+      "expect": "^Petersgasse, 80\\d\\d Graz"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Mürzz",
+      "expect": "^Mürzzuschlag, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Leopoldsteiner",
+      "expect": "^Leopoldsteiner ?[Ss]ee"
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Fuerstenfeld",
+      "expect": "^Fürstenfeld, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Strass in Steiermark",
+      "expect": "^Straß in Steiermark, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Poellau",
+      "expect": "^Pöllau, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Uebelbach",
+      "expect": "^Übelbach, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Goessendorf",
+      "expect": "^Gössendorf, "
+    },
+    {
+      "group": "Postleitzahl",
+      "query": "8330 Feldbach",
+      "expect": "^Feldbach, (8330|Steiermark)"
+    },
+    {
+      "group": "Postleitzahl",
+      "query": "8230 Hartberg",
+      "expect": "^Hartberg, (8230|Steiermark)"
+    },
+    {
+      "group": "Postleitzahl",
+      "query": "8200",
+      "expect": "^(8200, )?Gleisdorf",
+      "note": "The postcode area or its town."
+    },
+    {
+      "group": "Postleitzahl",
+      "query": "Hauptplatz 1 8160",
+      "expect": "^Hauptplatz 1, 8160 Weiz"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Wien Hauptbahnhof",
+      "expect": "^Wien Hauptbahnhof"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Linz",
+      "expect": "^Linz, "
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Innsbruck",
+      "expect": "^Innsbruck, "
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Eisenstadt",
+      "expect": "^Eisenstadt, "
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Sankt Pölten",
+      "expect": "^(Sankt|St\\.) Pölten, ",
+      "note": "The map names it St. Pölten."
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Bad Ischl",
+      "expect": "^Bad Ischl, "
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Ptuj",
+      "expect": "^(Ptuj|Pettau)"
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Murska Sobota",
+      "expect": "^(Murska Sobota|Olsnitz)",
+      "note": "Its German name counts."
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Celje",
+      "expect": "^(Celje|Cilli)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "München",
+      "expect": "^München(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Passau",
+      "expect": "^Passau(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Udine",
+      "expect": "^Udine(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Venedig",
+      "expect": "^(Venedig|Venezia)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Zagreb",
+      "expect": "^(Zagreb|Agram)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Varaždin",
+      "expect": "^(Varaždin|Warasdin)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Szombathely",
+      "expect": "^(Szombathely|Steinamanger)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Bratislava",
+      "expect": "^(Bratislava|Pressburg)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Brünn",
+      "expect": "^(Brünn|Brno)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Bozen",
+      "expect": "^(Bozen|Bolzano)(,|$)"
+    },
+    {
+      "group": "Nachbarländer",
+      "query": "Bled",
+      "expect": "^(Bled|Veldes)(,|$)"
     }
   ],
   "reverse": [
@@ -490,6 +1245,62 @@
         47.28192
       ],
       "expect": "8162 Passail$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.62142,
+        47.216979
+      ],
+      "expect": "^Hauptplatz 1, 8160 Weiz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.967272,
+        47.282071
+      ],
+      "expect": "^Brühlgasse 4, 8230 Hartberg$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.259607,
+        46.894501
+      ],
+      "expect": "^Badgasse 17, 8510 Stainz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.441063,
+        47.067418
+      ],
+      "expect": "^Joanneumring 3, 8010 Graz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.426623,
+        47.091323
+      ],
+      "expect": "^Theodor-Körner-Straße 150, 8010 Graz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.31667,
+        46.654125
+      ],
+      "expect": "8455 Oberhaag$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.838767,
+        47.233743
+      ],
+      "expect": "8223 Stubenberg$"
     }
   ],
   "towns": [
@@ -516,6 +1327,46 @@
         47.03452
       ],
       "expect": "^Hitzendorf$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.897595,
+        46.949184
+      ],
+      "expect": "^Feldbach$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.62142,
+        47.216979
+      ],
+      "expect": "^Weiz$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.967272,
+        47.282071
+      ],
+      "expect": "^Hartberg$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.095548,
+        47.371941
+      ],
+      "expect": "^Leoben$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.259607,
+        46.894501
+      ],
+      "expect": "^Stainz$"
     }
   ]
 }

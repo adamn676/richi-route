@@ -1,0 +1,15 @@
+# RichiRoute's address search: an index built from the official Austrian address register (BEV) and OpenStreetMap,
+# answering the planner as Photon does, without Java and small enough to run offline.
+[package]
+name = "richi-search"
+description = "RichiRoute's offline address search"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.99"
+
+[dependencies]
+osmpbf = "0.3"
+
+[profile.release]
+debug = "line-tables-only"

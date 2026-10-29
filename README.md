@@ -96,6 +96,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify, TypeScript, Pinia, MapLibre GL JS |
 | `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)) |
+| `search/` | The offline address search in Rust, built from the Austrian address register and OpenStreetMap; it answers as Photon does and is not yet used by the planner |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
 | `scripts/` | Setup and the local launcher (`start-local.sh`) |
 | `tests/` | Unit and browser tests |
