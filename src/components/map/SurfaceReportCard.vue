@@ -1,5 +1,5 @@
 <template>
-  <section class="surface-report" aria-label="Belag melden">
+  <section class="surface-report" aria-label="Untergrund korrigieren">
     <header>
       <strong>{{ formatLength(selection.meters) }}</strong>
       <v-icon-button variant="text" size="x-small" aria-label="Auswahl aufheben" @click="store.surfacePick = null">

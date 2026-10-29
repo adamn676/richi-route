@@ -53,7 +53,7 @@ try {
   assert.ok(after.matched > after.distance * .99);
   assert.equal(after.geometry, before.geometry); assert.equal(after.draft, before.draft);
   assert.ok(peak <= 4, 'The lookup leaves routing slots free for editing');
-  await page.getByRole('list', { name: 'Beläge des GPX-Tracks', exact: true }).waitFor();
+  await page.getByRole('list', { name: 'Untergrund des GPX-Tracks', exact: true }).waitFor();
   const count = requests;
   await trackColor(page, 'plain');
   await trackColor(page, 'surface');
@@ -68,20 +68,20 @@ try {
   mode = 'fail'; await upload('Unavailable');
   await trackColor(page, 'surface'); await complete();
   assert.match((await state()).error, /nicht erreichbar/);
-  mode = 'success'; await page.getByRole('button', { name: 'Beläge ermitteln', exact: true }).click(); await complete();
+  mode = 'success'; await page.getByRole('button', { name: 'Untergrund ermitteln', exact: true }).click(); await complete();
   assert.ok((await state()).matched > 0);
 
   mode = 'hold'; await upload('Cancel');
   await trackColor(page, 'surface');
-  await page.waitForFunction(() => document.querySelector('.gpx__surfaces')?.textContent.includes('Beläge werden geprüft'));
+  await page.waitForFunction(() => document.querySelector('.gpx__surfaces')?.textContent.includes('Untergrund wird geprüft'));
   while (!release) await new Promise(resolve => setTimeout(resolve, 10));
-  await page.getByRole('button', { name: 'Belagprüfung abbrechen', exact: true }).click();
+  await page.getByRole('button', { name: 'Prüfung abbrechen', exact: true }).click();
   assert.equal((await state()).loading, false);
   release(); release = undefined;
   await page.waitForTimeout(50);
   assert.equal((await state()).surfaces, null);
 
-  await page.getByRole('button', { name: 'Beläge ermitteln', exact: true }).click();
+  await page.getByRole('button', { name: 'Untergrund ermitteln', exact: true }).click();
   while (!release) await new Promise(resolve => setTimeout(resolve, 10));
   await upload('Replacement');
   release(); release = undefined;
@@ -91,7 +91,7 @@ try {
   assert.equal(await trackColorValue(page), 'plain');
   mode = 'success'; await trackColor(page, 'surface'); await complete();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('list', { name: 'Beläge des GPX-Tracks', exact: true }).scrollIntoViewIfNeeded();
+  await page.getByRole('list', { name: 'Untergrund des GPX-Tracks', exact: true }).scrollIntoViewIfNeeded();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.getByRole('button', { name: 'Track entfernen', exact: true }).click();
   assert.equal((await state()).surfaces, null);

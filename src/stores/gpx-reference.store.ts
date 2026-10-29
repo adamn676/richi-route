@@ -43,7 +43,7 @@ export const useGpxReferenceStore = defineStore('gpx-reference', () => {
       surfaces.value = result.surfaces;
       surfaceError.value = result.error;
     } catch (cause) {
-      if (surfaceController === current && !current.signal.aborted) surfaceError.value = cause instanceof Error ? cause.message : 'Beläge konnten nicht ermittelt werden.';
+      if (surfaceController === current && !current.signal.aborted) surfaceError.value = cause instanceof Error ? cause.message : 'Der Untergrund konnte nicht ermittelt werden.';
     } finally {
       if (surfaceController === current) { surfaceController = undefined; surfaceLoading.value = false; }
     }

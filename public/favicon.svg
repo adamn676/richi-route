@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <style>.wheel { fill: none; stroke: #1c2421; stroke-width: 17 } @media (prefers-color-scheme: dark) { .wheel { stroke: #fff } }</style>
+  <g transform="translate(128 128) scale(1.1) translate(-133 -151)">
+    <mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="300"><rect width="300" height="300" fill="#fff"/><circle cx="84" cy="212" r="48"/><circle cx="182" cy="212" r="48"/></mask>
+    <path d="M84 212V62h54a42 42 0 0 1 0 84h-22l66 66" fill="none" stroke="#0b7d58" stroke-width="29" stroke-linecap="round" stroke-linejoin="round" mask="url(#gaps)"/>
+    <circle class="wheel" cx="84" cy="212" r="34"/>
+    <circle class="wheel" cx="182" cy="212" r="34"/>
+  </g>
+</svg>

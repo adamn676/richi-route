@@ -274,6 +274,10 @@ export const useRouteStore = defineStore('route', {
       return { leg: pick.leg, fromIndex, toIndex, meters: pathMeters(pick.leg.coordinates.slice(fromIndex, toIndex + 1)),
         ...inspectStretch(pick.leg, fromIndex, toIndex) };
     },
+    // Only planned legs have their roads' surfaces; recorded tracks lie beside them. Reports are saved by the planner's
+    // development server (scripts/surface-corrections.ts), which a built planner lacks.
+    surfacesReportable: (state): boolean => Boolean(import.meta.env?.DEV) &&
+      Object.values(state.legs).some(leg => leg.status === 'routed' && !leg.recorded),
     distanceMeters: (state): number => Object.values(state.legs).reduce((sum, leg) => sum + leg.distanceMeters, 0),
     ascentMeters: (state): number | null => {
       const legs = Object.values(state.legs);

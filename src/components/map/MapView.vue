@@ -11,7 +11,7 @@
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
         <span v-if="surfaceEstimate" class="map-view__progress" role="status">
-          Beläge werden ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
+          Untergrund wird ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
           {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte wählen' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
         <SurfaceReportCard v-if="surfaceSelection" />
@@ -38,12 +38,8 @@
         </MapMenu>
         <CyclingOverlays :map="map" />
         <v-map-button v-tooltip:start="'Street View: Punkt auf der Karte wählen'" :active="streetView.picking"
-          :aria-pressed="streetView.picking" aria-label="Street View" @click="pickStreetView(!streetView.picking)">
+          :aria-pressed="streetView.picking" aria-label="Street View" @click="streetView.picking = !streetView.picking">
           <IconMan :size="20" aria-hidden="true" />
-        </v-map-button>
-        <v-map-button v-if="reportable" v-tooltip:start="'Belag melden'" :active="surfaceReporting" :aria-pressed="surfaceReporting"
-          aria-label="Belag melden" @click="reportSurfaces(!surfaceReporting)">
-          <IconBrush :size="20" aria-hidden="true" />
         </v-map-button>
         <v-map-button v-if="route" v-tooltip:start="'Auf Route zoomen'" aria-label="Auf Route zoomen" @click="fitRoute">
           <IconFocus2 :size="20" aria-hidden="true" />
@@ -64,7 +60,7 @@ import { LngLatBounds } from 'maplibre-gl';
 import { fitAndSettle } from '@/utils/map-fit';
 import { formatLength } from '@/utils/format';
 import { pathMeters } from '@/domain/route-model';
-import { IconBrush, IconFocus2, IconMan, IconStack2 } from '@/components/icons';
+import { IconFocus2, IconMan, IconStack2 } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
 import { useStreetViewMap } from '@/composables/useStreetViewMap';
@@ -100,8 +96,8 @@ const { focus: routeProfileFocus, rangeCoordinates } = storeToRefs(useRouteProfi
 // The stretch the profile zooms into, in the markers' ink.
 const profileRange = computed(() => rangeCoordinates.value && { coordinates: rangeCoordinates.value, color: routeStyle.waiting });
 const routeStore = useRouteStore();
-const { route, legs, waypoints, routingPending, focusedSurface, surfaceReporting, surfacePicking, surfacePreview, surfaceSelection,
-  surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);
+const { route, waypoints, routingPending, focusedSurface, surfaceReporting, surfacesReportable, surfacePicking, surfacePreview,
+  surfaceSelection, surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);
 const partLength = computed(() => formatLength(pathMeters(surfacePreview.value?.coordinates ?? [])));
 const loopSuggestions = useLoopSuggestionsStore();
 const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
@@ -115,23 +111,14 @@ useRouteDragging({ map });
 useMapInteractions(map);
 useStreetViewMap(map);
 const streetView = useStreetViewStore();
-// Street View and reporting a surface both take clicks on the map; one ends the other.
-function pickStreetView(on: boolean) {
-  streetView.picking = on;
-  if (on) routeStore.setSurfaceReporting(false);
-}
-function reportSurfaces(on: boolean) {
-  routeStore.setSurfaceReporting(on);
-  if (on) streetView.picking = false;
-}
-// Only planned legs have their roads' surfaces; recorded tracks lie beside them. Reports are saved by the planner's
-// development server (scripts/surface-corrections.ts), which a built planner lacks.
-const reportable = computed(() => import.meta.env.DEV && Object.values(legs.value).some(leg => leg.status === 'routed' && !leg.recorded));
-watch(reportable, value => { if (!value) reportSurfaces(false); });
+// Street View and reporting a surface both take clicks on the map; starting one ends the other.
+watch(() => streetView.picking, on => { if (on) routeStore.setSurfaceReporting(false); });
+watch(surfaceReporting, on => { if (on) streetView.picking = false; });
+watch(surfacesReportable, value => { if (!value) routeStore.setSurfaceReporting(false); });
 function cancelPicking(event: KeyboardEvent) {
   if (event.key !== 'Escape') return;
-  pickStreetView(false);
-  reportSurfaces(false);
+  streetView.picking = false;
+  routeStore.setSurfaceReporting(false);
 }
 watch(() => streetView.picking || surfaceReporting.value, picking => {
   if (picking) window.addEventListener('keydown', cancelPicking);

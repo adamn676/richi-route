@@ -873,7 +873,7 @@ coordinates and heights, cut into sections of about 5 km (none shorter than
 2.5 km) at shaping points, so an edit re-plans only the section it touches.
 Shaping points show from zoom 11, so long routes are not covered in dots. Gaps
 between track segments are routed. Surfaces are then looked up in the
-background, as with **Belag (geschätzt)**, with progress shown on the map;
+background, as with the GPX colour mode **Untergrund**, with progress shown on the map;
 sections edited meanwhile keep their own. Saving suggests the track's name. Parsing
 runs in a background worker, so large files keep the page responsive, and
 **Abbrechen** stops it. The icons beside the track's name show or hide it, fit the map to it, open
@@ -913,7 +913,7 @@ recordings can still distort them. Colour sections use at least 50 m, increasing
 for very long tracks to limit rendering work, while preserving all vertices.
 Profile movement updates only the map dot, without rebuilding the track.
 
-**Belag (geschätzt)** starts optional surface lookup using the existing local
+The **Untergrund** colour mode starts optional surface lookup using the existing local
 BRouter service. Nothing is requested during import. Lookup traces four
 portions at a time and leaves two routing slots free; queued route edits take
 priority. A 98 km recorded ride takes about 4 s. Switching away from this colour mode,
@@ -997,14 +997,15 @@ records the surface-penalty experiments and why the default remains unchanged.
 
 ### Report a surface
 
-When the map data is wrong, switch on the brush button on the map (**Belag
-melden**) and tap the start and the end of the stretch on the route; until the
-end is tapped, the stretch follows the pointer and the banner shows its length.
+When the map data is wrong, switch on the pencil beside **Untergrund** in the
+route panel (**Untergrund korrigieren**; on phones the sheet folds away) and tap
+the start and the end of the stretch on the route; until the end is tapped, the
+stretch follows the pointer and the banner shows its length.
 A card then offers the surface groups in the route's colours (**Befestigt**,
 **Unbefestigt**, **Kopfsteinpflaster/Holzbrücke**), with the current one ticked,
 and **Laut Karte** where the stretch is already corrected. One tap saves the
 choice and recolours the route; the next stretch can follow at once. **Esc** or
-the button ends reporting. The **Untergrund** list marks corrected sections
+the pencil ends reporting, as does Street View, which also takes clicks on the map. The **Untergrund** list marks corrected sections
 with **korrigiert**.
 
 The planner's server saves each report to

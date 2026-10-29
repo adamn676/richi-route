@@ -4,7 +4,6 @@ export { default as IconAlertTriangle } from '@tabler/icons-vue/dist/esm/icons/I
 export { default as IconArrowBackUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowBackUp.mjs';
 export { default as IconArrowForwardUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowForwardUp.mjs';
 export { default as IconBike } from '@tabler/icons-vue/dist/esm/icons/IconBike.mjs';
-export { default as IconBrush } from '@tabler/icons-vue/dist/esm/icons/IconBrush.mjs';
 export { default as IconCheck } from '@tabler/icons-vue/dist/esm/icons/IconCheck.mjs';
 export { default as IconChevronDown } from '@tabler/icons-vue/dist/esm/icons/IconChevronDown.mjs';
 export { default as IconChevronLeft } from '@tabler/icons-vue/dist/esm/icons/IconChevronLeft.mjs';
@@ -12,9 +11,6 @@ export { default as IconChevronRight } from '@tabler/icons-vue/dist/esm/icons/Ic
 export { default as IconChevronUp } from '@tabler/icons-vue/dist/esm/icons/IconChevronUp.mjs';
 export { default as IconCircle } from '@tabler/icons-vue/dist/esm/icons/IconCircle.mjs';
 export { default as IconCircleDotFilled } from '@tabler/icons-vue/dist/esm/icons/IconCircleDotFilled.mjs';
-export { default as IconCloud } from '@tabler/icons-vue/dist/esm/icons/IconCloud.mjs';
-export { default as IconCloudCheck } from '@tabler/icons-vue/dist/esm/icons/IconCloudCheck.mjs';
-export { default as IconCloudUpload } from '@tabler/icons-vue/dist/esm/icons/IconCloudUpload.mjs';
 export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.mjs';
 export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
 export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/IconDotsVertical.mjs';

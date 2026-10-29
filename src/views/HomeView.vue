@@ -91,8 +91,10 @@ function tapped() {
 }
 
 // A route opened or completed by address shows on the map, so the sheet makes way; a single stop shows above it.
-const { fitRequest, route, shownSection, routeProblem } = storeToRefs(useRouteStore());
+const { fitRequest, route, shownSection, routeProblem, surfaceReporting } = storeToRefs(useRouteStore());
 watch([fitRequest, shownSection], () => { if (phone.value && route.value) sheet.value = 'peek'; });
+// Correcting a surface is done on the route on the map.
+watch(surfaceReporting, on => { if (on && phone.value) sheet.value = 'peek'; });
 // An error of the route is reported in the sheet, which opens for it.
 watch(() => Boolean(routeProblem.value), shown => { if (shown && phone.value && sheet.value === 'peek') sheet.value = 'half'; });
 onMounted(measure);

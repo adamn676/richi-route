@@ -33,7 +33,7 @@ export async function lookupGpxSurfaces(track: GpxTrack, signal: AbortSignal,
       } catch (cause) {
         signal.throwIfAborted();
         // A failed service ends the lookup; portions already checked keep their surfaces.
-        error ||= cause instanceof Error ? cause.message : 'Beläge konnten nicht ermittelt werden.';
+        error ||= cause instanceof Error ? cause.message : 'Der Untergrund konnte nicht ermittelt werden.';
       }
     }
   }

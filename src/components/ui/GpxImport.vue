@@ -39,15 +39,15 @@
         <li v-if="reference.colorMode !== 'surface'"><i class="swatch" :style="{ backgroundColor: unknownGpxColor }" />Unbekannt</li>
       </ul>
       <div v-if="reference.colorMode === 'surface'" class="gpx__surfaces">
-        <p v-if="reference.surfaceLoading" class="text-body-small text-medium-emphasis" role="status">Beläge werden geprüft … {{ reference.surfaceProgress.total ? Math.round(reference.surfaceProgress.completed / reference.surfaceProgress.total * 100) : 0 }} %
-          <v-btn variant="text" size="small" @click="reference.cancelSurfaces()">Belagprüfung abbrechen</v-btn>
+        <p v-if="reference.surfaceLoading" class="text-body-small text-medium-emphasis" role="status">Untergrund wird geprüft … {{ reference.surfaceProgress.total ? Math.round(reference.surfaceProgress.completed / reference.surfaceProgress.total * 100) : 0 }} %
+          <v-btn variant="text" size="small" @click="reference.cancelSurfaces()">Prüfung abbrechen</v-btn>
         </p>
         <v-alert v-if="reference.surfaceError" type="error">{{ reference.surfaceError }} Noch nicht geprüfte Teile bleiben unbekannt.</v-alert>
         <v-btn v-if="!reference.surfaceLoading && (!reference.surfaces || reference.surfaceError)" variant="outlined" size="small" class="gpx__start"
-          @click="reference.loadSurfaces()">Beläge ermitteln</v-btn>
+          @click="reference.loadSurfaces()">Untergrund ermitteln</v-btn>
         <template v-if="reference.surfaces && reference.surfaceInspection">
-          <p class="text-body-small text-medium-emphasis">{{ formatKm(reference.surfaceInspection.estimatedMeters) }} von {{ formatKm(track.distanceMeters) }} km mit zugeordnetem Belag.</p>
-          <ul aria-label="Beläge des GPX-Tracks">
+          <p class="text-body-small text-medium-emphasis">{{ formatKm(reference.surfaceInspection.estimatedMeters) }} von {{ formatKm(track.distanceMeters) }} km mit zugeordnetem Untergrund.</p>
+          <ul aria-label="Untergrund des GPX-Tracks">
             <li v-for="item in reference.surfaceInspection.totals" :key="item.surface"><span><i class="swatch" :style="{ backgroundColor: routeStyle[item.surface] }" />{{ surfaceLabels[item.surface] }}</span><span>{{ formatKm(item.meters) }} km · {{ track.distanceMeters ? Math.round(item.meters / track.distanceMeters * 100) : 0 }} %</span></li>
           </ul>
         </template>
@@ -86,7 +86,7 @@ watch(track, async () => {
 });
 const colorModes = [
   { value: 'plain', label: 'Einfarbig', needsHeights: false }, { value: 'elevation', label: 'Höhe', needsHeights: true },
-  { value: 'gradient', label: 'Steigung', needsHeights: true }, { value: 'surface', label: 'Belag', needsHeights: false },
+  { value: 'gradient', label: 'Steigung', needsHeights: true }, { value: 'surface', label: 'Untergrund', needsHeights: false },
 ] as const;
 const legend = computed(() => {
   if (reference.colorMode === 'surface') return surfaceLegend;
@@ -122,7 +122,8 @@ h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
 .gpx__open { display: grid; gap: .3rem; }
 .gpx__color { width: 100%; }
-.gpx__color .v-btn { flex: 1; }
+/* Each as wide as its label and the rest shared, so the long Untergrund keeps its padding in a narrow sidebar. */
+.gpx__color .v-btn { flex: 1 1 auto; min-width: 0; padding-inline: 8px; }
 .gpx__surfaces { display: grid; gap: .5rem; }
 .gpx__start { justify-self: start; }
 .gpx__surfaces ul { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; font-size: .8rem; }

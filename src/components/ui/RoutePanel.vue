@@ -2,7 +2,7 @@
   <div class="planner">
     <section class="planner__section">
       <div class="planner__heading">
-        <h2 class="text-title-medium">Streckenpunkte</h2>
+        <h2 class="text-title-medium">Wegpunkte</h2>
         <span ref="tools" class="planner__tools">
           <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="act(() => routeStore.undo())"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="act(() => routeStore.redo())"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>

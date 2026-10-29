@@ -1,11 +1,18 @@
 <template>
   <aside ref="sidebar" class="sidebar">
     <header class="sidebar__header">
-      <h1 class="brand"><span class="brand__mark" aria-hidden="true"><IconRoute :size="18" /></span><span>RichiRoute</span></h1>
-      <!-- Errors have their own notice below; otherwise the icon's shape shows the state and the tooltip explains it. -->
-      <span v-if="!routeStore.draftError" class="sidebar__status" role="img" :aria-label="draft.label" v-tooltip:bottom="draft.label">
-        <component :is="draft.icon" :size="18" aria-hidden="true" />
-      </span>
+      <!-- The R as a bicycle frame on two rings, the map's ring markers as wheels; Route in the colour of a paved road. -->
+      <h1 class="brand">
+        <svg class="brand__mark" viewBox="43 49 180 204" aria-hidden="true">
+          <mask id="brand-gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="300" height="300">
+            <rect width="300" height="300" fill="#fff" /><circle cx="84" cy="212" r="47" fill="#000" /><circle cx="182" cy="212" r="47" fill="#000" />
+          </mask>
+          <path d="M84 212V62h54a42 42 0 0 1 0 84h-22l66 66" fill="none" stroke="currentColor" stroke-width="26" stroke-linecap="round"
+            stroke-linejoin="round" mask="url(#brand-gaps)" />
+          <circle class="brand__wheel" cx="84" cy="212" r="34" /><circle class="brand__wheel" cx="182" cy="212" r="34" />
+        </svg>
+        <span>Richi<span class="brand__route">Route</span></span>
+      </h1>
       <v-btn v-if="hasDraft" class="sidebar__new" icon variant="tonal" color="primary" size="small" aria-label="Neue Route"
         v-tooltip:bottom="'Neue Route'" @click="newRoute"><IconPlus :size="18" aria-hidden="true" /></v-btn>
     </header>
@@ -41,9 +48,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDisplay } from 'vuetify';
-import { IconCloud, IconCloudCheck, IconCloudUpload, IconPlus, IconRoute } from '@/components/icons';
+import { IconPlus } from '@/components/icons';
+import { routeStyle } from '@/config/mapStyle';
 import RoutePanel from '@/components/ui/RoutePanel.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
 import GpxImport from '@/components/ui/GpxImport.vue';
@@ -104,13 +112,6 @@ async function showRoute(focus = 'tab-route') {
   await nextTick();
   if (document.activeElement === document.body) document.getElementById(focus)?.focus();
 }
-const draft = computed(() => ({
-  idle: { icon: IconCloud, label: 'Die aktuelle Route wird automatisch in diesem Browser gespeichert' },
-  saving: { icon: IconCloudUpload, label: 'Wird gespeichert …' },
-  saved: { icon: IconCloudCheck, label: 'In diesem Browser gespeichert' },
-  restored: { icon: IconCloudCheck, label: 'Aus diesem Browser wiederhergestellt' },
-  error: { icon: IconCloud, label: '' },
-}[routeStore.draftStatus]));
 
 </script>
 
@@ -119,10 +120,11 @@ const draft = computed(() => ({
 .sidebar__header { display: flex; align-items: center; gap: var(--space-3); min-height: 56px; padding: var(--space-2) var(--gutter); }
 /* On phones the sheet's handle above gives the space. */
 @media (max-width: 760px) { .sidebar__header { min-height: 3rem; padding-top: 0; } }
-.brand { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: 1.1rem; font-weight: 750; letter-spacing: -.02em; white-space: nowrap; }
-.brand__mark { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: var(--radius); background: var(--accent); color: #fff; }
-.brand__mark svg { stroke-width: 2.25; }
-.sidebar__status { display: inline-flex; color: var(--text-muted); cursor: help; }
+/* 6 px to the name: the mark's bowl, level with the text, sits further in than its front wheel. */
+.brand { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 1.1rem; font-weight: 750; letter-spacing: -.02em; white-space: nowrap; }
+.brand__mark { height: 2rem; color: v-bind('routeStyle.paved'); }
+.brand__wheel { fill: none; stroke: var(--accent); stroke-width: 14; }
+.brand__route { color: v-bind('routeStyle.paved'); }
 .sidebar__new { margin-left: auto; }
 /* Segmented tabs: a white field slides to the chosen one; pressing a tab dims its label. */
 .sidebar__tabs { flex: none; height: auto !important; margin: 0 var(--gutter) var(--space-2); padding: var(--space-1); border-radius: 12px;

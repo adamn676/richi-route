@@ -9,7 +9,7 @@ interface ExportRoute {
 
 export function gpxUnavailableReason(route: ExportRoute): string | null {
   if (route.pendingLegCount || route.pendingSnapCount) return 'Die Route wird noch berechnet.';
-  if (route.points.length < 2 || route.points.some(p => !p.coord || p.snapError)) return 'Bitte alle Streckenpunkte setzen.';
+  if (route.points.length < 2 || route.points.some(p => !p.coord || p.snapError)) return 'Bitte alle Wegpunkte setzen.';
   let length = 0;
   for (let i = 1; i < route.points.length; i++) {
     const from = route.points[i - 1], to = route.points[i];

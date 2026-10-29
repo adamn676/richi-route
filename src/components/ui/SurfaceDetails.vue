@@ -1,13 +1,19 @@
 <template>
   <section v-if="totals.length" class="surfaces" :class="{ 'surfaces--stale': store.routingPending }" :aria-busy="store.routingPending"
     aria-labelledby="surfaces-title">
-    <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
+    <!-- Correcting a surface the map has wrong starts here, where the surfaces are listed; the stretch is chosen on the map. -->
+    <div class="surfaces__heading">
+      <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
+      <v-icon-button v-if="store.surfacesReportable" :active="store.surfaceReporting" :aria-pressed="store.surfaceReporting" aria-label="Untergrund korrigieren"
+        v-tooltip:bottom="store.surfaceReporting ? 'Korrigieren beenden (Esc)' : 'Untergrund korrigieren'"
+        @click="store.setSurfaceReporting(!store.surfaceReporting)"><IconPencil :size="18" aria-hidden="true" /></v-icon-button>
+    </div>
     <!-- The whole route in one bar; a chosen surface stands out in it. -->
     <div class="surfaces__bar" aria-hidden="true">
       <i v-for="total in totals" :key="total.surface" :class="{ 'surfaces__part--faded': selected && selected !== total.surface }"
         :style="{ flexGrow: total.meters, background: routeStyle[total.surface] }" />
     </div>
-    <v-list class="surfaces__totals" role="group" aria-label="Belag auswählen">
+    <v-list class="surfaces__totals" role="group" aria-label="Untergrund auswählen">
       <v-list-item v-for="total in totals" :key="total.surface" tag="button" type="button" role="button" :aria-pressed="selected === total.surface"
         :active="selected === total.surface" color="primary" rounded="lg" @click="selectSurface(total.surface)">
         <template #prepend><i class="surfaces__dot" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
@@ -47,6 +53,7 @@ import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
 import { formatKm, formatLength } from '@/utils/format';
+import { IconPencil } from '@/components/icons';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();
@@ -97,6 +104,9 @@ watch(inspection, value => {
 .surfaces { display: grid; gap: var(--space-3); transition: opacity .2s; }
 .surfaces--stale { opacity: .45; pointer-events: none; }
 h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
+.surfaces__heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* As the tools beside the stops' heading: its glyph, not its target, ends at the margin. */
+.surfaces__heading .v-btn { width: 36px; height: 36px; margin-right: -9px; }
 .surfaces__bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 5px; }
 .surfaces__bar i { min-width: 3px; transition: opacity .15s; }
 .surfaces__bar .surfaces__part--faded { opacity: .25; }
