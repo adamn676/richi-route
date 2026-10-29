@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { expandAbbreviations, forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
+import { forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
 
 const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: coord },
@@ -108,22 +108,19 @@ test('an address knows its street; a street result does not need one', async t =
   assert.equal((await forwardGeocode('Georgigasse', signal()))[0].street, undefined);
 });
 
-test('abbreviations are searched written out as well; clutter goes; an exact name comes first', async t => {
-  assert.equal(expandAbbreviations('Hbf Graz'), 'Hauptbahnhof Graz');
-  assert.equal(expandAbbreviations('Mariatrosterstr. 3'), 'Mariatrosterstraße 3');
-  assert.equal(expandAbbreviations('St. Radegund'), 'Sankt Radegund');
-  assert.equal(expandAbbreviations('Gr. St. Florian'), 'Groß Sankt Florian');
-  assert.equal(expandAbbreviations('Straßgang'), 'Straßgang');
+test('one query, in the service\'s order; clutter goes, while halts and buildings that are destinations stay', async t => {
   const queries = [];
   const kind = (name, osm_key, osm_value, more = {}) => ({ ...feature(name), properties: { ...feature(name).properties, osm_key, osm_value, ...more } });
   t.mock.method(globalThis, 'fetch', async url => {
     queries.push(new URL(url, 'http://127.0.0.1:5173').searchParams.get('q'));
     return Response.json({ features: [kind('Weinwarte Sankt Peter', 'tourism', 'viewpoint'), kind('Sankt Peter', 'highway', 'bus_stop'),
-      kind('Dach', 'building', 'roof'), kind('Katastralgemeinde Sankt Peter', 'boundary', 'administrative'), kind('Sankt Peter', 'place', 'village')] });
+      kind('Dach', 'building', 'roof'), kind('Haus A', 'building', 'yes'), kind('Katastralgemeinde Sankt Peter', 'boundary', 'administrative'),
+      kind('Sankt Peter', 'place', 'village'), kind('Graz Don Bosco', 'railway', 'halt'), kind('Stift Rein', 'building', 'monastery')] });
   });
   const places = await forwardGeocode('St. Peter', signal());
-  assert.deepEqual(queries, ['St. Peter', 'Sankt Peter']);
-  assert.deepEqual(places.map(place => place.label), ['Sankt Peter, Graz, Steiermark', 'Weinwarte Sankt Peter, Graz, Steiermark']);
+  assert.deepEqual(queries, ['St. Peter']);
+  assert.deepEqual(places.map(place => [place.title, place.category]), [['Weinwarte Sankt Peter', 'place'], ['Sankt Peter', 'town'],
+    ['Graz Don Bosco', 'station'], ['Stift Rein', 'place']]);
 });
 
 test('a suggestion shows what a place is and where: an address with its town, a town with its region, anything else town first', async t => {

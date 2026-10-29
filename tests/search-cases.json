@@ -147,8 +147,7 @@
     {
       "group": "Schreibweise",
       "query": "Leibniz",
-      "expect": "^Leibnitz, (8430|Steiermark)",
-      "note": "Open: the town one letter off should come before Leibnizgasse in Vienna; Photon cannot."
+      "expect": "^Leibnitz, (8430|Steiermark)"
     },
     {
       "group": "Schreibweise",
@@ -320,13 +319,18 @@
     {
       "group": "Straße + Ort",
       "query": "8160 Weiz",
-      "expect": "^Weiz, (8160|Steiermark)",
-      "note": "Open: a postcode with its town should find the town; Photon finds a school."
+      "expect": "^Weiz, (8160|Steiermark)"
     },
     {
       "group": "Straße + Ort",
       "query": "Herrengasse 5 8010",
       "expect": "^Herrengasse 5, 8010 Graz"
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Graz Hauptplatz",
+      "expect": "^Hauptplatz, (8010 )?Graz",
+      "note": "Not a shop whose other name mentions the square."
     },
     {
       "group": "Abkürzung",

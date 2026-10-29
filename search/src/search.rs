@@ -27,10 +27,11 @@ pub enum Hit {
     House(u32),
 }
 
-/// How well one typed word matched a place, in its name and around it.
+/// How well one typed word matched a place: in its name, in another of its names, and around it.
 #[derive(Clone, Copy, Default)]
 struct WordMatch {
     name: f32,
+    other_name: f32,
     context: f32,
 }
 
@@ -124,14 +125,14 @@ fn word_matches(index: &Index, terms: &[(usize, f32)], wanted: Option<&HashSet<u
     let mut docs: HashMap<u32, WordMatch> = HashMap::new();
     for &(term, quality) in terms {
         for list in LISTS {
-            let (name, context) = match list {
-                List::Name => (quality, 0.0),
-                List::OtherName => (quality * OTHER_NAME, 0.0),
-                List::Context => (0.0, quality),
-            };
             for &doc in index.postings(term, list).iter().filter(|d| wanted.is_none_or(|w| w.contains(d))) {
                 let m = docs.entry(doc).or_default();
-                (m.name, m.context) = (m.name.max(name), m.context.max(context));
+                let best = match list {
+                    List::Name => &mut m.name,
+                    List::OtherName => &mut m.other_name,
+                    List::Context => &mut m.context,
+                };
+                *best = best.max(quality);
             }
         }
     }
@@ -175,7 +176,7 @@ fn matching(
         for (&doc, m) in &found {
             for j in [i - 1, i] {
                 let best = matches[j].entry(doc).or_default();
-                best.name = best.name.max(m.name);
+                (best.name, best.other_name) = (best.name.max(m.name), best.other_name.max(m.other_name));
             }
         }
     }
@@ -286,13 +287,14 @@ fn score(
         if query.bbox.is_some_and(|bbox| !in_bbox(point, bbox)) {
             continue;
         }
-        // exact: every word typed is a word of its name
+        // exact: every word typed is a word of its name (not only of another name)
         let (mut text, mut in_name, mut exact) = (0.0f32, 0.0f32, true);
         for (i, m) in matches.iter().enumerate() {
             let m = m.get(&doc_id).copied().unwrap_or_default();
-            text += lengths[i] * m.name.max(m.context * 0.95);
-            in_name += m.name;
-            exact &= m.name >= OTHER_NAME;
+            let name = m.name.max(m.other_name * OTHER_NAME);
+            text += lengths[i] * name.max(m.context * 0.95);
+            in_name += name;
+            exact &= m.name >= 0.9;
         }
         if !typed.is_empty() && in_name == 0.0 {
             continue;

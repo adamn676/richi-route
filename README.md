@@ -43,16 +43,16 @@ wrong, you can correct it in the local planner, and routing uses the correction 
 
 - **Platform:** the planner and its services run on Linux (x64). Open it in a browser on the same computer; desktop
   and phone-sized windows are supported.
-- **Coverage:** routing covers 5–20° E and 45–50° N (Austria and the neighbouring regions). Maps, address search and
-  aerial overview cover Europe; detailed aerial photos cover Austria, Switzerland and France.
+- **Coverage:** routing and address search cover 5–20° E and 45–50° N (Austria and the neighbouring regions). Maps
+  and aerial overview cover Europe; detailed aerial photos cover Austria, Switzerland and France.
 - **Your data:** routes are stored in your browser. There are no accounts and no cloud sync; download RichiRoute
   files to keep copies, because clearing the browser's data removes saved routes.
 - **Not yet:** using it offline on a phone, without the computer, is a goal but not available yet.
 
 ## Getting started
 
-You need Linux on x64, about 100 GB of free disk space (the European map is about 25 GB, address search about 50 GB
-and more while it installs), and the verified routing bundle `richiroute-ubuntu-benchmark/` placed next to this
+You need Linux on x64 with 16 GB of memory, about 50 GB of free disk space (the European map is about 25 GB, the
+address search about 11 GB), and the verified routing bundle `richiroute-ubuntu-benchmark/` placed next to this
 checkout. The bundle is not part of this repository, and there is no download command for it yet.
 
 ```sh
@@ -96,7 +96,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify, TypeScript, Pinia, MapLibre GL JS |
 | `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)) |
-| `search/` | The offline address search in Rust, built from the Austrian address register and OpenStreetMap; it answers as Photon does and is not yet used by the planner |
+| `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
 | `scripts/` | Setup and the local launcher (`start-local.sh`) |
 | `tests/` | Unit and browser tests |
@@ -108,7 +108,8 @@ Downloaded runtimes, map data, build output and local benchmark recordings stay 
 ## Data and credits
 
 Map and routing data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Vector tiles by
-[Protomaps](https://protomaps.com/), address search by Photon, relief by Mapterhorn. Aerial imagery from Copernicus
+[Protomaps](https://protomaps.com/), relief by Mapterhorn. Addresses © Österreichisches Adressregister
+([BEV](https://www.bev.gv.at/), CC BY 4.0), data of the date shown by the search setup. Aerial imagery from Copernicus
 Sentinel, basemap.at, swisstopo and IGN; every source is credited in the planner. The routing engine is ported from
 [BRouter](https://github.com/abrensch/brouter) (MIT, see [`engine/LICENSE-BROUTER`](engine/LICENSE-BROUTER)). Icons
 from [Tabler Icons](https://tabler.io/icons) (MIT); checkboxes and radio buttons use the shapes of

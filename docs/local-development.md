@@ -61,11 +61,11 @@ to run the installer. In the prepared workspace, the equivalent bootstrap is
 Subsequent app commands use the new runtime.
 
 The repository launcher, `scripts/start-local.sh`, verifies the original bundle,
-builds the routing engine (`cargo build --release`, quick after the first time)
+builds the routing engine and the address search (`cargo build --release`, quick after the first time)
 and prepares the shared local rules and their profile. It then starts the engine
 with twelve routing threads (the planner's six requests at a time, with room to run a request's sections
 side by side) and the rules (`richi-engine serve`, BRouter's server
-protocol), bound to `127.0.0.1:17777`. Photon runs on GraalVM Community 25.4.4.1.1
+protocol), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
 at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
 `127.0.0.1:5173`. It checks readiness before opening
 the frontend. Ctrl+C stops the processes it started. Logs are
@@ -126,7 +126,7 @@ major-version hold:
 | Node types / GeoJSON types | 26.6.5 / 7946.0.16 |
 | Node / npm | 26.12.1 / 12.2.1 |
 | Local browser tools | Playwright 1.64.1 / Chromium 156 |
-| Local search | Photon 1.3.0 |
+| Local search | RichiRoute's own (`search/`), address register and OpenStreetMap data of the setup's date |
 | Local map reader / style | PMTiles 4.5.0 / Protomaps basemaps 5.7.2 |
 | Map extraction tool | go-pmtiles 1.31.2 |
 
@@ -147,7 +147,7 @@ Pinia 4's devtools peer and TypeScript 6's path configuration are also updated.
 Both production builds pass; their existing large-map-library size warnings
 remain. The locally pinned BRouter 1.7.10, GraphHopper 11.1 and ORS 10.1.0 are
 current upstream releases. Optional Docker image digests were checked and did
-not need changing. GraphHopper and ORS remain optional; Photon is installed separately by
+not need changing. GraphHopper and ORS remain optional; the address search is built by
 `search:setup`.
 
 ## Historical Docker benchmark installation
@@ -285,7 +285,7 @@ Downloaded assets and generated graphs remain on disk.
 | Routing engine (BRouter port) | 17777 | Planner route calculation |
 | GraphHopper | 8989 | Comparison routing and local road tiles |
 | openrouteservice, optional | 8082 | Third comparison engine |
-| Photon | 2322 | Local European address search |
+| Address search | 2322 | Local address search in the routing area |
 | Local maps | 8088 | European vector tiles, fonts and symbols |
 
 ## European map data
@@ -661,22 +661,41 @@ For a new Sentinel quarter, update the source URL, manifest URL, checksum and
 
 ## Address search
 
-Address suggestions use the local Photon service through `/geocoding/api/`.
-Queries stay on this computer. Suggestions load after three characters and a
-350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
-loaded result. Suggestions favour places near the map's centre and keep to the
-routing data's area (5–20° E, 45–50° N), where a route can be calculated. Common
-abbreviations are searched written out as well (Hbf, Str., St., Gr.), and a place
-named exactly as typed comes first, whatever the case, ß or ss, umlauts written
-as ae/oe/ue, or word order. Stops, platforms, railway works, shelters, parts of
-buildings, signposts and land-registry areas are left out; one name in one town
-(a square and its street segments) and one address (the shops at a house) show
-once. Each suggestion shows its name on the first line and where it is below
-(the town, for a place also its street), with an icon for its kind: address,
-street, town, mountain, station, water or other place. The × in a stop's field removes the stop's point as well as
+Address suggestions come from RichiRoute's own search (`search/`, the `richi-search`
+program) through `/geocoding/api/`; it answers as [Photon](https://github.com/komoot/photon)
+does, so the planner reads its results the same way. Queries stay on this computer.
+Suggestions load after three characters and a 350 ms pause, with keyboard, mouse and
+touch selection. Enter reuses the first loaded result.
+
+Its data cover the routing data's area (5–20° E, 45–50° N), where a route can be
+calculated:
+
+- every Austrian address from the official address register of the BEV (Bundesamt
+  für Eich- und Vermessungswesen), with its streets, municipalities and localities;
+- from OpenStreetMap, towns, mountains, passes, lakes, stations, sights, shops and
+  inns, the roads (to name a point on the map) and, outside Austria, the addresses.
+
+A place matches when every word typed is in its name or around it (its town,
+postcode or what it is: "Feldbach Bahnhof" finds the station named Feldbach), with
+case, ß or ss and umlauts written as ae/oe/ue alike. The last word may still be
+being typed, a word may be one or two letters off, and common abbreviations count
+written out (Hbf, Bhf, Str., St., Gr.). Where a name says where it lies ("Sankt
+Radegund bei Graz", "Stubenberg am See"), that part counts as its surroundings. A
+house number on a street gives that house; a postcode rules out places with
+another. Places rank by how well and how completely the words match, how known
+they are (a town before a hamlet, a place with a Wikipedia article before one
+without), and their distance from the map's centre.
+
+The planner leaves out stops, platforms, railway works, shelters, signposts,
+land-registry areas, and buildings that are neither an address nor a destination
+(an abbey, a church or a station stays); one name in one town (a square and its
+street segments) and one address (the shops at a house) show once. Each suggestion
+shows its name on the first line and where it is below (the town, for a place also
+its street), with an icon for its kind: address, street, town, mountain, station,
+water or other place. The × in a stop's field removes the stop's point as well as
 its text (a start or destination also its shaping points) and leaves the stop
 empty; undo restores it. No routing geometry is sent to the search service, and
-unavailable local search never falls back to `photon.komoot.io`.
+unavailable local search never falls back to an online service.
 
 An address with a house number starts on its own street: the planner takes the
 nearest point on the road of that name from its map tiles (within 150 m), since
@@ -693,55 +712,47 @@ routes saved before naming get their streets when the route is opened; that alon
 does not count as a change, so switching routes saves no recovery copy, and the
 names are stored with the next save.
 
-`npm run search:setup` downloads the Photon executable and the European database
-recorded in `scripts/photon.json`. The executable is SHA-256 verified and the
-database is checked against the upstream MD5 before activation. The roughly
-32 GB compressed archive streams through `bzip2` into a staging directory, so
-it is not retained alongside the database. A locally installed `pbzip2` at
-`.cache/tools/pbzip2/usr/bin/pbzip2` enables parallel decoding; otherwise the
-installer uses the system's `bzip2`. Installation needs at least 65 GiB free and
-stops before the remaining space falls below 15 GiB. Interrupted setup can be
-rerun; incomplete data is not activated.
+`npm run search:setup` downloads the address register (unpacked with the system's
+`unzip`) and the OpenStreetMap extracts listed in `scripts/search-data.json` (Austria, Slovenia and the
+neighbouring regions from Geofabrik, about 9 GB; each checked against Geofabrik's
+MD5), builds `richi-search` with the bundled Rust and then its index of the routing
+area, `.cache/services/search/routing-area.search` (about 1.4 GB). Building takes
+about two minutes and up to 11 GB of memory, so setup needs a computer with 16 GB
+and about 15 GiB free. Downloads are kept in `.cache/services/search/downloads/`
+and reused; `npm run search:setup -- --update` fetches current data and builds the
+index again. Two builds from the same data give the same index.
 
-The reviewed European search database occupies about 46 GiB after extraction;
-the street archive adds about 23 GiB. On the prepared 32 GiB Ryzen 7 7800X3D
-machine, these datasets leave about 20 GiB free on the Linux filesystem.
-Database replacements need additional space. Imagery setup and its bounded
-cache use the remaining space while preserving the 15 GiB reserve.
+`npm run search:start` serves the index on `127.0.0.1:2322` (`SEARCH_PORT` chooses
+another port; Vite's `/geocoding` proxy follows it), using about 2 GB of memory and
+answering most searches within 10 ms.
 
-`npm run search:start` uses the bundled Java runtime, a 6 GiB maximum heap and
-four active processors. It binds only to `127.0.0.1:2322`. The database stays in
-`.cache/services/photon/europe/`. These defaults leave room for the router,
-browser and filesystem cache on the reviewed 32 GiB machine. Keep the database
-on the NVMe for search latency; an external flash drive is better suited to
-archive storage. To update, stop Photon, move the old database aside, update the
-pinned download and checksum, rerun setup, then restart. There is no scheduled
-update job.
-The embedded OpenSearch index also uses loopback ports 9201 and 9300.
-
-An explicitly configured Photon service can still be selected with
-`VITE_GEOCODING_URL`. Export it in the shell before running Vite or building;
-`.env` loading is disabled. Absolute URLs need CORS on that service. Choosing an
-external URL sends search queries there. Local search is the default.
+Another Photon-compatible service can be selected with `VITE_GEOCODING_URL`.
+Export it in the shell before running Vite or building; `.env` loading is
+disabled. Absolute URLs need CORS on that service. Choosing an external URL sends
+search queries there. Local search is the default.
 
 `node tests/search-quality.mjs <name> [--compare <earlier name>]` measures the
-search against 88 fixed queries with the correct answers (`tests/search-cases.json`),
-from easy towns to abbreviations, typos, names found in many places and words still
-being typed, plus names for points and loops. It reports where the correct place
-ranks, saves the run under its name in `.cache/search-quality/` and fails if any
-query does worse than in the run compared with. Measured with the map on Graz:
-Photon as before found the correct place first for 61 % of the queries and among
-the first three for 70 %; with the changes above, 93 % and 97 %, none worse, and
-98 % and 99 % once four borderline answers were settled (the nearest Kirchberg
-first, for example). Cases still open carry a `note`. `--verify` checks that each
-expected place exists in the data.
+search against 238 fixed queries with the correct answers (`tests/search-cases.json`),
+from easy towns and addresses across Styria to abbreviations, typos, names found in
+many places, words still being typed, postcodes and neighbouring countries, plus
+names for points and loops. It reports where the correct place ranks, saves the run
+under its name in `.cache/search-quality/` and fails if any query does worse than
+in the run compared with; `SEARCH_URL` chooses the service. Measured with the map on
+Graz, Photon (the planner's former search, with the planner's adjustments for it)
+found the correct place first for 96 % of the queries and among the first three for
+98 %; RichiRoute's search finds it first for all but one (99.6 %) and among the first
+three for all, none worse than Photon. Cases still open carry a `note`. `--verify`
+checks that each expected place exists in the data.
+
+`cargo test --release` in `search/` checks the search on a small register of its own
+(house numbers, typing, typos, abbreviations, postcodes, points on the map).
 
 `node tests/browser-search.mjs` checks real local suggestions, local routing,
 keyboard and touch interaction, cancellation and controlled failure responses.
 It blocks external requests. Reports and screenshots go to `.cache/search/`.
-`node tests/browser-local-services.mjs` additionally checks real search and
-street tiles in eight European cities with external HTTP requests blocked; it
-requires the complete European datasets. Results go to `.cache/local-services/`.
+`node tests/browser-local-services.mjs` additionally checks street tiles in nine
+European cities, and real search for those in the routing area, with external HTTP
+requests blocked; it requires the complete datasets. Results go to `.cache/local-services/`.
 
 ## Suggest a loop
 

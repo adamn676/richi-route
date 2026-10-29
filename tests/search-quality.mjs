@@ -1,7 +1,7 @@
 // Search quality against fixed cases (tests/search-cases.json): where the correct place ranks among the suggestions, the
 // name given to points on the map and to loops. Each run is saved by name and compared with an earlier one:
 //   node tests/search-quality.mjs <name> [--compare <earlier name>] [--verify]
-// SEARCH_URL points to the search service (default: the local Photon). --verify only checks that each expected place
+// SEARCH_URL points to the search service (default: the local one on port 2322). --verify only checks that each expected place
 // exists in the data, by searching with more context, so no case asks for the impossible.
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';

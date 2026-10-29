@@ -19,10 +19,12 @@ export function useMap(container: string, creditsContainer: string) {
   const vectorLayers: { id: string; visibility: 'visible' | 'none' }[] = [];
   const aerialLayers: string[] = [];
   // Credits for the visible map, shown in the sidebar footer instead of over the map. The route and
-  // its surfaces come from OpenStreetMap, so it is credited on every basemap; MapLibre drops this
-  // entry where a basemap's credit contains the same text.
-  const attribution = new AttributionControl({ compact: false,
-    customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  // its surfaces come from OpenStreetMap and addresses from the Austrian address register, so both are
+  // credited on every basemap; MapLibre drops an entry where a basemap's credit contains the same text.
+  const attribution = new AttributionControl({ compact: false, customAttribution: [
+    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    'Adressen © <a href="https://www.bev.gv.at/">Österreichisches Adressregister</a>',
+  ] });
   let creditsOutside = false;
   // The providers' credits link away; as every link out of the planner, they open in a new tab, whoever wrote them.
   const creditLinks = new MutationObserver(records => {

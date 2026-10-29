@@ -17,7 +17,7 @@ export default defineConfig({
     watch: { ignored: ['**/.cache/**', '**/experiments/routing/.local/**'] },
     proxy: {
       '/routing': { target: 'http://127.0.0.1:17777', rewrite: path => path.replace(/^\/routing/, '') },
-      '/geocoding': { target: 'http://127.0.0.1:2322', rewrite: path => path.replace(/^\/geocoding/, '') },
+      '/geocoding': { target: `http://127.0.0.1:${process.env.SEARCH_PORT ?? 2322}`, rewrite: path => path.replace(/^\/geocoding/, '') },
       '/maps': { target: `http://127.0.0.1:${process.env.MAPS_PORT ?? 8088}`, rewrite: path => path.replace(/^\/maps/, '') },
       '/tiles': { target: 'http://127.0.0.1:8989', rewrite: path => path.replace(/^\/tiles/, '/mvt') },
     },

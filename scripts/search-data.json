@@ -1,0 +1,32 @@
+{
+  "register": "https://data.bev.gv.at/download/Adressregister/Adresse_Relationale_Tabellen_Stichtagsdaten.zip",
+  "extractsUrl": "https://download.geofabrik.de/europe/",
+  "extracts": [
+    { "region": "austria", "country": "Österreich" },
+    { "region": "slovenia", "country": "Slowenien" },
+    { "region": "germany/bayern", "country": "Deutschland" },
+    { "region": "germany/baden-wuerttemberg", "country": "Deutschland" },
+    { "region": "germany/saarland", "country": "Deutschland" },
+    { "region": "germany/rheinland-pfalz", "country": "Deutschland" },
+    { "region": "germany/hessen", "country": "Deutschland" },
+    { "region": "france/alsace", "country": "Frankreich" },
+    { "region": "france/lorraine", "country": "Frankreich" },
+    { "region": "france/franche-comte", "country": "Frankreich" },
+    { "region": "france/rhone-alpes", "country": "Frankreich" },
+    { "region": "france/bourgogne", "country": "Frankreich" },
+    { "region": "france/champagne-ardenne", "country": "Frankreich" },
+    { "region": "switzerland", "country": "Schweiz" },
+    { "region": "liechtenstein", "country": "Liechtenstein" },
+    { "region": "italy/nord-est", "country": "Italien" },
+    { "region": "italy/nord-ovest", "country": "Italien" },
+    { "region": "czech-republic", "country": "Tschechien" },
+    { "region": "slovakia", "country": "Slowakei" },
+    { "region": "hungary", "country": "Ungarn" },
+    { "region": "croatia", "country": "Kroatien" },
+    { "region": "luxembourg", "country": "Luxemburg" },
+    { "region": "poland/malopolskie", "country": "Polen" },
+    { "region": "poland/slaskie", "country": "Polen" },
+    { "region": "serbia", "country": "Serbien" },
+    { "region": "bosnia-herzegovina", "country": "Bosnien und Herzegowina" }
+  ]
+}

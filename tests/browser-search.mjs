@@ -71,7 +71,7 @@ try {
     return route.waypoints.every(point => point.address);
   }, {}, { timeout: 30000 });
   const named = await points();
-  assert.match(named[0].address, /^Hahnhofweg, 8010 Graz$/);
+  assert.match(named[0].address, /^Hahnhofweg 26, 8010 Graz$/);
   assert.match(named[1].address, /Roseggerweg, 8044 Graz$/);
   assert.equal(await start.inputValue(), named[0].address);
   assert.ok(named.every(point => point.userInput === point.address));
@@ -178,5 +178,5 @@ try {
   await writeFile(output + '/report.json', JSON.stringify({ passed: true, liveQueries: 2,
     routedEndpoints: placed.map(point => ({ address: point.address, coord: point.coord })),
     keyboard: true, pointer: true, mobile: true, empty: true, rateLimit: true, offline: true, staleResults: true }, null, 2));
-  console.log('Search: live Photon suggestions and BRouter route, keyboard/click selection, empty/offline/rate-limit states, cancellation and stale results passed.');
+  console.log('Search: live suggestions and BRouter route, keyboard/click selection, empty/offline/rate-limit states, cancellation and stale results passed.');
 } finally { await browser.close(); }

@@ -1,135 +1,86 @@
+// Installs the local address search: downloads the Austrian address register (BEV) and the OpenStreetMap extracts in
+// scripts/search-data.json, builds richi-search (search/) and its index of the routing area.
+//   node scripts/setup-search.mjs [--update]
+// Downloads already there are reused; --update fetches them again. Each extract is checked against Geofabrik's MD5.
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, mkdir, mkdtemp, readFile, rename, rm, statfs, writeFile } from 'node:fs/promises';
-import { Transform } from 'node:stream';
+import { access, mkdir, readFile, rename, rm, statfs, writeFile } from 'node:fs/promises';
+import { totalmem } from 'node:os';
+import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import photon from './photon.json' with { type: 'json' };
+import data from './search-data.json' with { type: 'json' };
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const directory = path.join(root, '.cache/services/photon');
-const target = path.join(directory, photon.region);
-const jar = path.join(directory, `photon-${photon.version}.jar`);
+const directory = path.join(root, '.cache/services/search');
+const downloads = path.join(directory, 'downloads');
+const register = path.join(downloads, 'register');
+const index = path.join(directory, 'routing-area.search');
+const marker = path.join(directory, 'richiroute-search.json');
 const gib = 1024 ** 3;
-await mkdir(directory, { recursive: true });
 
 async function exists(file) {
   try { await access(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }
-async function digest(file, algorithm) {
-  const hash = createHash(algorithm);
+function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'inherit', ...options });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(`${path.basename(command)} failed: ${code ?? signal}`)));
+  });
+}
+async function download(url, file) {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) throw new Error(`${url}: HTTP ${response.status}`);
+  await pipeline(Readable.fromWeb(response.body), createWriteStream(file + '.part'));
+  await rename(file + '.part', file);
+}
+async function md5(file) {
+  const hash = createHash('md5');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
 }
-async function freeBytes() {
-  const stats = await statfs(directory);
-  return stats.bavail * stats.bsize;
-}
-function completed(child) {
-  return new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(`Data extraction failed: ${code ?? signal}`)));
-  });
-}
 
-async function* downloadChunks(url, signal) {
-  const head = await fetch(url, { method: 'HEAD', signal });
-  const size = Number(head.headers.get('content-length'));
-  if (!head.ok || !Number.isSafeInteger(size) || size <= 0) throw new Error('Cannot determine the search download size.');
-  const chunkSize = 64 * 1024 * 1024;
-  const pending = new Map();
-  const start = index => {
-    const first = index * chunkSize, last = Math.min(first + chunkSize, size) - 1;
-    pending.set(index, (async () => {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const response = await fetch(url, { headers: { Range: `bytes=${first}-${last}` },
-            signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
-          if (response.status !== 206 || response.headers.get('content-range') !== `bytes ${first}-${last}/${size}`) {
-            throw new Error('Search download returned an invalid byte range.');
-          }
-          const data = Buffer.from(await response.arrayBuffer());
-          if (data.length !== last - first + 1) throw new Error('Search download was truncated.');
-          return { data };
-        } catch (error) {
-          signal.throwIfAborted();
-          if (attempt === 2) throw error;
-          await delay(1000 * (attempt + 1), undefined, { signal });
-        }
-      }
-    })().catch(error => ({ error })));
-  };
-  const count = Math.ceil(size / chunkSize);
-  for (let i = 0; i < Math.min(4, count); i++) start(i);
-  for (let i = 0; i < count; i++) {
-    const result = await pending.get(i);
-    pending.delete(i);
-    if (result.error) throw result.error;
-    if (i + 4 < count) start(i + 4);
-    yield result.data;
+if (process.argv.includes('--update')) await rm(downloads, { recursive: true, force: true });
+await mkdir(path.join(downloads, 'osm'), { recursive: true });
+const { bavail, bsize } = await statfs(directory);
+if (bavail * bsize < 15 * gib) throw new Error('The address search needs about 15 GiB free while it installs.');
+// building the index of the routing area holds about 11 GiB in memory
+if (totalmem() < 14 * gib) throw new Error('Building the address search needs a computer with at least 16 GB of memory.');
+
+if (!await exists(path.join(register, 'ADRESSE.csv'))) {
+  console.log('Downloading the Austrian address register...');
+  const zip = path.join(downloads, 'register.zip');
+  await download(data.register, zip);
+  await rm(register, { recursive: true, force: true });
+  await run('unzip', ['-q', '-o', zip, '-d', register]);
+  await rm(zip);
+}
+const extracts = [];
+for (const { region, country } of data.extracts) {
+  const file = path.join(downloads, 'osm', `${region.replace('/', '-')}.osm.pbf`);
+  if (!await exists(file)) {
+    const url = `${data.extractsUrl}${region}-latest.osm.pbf`;
+    console.log(`Downloading OpenStreetMap ${region}...`);
+    await download(url, file);
+    const expected = (await (await fetch(`${url}.md5`)).text()).split(/\s/)[0];
+    if (await md5(file) !== expected) {
+      await rm(file);
+      throw new Error(`${region}: the download does not match its checksum; run the setup again.`);
+    }
   }
+  extracts.push(`${file}=${country}`);
 }
 
-if (!await exists(jar)) {
-  console.log(`Downloading Photon ${photon.version}...`);
-  const response = await fetch(photon.url);
-  if (!response.ok || !response.body) throw new Error(`Photon download: HTTP ${response.status}`);
-  await pipeline(response.body, createWriteStream(jar + '.part'));
-  if (await digest(jar + '.part', 'sha256') !== photon.sha256) throw new Error('Photon binary checksum mismatch.');
-  await rename(jar + '.part', jar);
-} else if (await digest(jar, 'sha256') !== photon.sha256) throw new Error('Installed Photon binary checksum mismatch.');
-
-const marker = path.join(target, 'richiroute-search.json');
-if (await exists(marker) && JSON.parse(await readFile(marker)).dataMd5 === photon.dataMd5) {
-  console.log(`Photon ${photon.version} and ${photon.region} data are ready.`);
-  process.exit(0);
-}
-if (await exists(target)) throw new Error('Search data already exists. Stop Photon and move the previous dataset aside before installing another version.');
-if (await freeBytes() < 65 * gib) throw new Error('Europe search installation needs at least 65 GiB free; extraction keeps a 15 GiB reserve.');
-
-const staging = await mkdtemp(path.join(directory, 'europe-staging-'));
-const controller = new AbortController();
-const abort = () => controller.abort(new Error('Search setup cancelled.'));
-process.once('SIGINT', abort);
-process.once('SIGTERM', abort);
-const parallelDecoder = path.join(root, '.cache/tools/pbzip2/usr/bin/pbzip2');
-const parallel = await exists(parallelDecoder);
-const decoder = spawn(parallel ? parallelDecoder : 'bzip2', parallel ? ['-dc', '-p6'] : ['-dc'], { stdio: ['pipe', 'pipe', 'inherit'] });
-const extractor = spawn('tar', ['-xf', '-', '-C', staging], { stdio: ['pipe', 'ignore', 'inherit'] });
-const extraction = [completed(decoder), completed(extractor)];
-const hash = createHash('md5');
-let received = 0, reportedAt = 0;
-const progress = new Transform({ transform(chunk, _encoding, callback) {
-  hash.update(chunk); received += chunk.length;
-  if (Date.now() - reportedAt > 10_000) {
-    console.log(`Europe search: ${(received / gib).toFixed(2)} GiB downloaded and extracting...`);
-    reportedAt = Date.now();
-  }
-  callback(null, chunk);
-} });
-const spaceCheck = setInterval(() => {
-  void freeBytes().then(bytes => {
-    if (bytes < 15 * gib) controller.abort(new Error('Stopping before the disk reserve falls below 15 GiB.'));
-  }).catch(error => controller.abort(error));
-}, 10_000);
-try {
-  console.log(`Installing ${photon.region} search data from ${photon.dataDate}; streaming extraction avoids retaining the 32 GB archive.`);
-  await Promise.all([
-    ...extraction,
-    pipeline(downloadChunks(photon.dataUrl, controller.signal), progress, decoder.stdin, { signal: controller.signal }),
-    pipeline(decoder.stdout, extractor.stdin, { signal: controller.signal }),
-  ]);
-  if (hash.digest('hex') !== photon.dataMd5) throw new Error('Search data checksum mismatch.');
-  if (!await exists(path.join(staging, 'photon_data'))) throw new Error('The downloaded archive has no Photon database.');
-  await writeFile(path.join(staging, 'richiroute-search.json'), JSON.stringify(photon, null, 2) + '\n');
-  await rename(staging, target);
-  console.log(`Ready: local ${photon.region} search. Run npm run search:start.`);
-} finally {
-  clearInterval(spaceCheck);
-  controller.abort(); decoder.kill(); extractor.kill();
-  await Promise.allSettled(extraction);
-  await rm(staging, { recursive: true, force: true });
-}
+const rust = path.join(root, '.cache/runtime/rust/bin');
+const cargo = { env: { ...process.env, PATH: `${rust}:${process.env.PATH}`, CARGO_HOME: path.join(root, '.cache/cargo') } };
+const manifest = path.join(root, 'search/Cargo.toml');
+await run(path.join(rust, 'cargo'), ['build', '--release', '--manifest-path', manifest], cargo);
+console.log('Building the search index; this takes a few minutes...');
+await run(path.join(root, 'search/target/release/richi-search'), ['build', index + '.part', register, ...extracts]);
+await rename(index + '.part', index);
+const registerDate = (await readFile(path.join(register, 'Aktualitaetsstand.txt'), 'latin1')).match(/\d{2}\.\d{2}\.\d{4}/)?.[0];
+await writeFile(marker, JSON.stringify({ built: new Date().toISOString(), registerDate, extracts: data.extracts }, null, 2) + '\n');
+console.log(`Ready: local address search (address register of ${registerDate}). Run npm run search:start.`);

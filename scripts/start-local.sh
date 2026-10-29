@@ -24,8 +24,8 @@ if [ ! -f "$app_dir/node_modules/vite/bin/vite.js" ]; then
   echo 'Install the app dependencies with npm ci from the app directory first.' >&2
   exit 1
 fi
-if [ ! -f "$app_dir/.cache/services/photon/europe/richiroute-search.json" ] || [ ! -f "$app_dir/.cache/maps/richiroute-maps.json" ]; then
-  echo 'Local European search or maps are missing. Run npm run search:setup and npm run maps:setup first.' >&2
+if [ ! -f "$app_dir/.cache/services/search/richiroute-search.json" ] || [ ! -f "$app_dir/.cache/maps/richiroute-maps.json" ]; then
+  echo 'Local address search or maps are missing. Run npm run search:setup and npm run maps:setup first.' >&2
   exit 1
 fi
 if [ ! -f "$app_dir/.cache/imagery/ready.json" ]; then
@@ -36,6 +36,8 @@ fi
 "$node_bin" "$bundle_dir/benchmark.mjs" verify
 PATH="$rust_dir:$PATH" CARGO_HOME="$app_dir/.cache/cargo" "$rust_dir/cargo" build --release \
   --manifest-path "$engine_dir/Cargo.toml" --target-dir "$engine_dir/target" -p richi-engine
+PATH="$rust_dir:$PATH" CARGO_HOME="$app_dir/.cache/cargo" "$rust_dir/cargo" build --release \
+  --manifest-path "$app_dir/search/Cargo.toml"
 "$node_bin" "$app_dir/scripts/prepare-routing-rules.mjs"
 "$node_bin" --input-type=module - <<'JS'
 import net from 'node:net';

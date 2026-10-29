@@ -27,21 +27,14 @@ let mapCenter: Coord | null = null;
 export const setSearchFocus = (center: Coord) => { mapCenter = center; };
 
 // Objects no one plans a ride to: stops and platforms (a station is one place), railway works, shelters, parts of
-// buildings, signposts and land registry areas. A building counts only as an address.
-const clutter = /^(highway=(bus_stop|platform)|railway=(stop|halt|platform|signal_box|car_shuttle|switch|crossing|level_crossing|subway_entrance|train_station_entrance|buffer_stop)|public_transport=.*|amenity=shelter|building=roof|information=.*|landuse=.*)$/;
+// buildings, signposts and land registry areas. A building counts as an address, or as what it is when that is a
+// destination (an abbey, a church, a castle, a station).
+const clutter = /^(highway=(bus_stop|platform)|railway=(stop|platform|signal_box|car_shuttle|switch|crossing|level_crossing|subway_entrance|train_station_entrance|buffer_stop)|public_transport=.*|amenity=shelter|building=roof|information=.*|landuse=.*)$/;
+const destinationBuilding = /^(monastery|castle|palace|train_station|church|cathedral|chapel|school|university|hospital|hotel|stadium|museum)$/;
 const isClutter = (properties: Record<string, unknown>) => clutter.test(`${properties.osm_key}=${properties.osm_value}`) ||
-  (properties.osm_key === 'building' && !properties.housenumber) || /^Katastralgemeinde /.test(String(properties.name ?? ''));
+  (properties.osm_key === 'building' && !properties.housenumber && !destinationBuilding.test(String(properties.osm_value))) ||
+  /^Katastralgemeinde /.test(String(properties.name ?? ''));
 
-// The written-out form of common abbreviations, searched alongside what was typed: Hbf, Str., St., Gr.
-export function expandAbbreviations(query: string): string {
-  return query
-    .replace(/\bhbf\b\.?/gi, 'Hauptbahnhof')
-    .replace(/(\p{L})str(\.|\b)/giu, '$1straße')
-    .replace(/\bstr(\.|\b)/gi, 'Straße')
-    .replace(/\b[Ss]t\.?\s+(?=\p{Lu})/gu, 'Sankt ')
-    .replace(/\b[Gg]r\.\s*(?=\p{Lu})/gu, 'Groß ')
-    .replace(/\s+/g, ' ').trim();
-}
 const unavailableMessage = 'Adresssuche nicht erreichbar. Bitte später erneut versuchen oder den Punkt auf der Karte setzen.';
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -60,7 +53,7 @@ function categoryOf(properties: Record<string, unknown>): PlaceCategory {
   if (properties.type === 'street' || /^highway=|^place=square$/.test(tag)) return 'street';
   if (/^place=(city|town|village|hamlet|suburb|quarter|neighbourhood|locality|isolated_dwelling|municipality|farm)$/.test(tag)) return 'town';
   if (/^(natural=(peak|volcano|ridge|saddle|mountain_range)|mountain_pass=)/.test(tag)) return 'mountain';
-  if (/^(railway=station|building=train_station|amenity=bus_station)$/.test(tag)) return 'station';
+  if (/^(railway=(station|halt)|building=train_station|amenity=bus_station)$/.test(tag)) return 'station';
   if (/^(natural=water|water=|waterway=|natural=(lake|bay))/.test(tag)) return 'water';
   return 'place';
 }
@@ -140,35 +133,19 @@ async function search(path: string, params: URLSearchParams, signal: AbortSignal
   return features;
 }
 
-// Text as compared for an exact match: case, ß, umlauts written out, hyphens and dots aside, and the words in any order
-// or run together ("Graz Hauptbahnhof", "Hauptbahnhof Graz"; "Stubenbergsee", "Stubenberg See").
-const words = (text: string) => text.toLocaleLowerCase('de-AT').replace(/ß/g, 'ss').replace(/ae/g, 'ä').replace(/oe/g, 'ö')
-  .replace(/ue/g, 'ü').split(/[\s.\-]+/).filter(Boolean);
-const comparable = (text: string) => [words(text).join(''), [...words(text)].sort().join(' ')];
-
 export async function forwardGeocode(query: string, signal: AbortSignal, focus = mapCenter): Promise<Place[]> {
   const typed = query.trim();
   if (typed.length < 3) throw new Error('Bitte mindestens drei Zeichen eingeben.');
   // Nearby places rank higher; 0.5 balances the distance against a place's importance (tests/search-quality.mjs).
   const near: Record<string, string> = focus ? { lat: String(focus[1]), lon: String(focus[0]), location_bias_scale: '0.5' } : {};
-  // What was typed and, if it differs, its written-out form; their answers merge in that order.
-  const queries = [...new Set([typed, expandAbbreviations(typed)])];
   const bbox = ROUTING_BOUNDS.flat().join(',');
-  const answers = await Promise.all(queries.map(q => search('/api/', new URLSearchParams({ q, lang: 'de', limit: '20', bbox, ...near }), signal)));
-  const features = answers.flat().filter(feature => !isClutter(record(record(feature)?.properties) ?? {}));
-  // A place named exactly as typed (a town, a house number) comes first; otherwise the service's order stands.
-  const typedForms = new Set(queries.flatMap(comparable));
-  const exact = (feature: unknown) => {
-    const properties = record(record(feature)?.properties) ?? {};
-    const names = [properties.name, [properties.street, properties.housenumber].filter(Boolean).join(' ')];
-    return names.some(name => typeof name === 'string' && name && comparable(name).some(form => typedForms.has(form)));
-  };
+  const answer = await search('/api/', new URLSearchParams({ q: typed, lang: 'de', limit: '20', bbox, ...near }), signal);
+  const ordered = answer.filter(feature => !isClutter(record(record(feature)?.properties) ?? {}));
   // One entry per address: the shops and offices at a house give way to the address itself.
   const address = (feature: unknown) => {
     const properties = record(record(feature)?.properties) ?? {};
     return properties.housenumber ? [properties.street, properties.housenumber, properties.city].join('|') : null;
   };
-  const ordered = [...features.filter(exact), ...features.filter(feature => !exact(feature))];
   const unnamed = new Set(ordered.filter(feature => !record(record(feature)?.properties)?.name).map(address));
   const places = ordered.filter((feature, index) => {
     const at = address(feature);
@@ -176,8 +153,8 @@ export async function forwardGeocode(query: string, signal: AbortSignal, focus =
     if (unnamed.has(at)) return !record(record(feature)?.properties)?.name;
     return ordered.findIndex(other => address(other) === at) === index;
   }).map(parsePlace);
-  // One name in one town (a square and its street segments, a place found by both queries) is one place; the first,
-  // best match stays. Without a town, only a repeat nearby counts as the same.
+  // One name in one town (a station and its building, a square and its street segments) is one place; the first, best
+  // match stays. Without a town, only a repeat nearby counts as the same.
   const key = (place: Place) => place.label.replace(/, \d{4,5} /, ', ').toLocaleLowerCase('de-AT');
   const kept: Place[] = [];
   for (const place of places) {
