@@ -3,6 +3,7 @@ import { AttributionControl, Map, ScaleControl, setMaxParallelImageRequests, typ
 import { aerialVectorLayers, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_BOUNDS, MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
+import { setSearchFocus } from '@/services/geocoding.service';
 
 const hillshadeKey = 'richiroute.hillshade';
 
@@ -153,6 +154,10 @@ export function useMap(container: string, creditsContainer: string) {
       if ((dx || dy) && !instance.isMoving()) instance.panBy([dx, dy], { animate: false });
     });
     instance.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
+    // Address search prefers places near where the map looks.
+    const reportCenter = () => { const { lng, lat } = instance.getCenter(); setSearchFocus([lng, lat]); };
+    reportCenter();
+    instance.on('moveend', reportCenter);
     const credits = document.getElementById(creditsContainer);
     if (credits) {
       creditLinks.observe(credits, { childList: true, subtree: true });

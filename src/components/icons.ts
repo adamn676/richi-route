@@ -4,6 +4,7 @@ export { default as IconAlertTriangle } from '@tabler/icons-vue/dist/esm/icons/I
 export { default as IconArrowBackUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowBackUp.mjs';
 export { default as IconArrowForwardUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowForwardUp.mjs';
 export { default as IconBike } from '@tabler/icons-vue/dist/esm/icons/IconBike.mjs';
+export { default as IconBuildingCommunity } from '@tabler/icons-vue/dist/esm/icons/IconBuildingCommunity.mjs';
 export { default as IconCheck } from '@tabler/icons-vue/dist/esm/icons/IconCheck.mjs';
 export { default as IconChevronDown } from '@tabler/icons-vue/dist/esm/icons/IconChevronDown.mjs';
 export { default as IconChevronLeft } from '@tabler/icons-vue/dist/esm/icons/IconChevronLeft.mjs';
@@ -13,6 +14,7 @@ export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.m
 export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
 export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/IconDotsVertical.mjs';
 export { default as IconDownload } from '@tabler/icons-vue/dist/esm/icons/IconDownload.mjs';
+export { default as IconDroplet } from '@tabler/icons-vue/dist/esm/icons/IconDroplet.mjs';
 export { default as IconEraser } from '@tabler/icons-vue/dist/esm/icons/IconEraser.mjs';
 export { default as IconEye } from '@tabler/icons-vue/dist/esm/icons/IconEye.mjs';
 export { default as IconEyeOff } from '@tabler/icons-vue/dist/esm/icons/IconEyeOff.mjs';
@@ -20,14 +22,19 @@ export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/Icon
 export { default as IconFocus2 } from '@tabler/icons-vue/dist/esm/icons/IconFocus2.mjs';
 export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/IconFolderOpen.mjs';
 export { default as IconGripVertical } from '@tabler/icons-vue/dist/esm/icons/IconGripVertical.mjs';
+export { default as IconHome } from '@tabler/icons-vue/dist/esm/icons/IconHome.mjs';
 export { default as IconMan } from '@tabler/icons-vue/dist/esm/icons/IconMan.mjs';
+export { default as IconMapPin } from '@tabler/icons-vue/dist/esm/icons/IconMapPin.mjs';
 export { default as IconMinus } from '@tabler/icons-vue/dist/esm/icons/IconMinus.mjs';
+export { default as IconMountain } from '@tabler/icons-vue/dist/esm/icons/IconMountain.mjs';
 export { default as IconNavigationNorth } from '@tabler/icons-vue/dist/esm/icons/IconNavigationNorth.mjs';
 export { default as IconPencil } from '@tabler/icons-vue/dist/esm/icons/IconPencil.mjs';
 export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
 export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';
+export { default as IconRoad } from '@tabler/icons-vue/dist/esm/icons/IconRoad.mjs';
 export { default as IconRoute } from '@tabler/icons-vue/dist/esm/icons/IconRoute.mjs';
 export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStack2.mjs';
+export { default as IconTrain } from '@tabler/icons-vue/dist/esm/icons/IconTrain.mjs';
 export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';
 export { default as IconUpload } from '@tabler/icons-vue/dist/esm/icons/IconUpload.mjs';
 export { default as IconWand } from '@tabler/icons-vue/dist/esm/icons/IconWand.mjs';

@@ -3,6 +3,7 @@
        handled here. Empty text is no value, so the field shows no clear button. That button is our own, since it empties
        the stop rather than only its text. -->
   <v-combobox
+    ref="field"
     :id="`address-${waypointId}`"
     :model-value="inputValue || null"
     :items="suggestions"
@@ -18,6 +19,7 @@
     :hide-no-data="!errorMessage && !nothingFound"
     menu-icon=""
     v-model:menu="menu"
+    :menu-props="{ maxWidth: fieldWidth }"
     clearable
     persistent-clear
     autocomplete="off"
@@ -30,6 +32,12 @@
       <!-- Its keys stay away from the combobox, which would take Enter for a search. -->
       <v-icon-button icon="$clear" size="x-small" :aria-label="`${label} leeren`" @click="clearStop" @keydown.stop />
     </template>
+    <!-- What a suggestion is, by its icon; its name, then where it lies. -->
+    <template #item="{ props: row, item: place }">
+      <v-list-item v-bind="row" :title="place.title" :subtitle="place.detail" :aria-label="place.label" class="address-search__item">
+        <template #prepend><component :is="categoryIcons[place.category]" :size="18" aria-hidden="true" /></template>
+      </v-list-item>
+    </template>
     <template #no-data>
       <v-list-item v-if="errorMessage" role="alert" base-color="error" :title="errorMessage" />
       <v-list-item v-else title="Keine Adresse gefunden. Du kannst den Punkt auch auf der Karte setzen." />
@@ -40,7 +48,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useDisplay } from 'vuetify';
-import { forwardGeocode, type Place } from '@/services/geocoding.service';
+import { forwardGeocode, type Place, type PlaceCategory } from '@/services/geocoding.service';
+import { IconBuildingCommunity, IconDroplet, IconHome, IconMapPin, IconMountain, IconRoad, IconTrain } from '@/components/icons';
+
+const categoryIcons: Record<PlaceCategory, typeof IconMapPin> = {
+  address: IconHome, street: IconRoad, town: IconBuildingCommunity, mountain: IconMountain, station: IconTrain, water: IconDroplet,
+  place: IconMapPin,
+};
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -69,6 +83,9 @@ const isLoading = ref(false);
 const errorMessage = ref<string | null>(null);
 // The answer arrives after typing, so it opens the menu itself while the field has focus.
 const menu = ref(false), focused = ref(false);
+// The suggestions stay as wide as the field, so long names end in an ellipsis within the panel.
+const field = ref<{ $el: HTMLElement }>(), fieldWidth = ref<number>();
+watch(menu, open => { if (open) fieldWidth.value = field.value?.$el.offsetWidth; });
 const nothingFound = ref(false);
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let currentRequest: AbortController | null = null;

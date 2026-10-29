@@ -1,0 +1,521 @@
+{
+  "focus": [
+    15.4395,
+    47.0707
+  ],
+  "forward": [
+    {
+      "group": "Adresse",
+      "query": "Herrengasse 5",
+      "expect": "^Herrengasse 5, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Annenstr 10",
+      "expect": "^Annenstraße 10, 8020 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Annenstrasse 10",
+      "expect": "^Annenstraße 10, 8020 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Elisabethstraße 50",
+      "expect": "^Elisabethstraße 50, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Sporgasse 2",
+      "expect": "^Sporgasse 2, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Leonhardstraße 15",
+      "expect": "^Leonhardstraße 15, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Schörgelgasse 20",
+      "expect": "^Schörgelgasse 20, 8010 Graz"
+    },
+    {
+      "group": "Adresse",
+      "query": "Wasserwerkgasse 2",
+      "expect": "^Wasserwerkgasse 2, 8045 Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Hauptplatz",
+      "expect": "^Hauptplatz, (8010 )?Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Kaiser-Josef-Platz",
+      "expect": "^Kaiser-Josef-Platz, (8010 )?Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Jakominiplatz",
+      "expect": "^Jakominiplatz, (8010 )?Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Griesplatz",
+      "expect": "^Griesplatz, (8020 )?Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Wasserwerkgasse",
+      "expect": "^Wasserwerkgasse, 8045 Graz"
+    },
+    {
+      "group": "Straße",
+      "query": "Mariatroster Straße",
+      "expect": "^Mariatroster Straße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Ort",
+      "query": "Gleisdorf",
+      "expect": "^Gleisdorf, (8200|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Leibnitz",
+      "expect": "^Leibnitz, (8430|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Weiz",
+      "expect": "^Weiz, (8160|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Frohnleiten",
+      "expect": "^Frohnleiten, (8130|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Hartberg",
+      "expect": "^Hartberg, (8230|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Deutschlandsberg",
+      "expect": "^Deutschlandsberg, (8530|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Bad Radkersburg",
+      "expect": "^Bad Radkersburg, (8490|Steiermark)"
+    },
+    {
+      "group": "Ort",
+      "query": "Passail",
+      "expect": "^Passail, (8162|Steiermark)"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "St. Radegund",
+      "expect": "^Sankt Radegund bei Graz"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "Sankt Radegund",
+      "expect": "^Sankt Radegund bei Graz"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "St Peter am Ottersbach",
+      "expect": "^Sankt Peter am Ottersbach"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "Gross St. Florian",
+      "expect": "^Groß Sankt Florian"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "Schoeckl",
+      "expect": "^Schöckl, 8061 Sankt Radegund"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "Gleisdrof",
+      "expect": "^Gleisdorf, (8200|Steiermark)"
+    },
+    {
+      "group": "Schreibweise",
+      "query": "Leibniz",
+      "expect": "^Leibnitz, (8430|Steiermark)",
+      "note": "Open: the town one letter off should come before Leibnizgasse in Vienna; Photon cannot."
+    },
+    {
+      "group": "Schreibweise",
+      "query": "frohnleiten",
+      "expect": "^Frohnleiten, (8130|Steiermark)"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Gleisd",
+      "expect": "^Gleisdorf, (8200|Steiermark)"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Frohnl",
+      "expect": "^Frohnleiten, (8130|Steiermark)"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Herreng",
+      "expect": "^Herrengasse, 8010 Graz"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Kaiser-Jos",
+      "expect": "^Kaiser-Josef-Platz, (8010 )?Graz"
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Schöck",
+      "expect": "^Schöckl, 8061 Sankt Radegund"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Schöckl",
+      "expect": "^Schöckl, 8061 Sankt Radegund"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Plabutsch",
+      "expect": "^Plabutsch, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Buchkogel",
+      "expect": "^Buchkogel, .*Graz"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Hochlantsch",
+      "expect": "^Hochlantsch, "
+    },
+    {
+      "group": "Berg & See",
+      "query": "Gaberl",
+      "expect": "^Gaberl"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Packsattel",
+      "expect": "^Packsattel"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Hilmteich",
+      "expect": "^Hilmteich, (8010 )?Graz"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Thalersee",
+      "expect": "^Thalersee"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Teichalm",
+      "expect": "^Teichalm"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Graz Hbf",
+      "expect": "^Graz Hauptbahnhof"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Graz Hauptbahnhof",
+      "expect": "^Graz Hauptbahnhof"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Leibnitz Bahnhof",
+      "expect": "^(Leibnitz|Bahnhof Leibnitz), .*8430 Leibnitz"
+    },
+    {
+      "group": "Bahnhof",
+      "query": "Bahnhof Gleisdorf",
+      "expect": "^(Gleisdorf|Bahnhof Gleisdorf), .*8200 Gleisdorf"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Wien Westbahnhof",
+      "expect": "^Wien Westbahnhof"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Klagenfurt",
+      "expect": "^Klagenfurt( am Wörthersee)?, "
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Villach",
+      "expect": "^Villach, "
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Maribor",
+      "expect": "^(Maribor|Marburg)"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Salzburg",
+      "expect": "^Salzburg(, |$)"
+    },
+    {
+      "group": "Weiter weg",
+      "query": "Ljubljana",
+      "expect": "^(Ljubljana|Laibach)"
+    },
+    {
+      "group": "Mehrdeutig",
+      "query": "Kirchberg",
+      "expect": "^Kirchberg, 8051 Thal",
+      "note": "The nearest Kirchberg first (decided 2026-10-29)."
+    },
+    {
+      "group": "Mehrdeutig",
+      "query": "St. Peter",
+      "expect": "^(Sankt|St\\.) Peter, (80\\d\\d )?Graz"
+    },
+    {
+      "group": "Mehrdeutig",
+      "query": "Mühlgasse",
+      "expect": "^Mühlgasse, 80\\d\\d Graz"
+    },
+    {
+      "group": "Mehrdeutig",
+      "query": "Bahnhofstraße",
+      "expect": "^Bahnhofstraße, 8\\d\\d\\d "
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Hauptplatz Weiz",
+      "expect": "^Hauptplatz, (8160 )?Weiz"
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Bahnhofstraße Gleisdorf",
+      "expect": "^Bahnhofstraße, 8200 Gleisdorf"
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Gleisdorf Bahnhof",
+      "expect": "^(Gleisdorf|Bahnhof Gleisdorf|Gleisdorf Bahnhof), .*8200 Gleisdorf",
+      "note": "The bus station on the station forecourt counts as the station."
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Hauptplatz Leibnitz",
+      "expect": "^Hauptplatz, 8430 Leibnitz"
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "8160 Weiz",
+      "expect": "^Weiz, (8160|Steiermark)",
+      "note": "Open: a postcode with its town should find the town; Photon finds a school."
+    },
+    {
+      "group": "Straße + Ort",
+      "query": "Herrengasse 5 8010",
+      "expect": "^Herrengasse 5, 8010 Graz"
+    },
+    {
+      "group": "Abkürzung",
+      "query": "Mariatrosterstr.",
+      "expect": "^Mariatroster Straße, 80\\d\\d Graz"
+    },
+    {
+      "group": "Abkürzung",
+      "query": "Elisabethstr 50",
+      "expect": "^Elisabethstraße 50, 8010 Graz"
+    },
+    {
+      "group": "Abkürzung",
+      "query": "Hbf Graz",
+      "expect": "^Graz Hauptbahnhof"
+    },
+    {
+      "group": "Abkürzung",
+      "query": "Gr. St. Florian",
+      "expect": "^Groß Sankt Florian"
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Koeflach",
+      "expect": "^Köflach, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Muerzzuschlag",
+      "expect": "^Mürzzuschlag, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Groebming",
+      "expect": "^Gröbming, "
+    },
+    {
+      "group": "Ohne Umlaut",
+      "query": "Schlossberg",
+      "expect": "^Schloßberg, (8010 )?Graz"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Hitzendrof",
+      "expect": "^Hitzendorf, "
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Shöckl",
+      "expect": "^Schöckl, 8061 Sankt Radegund"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Stubenberg See",
+      "expect": "^Stubenbergsee"
+    },
+    {
+      "group": "Tippfehler",
+      "query": "Deutschlandsbrg",
+      "expect": "^Deutschlandsberg, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Bad Radk",
+      "expect": "^Bad Radkersburg, "
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Hilmt",
+      "expect": "^Hilmteich(warte)?, ",
+      "note": "Pond and tower stand together; either fits the word being typed."
+    },
+    {
+      "group": "Beim Tippen",
+      "query": "Annenstraße 1",
+      "expect": "^Annenstraße 1, 8020 Graz"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Uhrturm",
+      "expect": "^Uhrturm, .*Graz"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Murinsel",
+      "expect": "^Murinsel, .*Graz"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Stadtpark Graz",
+      "expect": "^Stadtpark, .*Graz"
+    },
+    {
+      "group": "Sehenswert",
+      "query": "Landeskrankenhaus Graz",
+      "expect": "^(LKH|Landeskrankenhaus|LKH-Univ)"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Sölkpass",
+      "expect": "^Sölkpass"
+    },
+    {
+      "group": "Berg & See",
+      "query": "Turracher Höhe",
+      "expect": "^Turracher Höhe"
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Marburg an der Drau",
+      "expect": "^(Maribor|Marburg)"
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Spielfeld",
+      "expect": "^Spielfeld, "
+    },
+    {
+      "group": "Über die Grenze",
+      "query": "Gornja Radgona",
+      "expect": "^(Gornja Radgona|Oberradkersburg)"
+    }
+  ],
+  "reverse": [
+    {
+      "group": "Karte",
+      "point": [
+        15.43933,
+        47.07064
+      ],
+      "expect": "^Herrengasse 5, 8010 Graz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.43038,
+        47.07108
+      ],
+      "expect": "^Annenstraße 10, 8020 Graz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.70982,
+        47.10541
+      ],
+      "expect": "8200 Gleisdorf$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.48963,
+        47.18053
+      ],
+      "expect": "8061 Sankt Radegund bei Graz$"
+    },
+    {
+      "group": "Karte",
+      "point": [
+        15.51506,
+        47.28192
+      ],
+      "expect": "8162 Passail$"
+    }
+  ],
+  "towns": [
+    {
+      "group": "Rundenname",
+      "point": [
+        15.70982,
+        47.10541
+      ],
+      "expect": "^Gleisdorf$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.5407,
+        46.78048
+      ],
+      "expect": "^Leibnitz$"
+    },
+    {
+      "group": "Rundenname",
+      "point": [
+        15.30158,
+        47.03452
+      ],
+      "expect": "^Hitzendorf$"
+    }
+  ]
+}

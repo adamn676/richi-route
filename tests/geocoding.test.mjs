@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
+import { expandAbbreviations, forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
 
 const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: coord },
@@ -8,23 +8,25 @@ const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
 });
 const signal = () => new AbortController().signal;
 
-test('search stays on the local service, encodes text and merges a name repeated nearby, not far away', async t => {
+test('search stays on the local service, prefers the map\'s surroundings and merges a name repeated within a town', async t => {
   let request;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     request = { url: new URL(url, 'http://127.0.0.1:5173'), options };
     return Response.json({ features: [feature(), feature(), feature('Hauptplatz', [15.44, 47.07]),
-      { ...feature(), properties: { ...feature().properties, postcode: '8010' } }, feature('Hauptplatz', [15.47, 47.05])] });
+      { ...feature(), properties: { ...feature().properties, postcode: '8010' } }, feature('Hauptplatz', [15.47, 47.05]),
+      { ...feature('Hauptplatz', [15.7, 47.1]), properties: { ...feature().properties, city: 'Gleisdorf' } }] });
   });
-  const places = await forwardGeocode('  Graz & Hauptplatz  ', signal());
+  const places = await forwardGeocode('  Graz & Hauptplatz  ', signal(), [15.44, 47.07]);
   assert.equal(request.url.origin, 'http://127.0.0.1:5173');
   assert.equal(request.url.pathname, '/geocoding/api/');
   assert.equal(request.url.searchParams.get('q'), 'Graz & Hauptplatz');
   assert.equal(request.url.searchParams.get('lang'), 'de');
+  assert.deepEqual(['lat', 'lon', 'bbox', 'limit'].map(key => request.url.searchParams.get(key)), ['47.07', '15.44', '5,45,20,50', '20']);
   assert.equal(request.options.credentials, 'omit');
   assert.equal(request.options.referrerPolicy, 'no-referrer');
-  assert.equal(places.length, 2);
+  assert.deepEqual(places.map(place => place.components.place), ['Graz', 'Gleisdorf'], 'One square per town');
   assert.deepEqual(places[0], { label: 'Hauptplatz, Graz, Steiermark', coord: [15.4385, 47.071],
-    kind: 'place', components: { place: 'Graz', region: 'Steiermark', country: 'Österreich' } });
+    title: 'Hauptplatz', detail: 'Graz', category: 'place', components: { place: 'Graz', region: 'Steiermark', country: 'Österreich' } });
 });
 
 test('short or cancelled searches make no request', async t => {
@@ -104,4 +106,40 @@ test('an address knows its street; a street result does not need one', async t =
   body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.393, 47.0769] },
     properties: { type: 'street', name: 'Georgigasse', postcode: '8020', city: 'Graz' } }] };
   assert.equal((await forwardGeocode('Georgigasse', signal()))[0].street, undefined);
+});
+
+test('abbreviations are searched written out as well; clutter goes; an exact name comes first', async t => {
+  assert.equal(expandAbbreviations('Hbf Graz'), 'Hauptbahnhof Graz');
+  assert.equal(expandAbbreviations('Mariatrosterstr. 3'), 'Mariatrosterstraße 3');
+  assert.equal(expandAbbreviations('St. Radegund'), 'Sankt Radegund');
+  assert.equal(expandAbbreviations('Gr. St. Florian'), 'Groß Sankt Florian');
+  assert.equal(expandAbbreviations('Straßgang'), 'Straßgang');
+  const queries = [];
+  const kind = (name, osm_key, osm_value, more = {}) => ({ ...feature(name), properties: { ...feature(name).properties, osm_key, osm_value, ...more } });
+  t.mock.method(globalThis, 'fetch', async url => {
+    queries.push(new URL(url, 'http://127.0.0.1:5173').searchParams.get('q'));
+    return Response.json({ features: [kind('Weinwarte Sankt Peter', 'tourism', 'viewpoint'), kind('Sankt Peter', 'highway', 'bus_stop'),
+      kind('Dach', 'building', 'roof'), kind('Katastralgemeinde Sankt Peter', 'boundary', 'administrative'), kind('Sankt Peter', 'place', 'village')] });
+  });
+  const places = await forwardGeocode('St. Peter', signal());
+  assert.deepEqual(queries, ['St. Peter', 'Sankt Peter']);
+  assert.deepEqual(places.map(place => place.label), ['Sankt Peter, Graz, Steiermark', 'Weinwarte Sankt Peter, Graz, Steiermark']);
+});
+
+test('a suggestion shows what a place is and where: an address with its town, a town with its region, anything else town first', async t => {
+  const at = (properties, coord = [15.44, 47.07]) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties });
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ features: [
+    at({ street: 'Herrengasse', housenumber: '5', postcode: '8010', city: 'Graz', state: 'Steiermark', country: 'Österreich' }),
+    at({ name: 'Gleisdorf', osm_key: 'place', osm_value: 'town', state: 'Steiermark', country: 'Österreich' }, [15.7, 47.1]),
+    at({ name: 'Schöckl', osm_key: 'natural', osm_value: 'peak', postcode: '8061', city: 'Sankt Radegund bei Graz', state: 'Steiermark' }, [15.47, 47.2]),
+    at({ name: 'Pizzeria St. Radegund', osm_key: 'amenity', osm_value: 'restaurant', street: 'Hauptstraße', housenumber: '42', postcode: '8061',
+      city: 'Sankt Radegund bei Graz', state: 'Steiermark' }, [15.49, 47.18]),
+  ] }));
+  const places = await forwardGeocode('Suche', signal());
+  assert.deepEqual(places.map(place => [place.category, place.title, place.detail]), [
+    ['address', 'Herrengasse 5', '8010 Graz'],
+    ['town', 'Gleisdorf', 'Steiermark'],
+    ['mountain', 'Schöckl', 'Sankt Radegund bei Graz'],
+    ['place', 'Pizzeria St. Radegund', 'Sankt Radegund bei Graz · Hauptstraße 42'],
+  ]);
 });

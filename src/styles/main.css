@@ -56,6 +56,8 @@
 .v-field--variant-underlined { --v-field-padding-top: 1px; --v-field-padding-bottom: 5px; }
 /* A text longer than its field ends in an ellipsis while the field is not being edited, as an address does. */
 .v-field input:not(:focus) { text-overflow: ellipsis; }
+/* A suggestion's name wraps to a second line before it is cut; where it lies stays one line. */
+.address-search__item .v-list-item-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; hyphens: manual; }
 .v-field--variant-underlined .v-field__outline::before { border-color: var(--border); opacity: 1; }
 .v-field--variant-underlined:hover .v-field__outline::before { border-color: var(--border-input); }
 .v-field--variant-underlined .v-field__outline::after { border-color: var(--accent); transition-duration: .15s; }

@@ -664,8 +664,16 @@ For a new Sentinel quarter, update the source URL, manifest URL, checksum and
 Address suggestions use the local Photon service through `/geocoding/api/`.
 Queries stay on this computer. Suggestions load after three characters and a
 350 ms pause, with keyboard, mouse and touch selection. Enter reuses the first
-loaded result. Results of the same name within 200 m (a square, its street and
-its stops) show once. The × in a stop's field removes the stop's point as well as
+loaded result. Suggestions favour places near the map's centre and keep to the
+routing data's area (5–20° E, 45–50° N), where a route can be calculated. Common
+abbreviations are searched written out as well (Hbf, Str., St., Gr.), and a place
+named exactly as typed comes first, whatever the case, ß or ss, umlauts written
+as ae/oe/ue, or word order. Stops, platforms, railway works, shelters, parts of
+buildings, signposts and land-registry areas are left out; one name in one town
+(a square and its street segments) and one address (the shops at a house) show
+once. Each suggestion shows its name on the first line and where it is below
+(the town, for a place also its street), with an icon for its kind: address,
+street, town, mountain, station, water or other place. The × in a stop's field removes the stop's point as well as
 its text (a start or destination also its shaping points) and leaves the stop
 empty; undo restores it. No routing geometry is sent to the search service, and
 unavailable local search never falls back to `photon.komoot.io`.
@@ -678,7 +686,7 @@ street; the park's paths carry no bicycle restriction in OpenStreetMap.
 
 A stop placed or moved on the map, and the start and end of an imported GPX
 track, get the street they lie on from `/geocoding/reverse` once snapped, such as
-"Hahnhofweg, 8010 Graz". A house number is added only when that house is within
+"Hahnhofweg, 8010 Graz", or the town ("8200 Gleisdorf") where no street is near. A house number is added only when that house is within
 30 m, and nothing farther than 300 m names a point; then the position stays
 shown. Naming adds no undo step, and typing or moving the stop cancels it. Stops of
 routes saved before naming get their streets when the route is opened; that alone
@@ -715,6 +723,18 @@ An explicitly configured Photon service can still be selected with
 `VITE_GEOCODING_URL`. Export it in the shell before running Vite or building;
 `.env` loading is disabled. Absolute URLs need CORS on that service. Choosing an
 external URL sends search queries there. Local search is the default.
+
+`node tests/search-quality.mjs <name> [--compare <earlier name>]` measures the
+search against 88 fixed queries with the correct answers (`tests/search-cases.json`),
+from easy towns to abbreviations, typos, names found in many places and words still
+being typed, plus names for points and loops. It reports where the correct place
+ranks, saves the run under its name in `.cache/search-quality/` and fails if any
+query does worse than in the run compared with. Measured with the map on Graz:
+Photon as before found the correct place first for 61 % of the queries and among
+the first three for 70 %; with the changes above, 93 % and 97 %, none worse, and
+98 % and 99 % once four borderline answers were settled (the nearest Kirchberg
+first, for example). Cases still open carry a `note`. `--verify` checks that each
+expected place exists in the data.
 
 `node tests/browser-search.mjs` checks real local suggestions, local routing,
 keyboard and touch interaction, cancellation and controlled failure responses.
