@@ -9,8 +9,6 @@ export { default as IconChevronDown } from '@tabler/icons-vue/dist/esm/icons/Ico
 export { default as IconChevronLeft } from '@tabler/icons-vue/dist/esm/icons/IconChevronLeft.mjs';
 export { default as IconChevronRight } from '@tabler/icons-vue/dist/esm/icons/IconChevronRight.mjs';
 export { default as IconChevronUp } from '@tabler/icons-vue/dist/esm/icons/IconChevronUp.mjs';
-export { default as IconCircle } from '@tabler/icons-vue/dist/esm/icons/IconCircle.mjs';
-export { default as IconCircleDotFilled } from '@tabler/icons-vue/dist/esm/icons/IconCircleDotFilled.mjs';
 export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.mjs';
 export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
 export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/IconDotsVertical.mjs';
@@ -29,9 +27,6 @@ export { default as IconPencil } from '@tabler/icons-vue/dist/esm/icons/IconPenc
 export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
 export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';
 export { default as IconRoute } from '@tabler/icons-vue/dist/esm/icons/IconRoute.mjs';
-export { default as IconSquare } from '@tabler/icons-vue/dist/esm/icons/IconSquare.mjs';
-export { default as IconSquareCheckFilled } from '@tabler/icons-vue/dist/esm/icons/IconSquareCheckFilled.mjs';
-export { default as IconSquareMinusFilled } from '@tabler/icons-vue/dist/esm/icons/IconSquareMinusFilled.mjs';
 export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStack2.mjs';
 export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';
 export { default as IconUpload } from '@tabler/icons-vue/dist/esm/icons/IconUpload.mjs';

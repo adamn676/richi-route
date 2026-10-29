@@ -14,6 +14,7 @@ function markerElement(kind: 'stop' | 'shape' | 'preview'): HTMLElement {
 function labelStop(element: HTMLElement, point: Waypoint, index: number): HTMLElement {
   element.textContent = stopBadge(point.kind, index);
   element.setAttribute('aria-label', `${stopLabel(point.kind, index)} verschieben`);
+  // Red with the problem its row tells (a problem of its place); the panel's problems leave the stops as they are.
   element.classList.toggle('route-marker--error', Boolean(useRouteStore().stopError(point)));
   return element;
 }
@@ -92,6 +93,8 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
       } else {
         marker.setLngLat(shape.coord);
       }
+      // A shaping point has no row, so the panel says what its place's problem is; red shows which one it is.
+      marker.getElement().classList.toggle('route-marker--error', Boolean(shape.snapError));
     });
   }
 

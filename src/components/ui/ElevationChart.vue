@@ -250,7 +250,8 @@ function key(event: KeyboardEvent) {
 
 <style scoped>
 .elevation-chart { container-type: inline-size; display: flex; flex-direction: column; font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.elevation-chart__heading { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; min-height: 1.6rem; margin-bottom: .5rem; }
+/* The chart follows its heading 16 px below the baseline, as every section's content does. */
+.elevation-chart__heading { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; min-height: 1.6rem; }
 .elevation-chart__heading > strong { margin-right: auto; }
 .elevation-chart strong { font-weight: 600; color: var(--text); white-space: nowrap; }
 @container (max-width: 20rem) { .slope-scale { display: none; } }

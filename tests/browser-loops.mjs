@@ -59,7 +59,7 @@ const mapState = () => page.evaluate(() => {
   return { loops: map.getSource('loop-suggestions-source')?._data?.features?.length ?? map.getSource('loop-suggestions-source')?.serialize().data.features.length,
     highlight: map.getGlobalState().loopHighlight, selected: map.getGlobalState().loopSelected };
 });
-const cards = page.getByRole('group', { name: 'Vorschläge', exact: true }).getByRole('button');
+const cards = page.getByRole('group', { name: 'Vorschläge', exact: true }).getByRole('button', { name: /^(Über|Nach) / });
 const routeState = () => page.evaluate(`(() => { const s = ${store('route')}, l = ${store('loop-suggestions')}; return { distance: s.distanceMeters,
   ascent: s.ascentMeters, end: s.waypoints.at(-1).coord, undo: s.undoStack.length, selected: l.selected,
   loops: l.suggestions?.map(loop => loop.leg.distanceMeters) ?? null }; })()`);
@@ -72,19 +72,25 @@ const zoom = () => page.evaluate(() => new Promise(resolve => {
 try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'Runde vorschlagen', exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Vorschläge', exact: true }).isDisabled(), true, 'A loop needs a start');
+  assert.equal(await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).isDisabled(), true, 'A loop needs a start');
   await page.evaluate(`${store('route')}.addWaypointByClick([${start}])`);
   await page.waitForFunction(`${store('route')}.waypoints[0].address === 'Teststraße, 8010 Graz'`);
   const before = await routeState();
+  // A figure is typed, the other set with its slider.
   await page.getByLabel('Distanz', { exact: true }).fill('40');
-  await page.getByLabel('Anstieg', { exact: true }).fill('600');
-  await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
+  const climbing = page.getByRole('slider', { name: 'Höhenmeter-Regler', exact: true });
+  await climbing.focus();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowRight');
+  assert.equal(await page.getByLabel('Höhenmeter', { exact: true }).inputValue(), '600');
+  assert.equal(await page.getByRole('slider', { name: 'Distanz-Regler', exact: true }).getAttribute('aria-valuetext'), '40 km');
+  await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await cards.first().waitFor();
   const texts = await cards.allInnerTexts();
   assert.equal(texts.length, 3);
   assert.ok(texts.every(text => /^Über (Nordhausen|Ostdorf|Südheim|Westfeld)\n/.test(text)), texts.join(' / '));
   assert.equal(new Set(texts.map(text => text.split('\n')[0])).size, 3, 'Each loop has its own name');
-  assert.ok(texts.every(text => /\d+,\d km · \d+ m/.test(text)));
+  assert.ok(texts.every(text => /\d+,\d\skm · \d+\sm/.test(text)), texts.join(' / '));
 
   // First all three in view, none chosen: the route is still the start alone.
   let shown = await routeState();
@@ -127,14 +133,14 @@ try {
 
   // Discarding drops them; keeping one ends the choice, and one undo returns to the start.
   await cards.nth(2).click();
-  await page.getByRole('button', { name: 'Verwerfen', exact: true }).click();
+  await page.getByRole('button', { name: 'Vorschläge verwerfen', exact: true }).click();
   shown = await routeState();
   assert.deepEqual([shown.end, shown.loops, shown.undo], [null, null, before.undo]);
-  await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
+  await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await cards.first().waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Übernehmen', exact: true }).isDisabled(), true, 'Keeping needs a selection');
+  assert.equal(await page.getByRole('button', { name: 'Runde übernehmen', exact: true }).count(), 0, 'Keeping needs a selection');
   await cards.first().click();
-  await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+  await page.getByRole('button', { name: 'Runde übernehmen', exact: true }).click();
   shown = await routeState();
   assert.equal(shown.loops, null);
   assert.ok(shown.end);
@@ -145,14 +151,14 @@ try {
   assert.equal((await routeState()).end, null, 'Undo returns to the start alone');
 
   routing = 'fail';
-  await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
+  await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'nicht erreichbar' }).waitFor();
   routing = 'loops';
 
   // A new route keeps no copy of a start alone, nor of a loop only being looked at.
   const saved = () => page.evaluate(async () => (await (await import('/src/services/route-library.service.ts')).routeLibrary.list()).length);
   const library = await saved();
-  await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
+  await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await cards.first().click();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await page.waitForFunction(`!${store('route')}.waypoints[0].coord`);
@@ -168,7 +174,7 @@ try {
 
   // On a phone the sheet stays up while choosing, and the cards fit.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Vorschläge', exact: true }).click();
+  await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await cards.first().waitFor();
   await cards.nth(1).click();
   assert.match(await page.locator('.editor-layout').getAttribute('class'), /editor-layout--half/);

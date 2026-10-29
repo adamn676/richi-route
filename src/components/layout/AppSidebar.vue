@@ -13,8 +13,7 @@
         </svg>
         <span>Richi<span class="brand__route">Route</span></span>
       </h1>
-      <v-btn v-if="hasDraft" class="sidebar__new" icon variant="tonal" color="primary" size="small" aria-label="Neue Route"
-        v-tooltip:bottom="'Neue Route'" @click="newRoute"><IconPlus :size="18" aria-hidden="true" /></v-btn>
+      <v-btn v-if="hasDraft" class="sidebar__new" variant="tonal" rounded="pill" :prepend-icon="IconPlus" @click="newRoute">Neue Route</v-btn>
     </header>
     <v-tabs v-model="tab" class="sidebar__tabs" aria-label="Bereiche">
       <!-- The selected tab's white field, sliding to the tab chosen next. -->
@@ -35,15 +34,11 @@
     <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="4000" @update:model-value="open => open || (message = '')">{{ message }}</v-snackbar>
     <div ref="body" class="sidebar__body" :style="{ '--scrollbar': `${scrollbar}px` }">
       <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" />
-      <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
+      <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
-    <!-- Only the OpenStreetMap credit stays in view; MapView places the full list of sources here (useMap's credits container)
-         and opens it while an online map or overlay shows. -->
-    <details class="sidebar__credits">
-      <summary>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · <span>Quellen</span></summary>
-      <div id="map-credits" />
-    </details>
+    <!-- The visible map's credits, always in view: MapView places them here (useMap's credits container). -->
+    <div id="map-credits" class="sidebar__credits" />
   </aside>
 </template>
 
@@ -125,9 +120,10 @@ async function showRoute(focus = 'tab-route') {
 .brand__mark { height: 2rem; color: v-bind('routeStyle.paved'); }
 .brand__wheel { fill: none; stroke: var(--accent); stroke-width: 14; }
 .brand__route { color: v-bind('routeStyle.paved'); }
-.sidebar__new { margin-left: auto; }
+/* The first step of every plan, so named in full; tonal, so the panels' ink buttons stay their main actions. */
+.sidebar__new { height: 36px; margin-left: auto; padding-inline: 12px 16px; font-weight: 500; letter-spacing: 0; }
 /* Segmented tabs: a white field slides to the chosen one; pressing a tab dims its label. */
-.sidebar__tabs { flex: none; height: auto !important; margin: 0 var(--gutter) var(--space-2); padding: var(--space-1); border-radius: 12px;
+.sidebar__tabs { flex: none; height: auto !important; margin: 0 var(--gutter); padding: var(--space-1); border-radius: 12px;
   background: #eceeed; }
 .sidebar__tabs :deep(.v-slide-group__content) { position: relative; }
 .sidebar__tabs .v-tab { position: relative; z-index: 1; min-height: 32px; height: 32px !important; border-radius: 8px !important; text-transform: none;
@@ -142,17 +138,15 @@ async function showRoute(focus = 'tab-route') {
 .sidebar__pill--moves { transition: transform .22s cubic-bezier(.3, .7, .2, 1), width .22s cubic-bezier(.3, .7, .2, 1); }
 @media (prefers-reduced-motion: reduce) { .sidebar__pill--moves { transition: none; } }
 .sidebar__messages { display: grid; gap: .5rem; max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
+.sidebar__messages:not(:empty) { padding-top: var(--space-2); }
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
 /* A thin scrollbar, shown while the pointer is over the panel or the focus is in it; its room stays, so the content keeps
    its width when the scrollbar comes and goes or the panel's height changes. */
 .sidebar__body { --gutter-end: calc(var(--gutter) - var(--scrollbar, 0px)); flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin;
   scrollbar-color: transparent transparent; }
 .sidebar__body:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent; }
-.sidebar__credits { padding: .35rem var(--gutter); border-top: 1px solid var(--border); color: var(--text-muted); font-size: .68rem; line-height: 1.4; }
-.sidebar__credits summary { list-style: none; cursor: pointer; }
-.sidebar__credits summary::-webkit-details-marker { display: none; }
-.sidebar__credits summary span { text-decoration: underline; }
-.sidebar__credits[open] summary { margin-bottom: .25rem; }
+.sidebar__credits { padding: .35rem var(--gutter); background: linear-gradient(var(--border), var(--border)) no-repeat var(--gutter) 0 / calc(100% - 2 * var(--gutter)) 1px;
+  color: var(--text-muted); font-size: .68rem; line-height: 1.4; }
 .sidebar__credits :deep(.maplibregl-ctrl-attrib) { margin: 0; padding: 0; background: none; }
 .sidebar__credits :deep(a) { color: inherit; }
 </style>

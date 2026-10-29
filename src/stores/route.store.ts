@@ -309,7 +309,8 @@ export const useRouteStore = defineStore('route', {
       const failed = Object.values(this.legs).find(leg => leg.error);
       return failed && !this.routingPending ? { message: 'Rot gestrichelte Abschnitte konnten nicht berechnet werden.', section: failed.id, retry: true } : null;
     },
-    // Why a stop has no street, unless the panel says so already.
+    // Why a stop has no street, if moving it is the fix: its row says so and it shows red. Problems fixed elsewhere (the
+    // service, missing map data) are the panel's, with a retry.
     stopError: (state) => (point: RoutePoint): string | undefined => point.snapError !== state.errorMessage ? point.snapError : undefined,
   },
 

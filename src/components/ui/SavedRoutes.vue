@@ -9,10 +9,10 @@
     </form>
 
     <div class="library__group">
-      <div class="library__heading">
+      <div class="section-heading">
         <h2 ref="heading" class="text-title-medium" tabindex="-1">Gespeicherte Routen <span>{{ entries.length }}</span></h2>
         <v-icon-button v-tooltip:bottom="'Liste aktualisieren'" :disabled="busy" aria-label="Aktualisieren"
-          @click="refreshList"><IconRefresh :size="16" aria-hidden="true" /></v-icon-button>
+          @click="refreshList"><IconRefresh :size="18" aria-hidden="true" /></v-icon-button>
       </div>
       <p v-if="busy" class="text-body-small text-medium-emphasis" role="status">Wird aktualisiert …</p>
       <p v-if="!entries.length" class="text-body-small text-medium-emphasis">Noch keine gespeicherten Routen.</p>
@@ -20,7 +20,7 @@
         <v-list-item v-for="entry in entries" :key="entry.id" :aria-label="entry.name" :active="active?.id === entry.id"
           color="primary" :title="entry.name" :subtitle="`${formatKm(entry.distanceMeters, 1)} km · ${dateLabel(entry.updatedAt)}${active?.id === entry.id ? ' · geöffnet' : ''}`">
           <template #append>
-            <v-icon-button v-tooltip:bottom="'Öffnen'" :disabled="busy" aria-label="Öffnen" @click="open(entry)"><IconFolderOpen :size="17" aria-hidden="true" /></v-icon-button>
+            <v-icon-button v-tooltip:bottom="'Öffnen'" :disabled="busy" aria-label="Öffnen" @click="openEntry(entry)"><IconFolderOpen :size="17" aria-hidden="true" /></v-icon-button>
             <v-menu location="bottom end">
               <template #activator="{ props: menu, isActive }">
                 <v-icon-button v-bind="menu" v-tooltip:bottom="{ text: 'Weitere Aktionen', disabled: isActive }" :disabled="busy" aria-label="Weitere Aktionen"
@@ -40,8 +40,10 @@
 
     <footer class="library__backup">
       <p class="text-body-small text-medium-emphasis">Routen bleiben nur in diesem Browser. Eine Sicherungsdatei bringt sie auf ein anderes Gerät.</p>
-      <v-btn variant="outlined" size="small" :prepend-icon="IconDownload" :disabled="busy || !hasDraft" @click="download">Aktuelle Route sichern</v-btn>
-      <v-btn variant="outlined" size="small" :prepend-icon="IconUpload" :disabled="busy" @click="fileInput?.click()">Sicherung einlesen</v-btn>
+      <div class="library__actions">
+        <v-btn variant="outlined" size="small" :prepend-icon="IconDownload" :disabled="busy || !hasDraft" @click="download">Aktuelle Route sichern</v-btn>
+        <v-btn variant="outlined" size="small" :prepend-icon="IconUpload" :disabled="busy" @click="fileInput?.click()">Sicherung einlesen</v-btn>
+      </div>
       <input ref="fileInput" type="file" accept=".json,application/json" aria-label="RichiRoute-Sicherung auswählen" hidden @change="importSelected" />
     </footer>
 
@@ -84,6 +86,7 @@ import type { SavedRouteSummary } from '../../domain/saved-route';
 import { formatKm } from '@/utils/format';
 
 const props = defineProps<{ library: ReturnType<typeof useRouteLibrary> }>();
+const emit = defineEmits<{ opened: [] }>();
 const { entries, active, name, busy, error, hasDraft, save, open, rename, duplicate, remove,
   importFile, download, refreshList } = props.library;
 const fileInput = ref<HTMLInputElement>();
@@ -91,6 +94,11 @@ const renaming = shallowRef<SavedRouteSummary>();
 const deleting = shallowRef<SavedRouteSummary>();
 const renameValue = ref('');
 const dateLabel = (date: string) => new Date(date).toLocaleDateString('de-AT');
+// An opened route shows on the Route tab, as a new route and an opened track do.
+async function openEntry(entry: SavedRouteSummary) {
+  await open(entry);
+  if (!error.value) emit('opened');
+}
 // The dialogs open from a row's menu, so closing one returns to that menu's button, or after a deletion to the heading.
 const heading = ref<HTMLElement>();
 const menuButton = shallowRef<EventTarget | null>(null);
@@ -121,14 +129,25 @@ async function importSelected(event: Event) {
 </script>
 
 <style scoped>
-.library { display: grid; gap: 1.25rem; padding: 1rem var(--gutter-end) 1.5rem var(--gutter); }
-.library__save { display: flex; align-items: center; gap: .4rem; }
-.library__group { display: grid; gap: .5rem; }
-.library__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+/* Sections as in the Route tab: 16 px above and below, a line from margin to margin between them. */
+.library { display: grid; padding: 0 var(--gutter-end) 0 var(--gutter); }
+/* As the Route tab's sections, measured to what shows: 24 px from a line to the first letters and from the last item to
+   the next line. A heading row brings 12 px of its own; the saving field's label rises 4 px above the field; a paragraph
+   is trimmed to its letters where the browser can. */
+.library > * { padding-block: var(--space-3) var(--space-6); }
+.library__save { padding-top: calc(var(--space-6) + 4px); }
+.library__backup { padding-top: var(--space-6); }
+.library__group p { text-box: trim-end cap alphabetic; }
+.library__backup p { text-box: trim-start cap alphabetic; }
+.library > * + * { border-top: 1px solid var(--border); }
+.library__save { display: flex; align-items: center; gap: var(--space-2); }
+.library__group { display: grid; gap: var(--space-3); }
+.library__group p { margin: 0; }
 h2 span { margin-left: .3rem; color: var(--text-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .library__list { padding: 0; border-top: 1px solid var(--border); }
 .library__list :deep(.v-list-item) { border-bottom: 1px solid var(--border); }
 .library__list :deep(.v-list-item-title) { white-space: normal; overflow-wrap: anywhere; }
-.library__backup { display: flex; flex-wrap: wrap; gap: .4rem; padding-top: 1rem; border-top: 1px solid var(--border); }
-.library__backup p { flex-basis: 100%; margin: 0 0 .2rem; }
+.library__backup { display: grid; gap: var(--space-3); }
+.library__backup p { margin: 0; }
+.library__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 </style>

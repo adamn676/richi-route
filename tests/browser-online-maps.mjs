@@ -85,8 +85,9 @@ try {
       const layers = map.getStyle().layers.filter(layer => 'source' in layer && layer.source === 'segments-source' && layer.type === 'line');
       return map.queryRenderedFeatures({ layers: layers.map(layer => layer.id) }).length;
     }), `${mode}: route remains visible`);
-    // The provider's credit is in view while its map shows.
-    assert.equal(await page.locator('.sidebar__credits').evaluate(details => details.open), mode !== 'street');
+    // The credits are in view, OpenStreetMap among them once.
+    assert.equal((await page.locator('.sidebar__credits').innerText()).match(/OpenStreetMap/g)?.length, 1, `${mode}: one OpenStreetMap credit`);
+    assert.equal(await page.locator('.sidebar__credits a:not([target="_blank"])').count(), 0, `${mode}: credits open their links in a new tab`);
     states.push(state);
     await page.screenshot({ path: `${output}/${mode}.png` });
   }
@@ -124,7 +125,7 @@ try {
   await page.locator('.cycling-controls .map-menu__trigger').click();
   await page.getByLabel('Radrouten').uncheck();
   await closeMenus(page);
-  await page.waitForFunction(() => !document.querySelector('.sidebar__credits').open);
+  await page.locator('.sidebar__credits a[href="https://cycling.waymarkedtrails.org"]').waitFor({ state: 'detached' });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await chooseBasemap(page, 'opentopomap');

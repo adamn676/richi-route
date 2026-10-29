@@ -57,11 +57,11 @@ try {
   const original = await snapshot(page);
   const details = page.getByRole('region', { name: 'Untergrund' });
   assert.match(await details.locator('.surfaces__totals').textContent(),
-    /^Befestigt293,6 km.*Vermutlich befestigt44,1 km.*Kopfsteinpflaster\/Holzbrücke92 m.*Unbefestigt382 m.*Unbekannt232 m/);
+    /^Befestigt293,6\skm.*Vermutlich befestigt44,1\skm.*Kopfsteinpflaster\/Holzbrücke92\sm.*Unbefestigt382\sm.*Unbekannt232\sm/);
   await details.getByRole('button', { name: /Unbefestigt/ }).click();
   await checkFocus(page, 'unpaved');
   assert.equal(await details.locator('.surfaces__sections button').count(), 4);
-  assert.match(await details.locator('.surfaces__sections').textContent(), /364 m/);
+  assert.match(await details.locator('.surfaces__sections').textContent(), /364\sm/);
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.screenshot({ path: new URL('desktop.png', directory).pathname });
   await details.getByRole('button', { name: /Vermutlich befestigt/ }).click();

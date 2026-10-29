@@ -102,8 +102,10 @@ try {
   assert.equal(await list.getByRole('listitem').count(), 2, 'An unchanged saved route needs no recovery duplicate');
   await entry('Lange Runde').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await idle();
+  assert.equal(await page.getByRole('tab', { name: 'Route', exact: true }).getAttribute('aria-selected'), 'true', 'An opened route shows on the Route tab');
 
   await setQuery('Gesicherte Änderung');
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await page.getByRole('button', { name: 'Änderungen speichern', exact: true }).click();
   await idle();
   assert.equal(await list.getByRole('listitem').count(), 2, 'Saving an opened route updates it');
@@ -261,6 +263,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .waypoints.every(point => point.address === 'Testweg, 8010 Graz' && point.userInput === point.address));
   await idle();
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   const rows = await list.getByRole('listitem').count();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await idle();
@@ -280,7 +283,7 @@ try {
     assert.ok(box && box.x >= 0 && box.x + box.width <= 390, 'Saved-route controls fit mobile width');
   }
   await page.screenshot({ path: output + '/mobile.png', fullPage: true });
-  await page.locator('.library__heading').evaluate(element => element.scrollIntoView({ block: 'start' }));
+  await page.locator('#panel-library .section-heading').evaluate(element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: output + '/mobile-list.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Saved routes: long-route fidelity, update/copy/rename/delete, recovery, backup import/export, reload, cross-tab conflicts, atomic rollback and mobile controls passed.');

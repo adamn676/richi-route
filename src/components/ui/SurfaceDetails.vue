@@ -2,7 +2,7 @@
   <section v-if="totals.length" class="surfaces" :class="{ 'surfaces--stale': store.routingPending }" :aria-busy="store.routingPending"
     aria-labelledby="surfaces-title">
     <!-- Correcting a surface the map has wrong starts here, where the surfaces are listed; the stretch is chosen on the map. -->
-    <div class="surfaces__heading">
+    <div class="section-heading">
       <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
       <v-icon-button v-if="store.surfacesReportable" :active="store.surfaceReporting" :aria-pressed="store.surfaceReporting" aria-label="Untergrund korrigieren"
         v-tooltip:bottom="store.surfaceReporting ? 'Korrigieren beenden (Esc)' : 'Untergrund korrigieren'"
@@ -19,7 +19,7 @@
         <template #prepend><i class="surfaces__dot" :style="{ background: routeStyle[total.surface] }" aria-hidden="true" /></template>
         <!-- A long label may break after its slash. -->
         <span class="surfaces__label"><template v-for="(part, i) in surfaceLabels[total.surface].split('/')" :key="i"><template v-if="i">/<wbr></template>{{ part }}</template></span>
-        <template #append><span class="surfaces__amount"><strong>{{ formatLength(total.meters) }}</strong><span>{{ share(total.meters) }}</span></span></template>
+        <template #append><span class="surfaces__amount"><strong>{{ amount(total.meters).value }}&nbsp;<small>{{ amount(total.meters).unit }}</small></strong><span>{{ share(total.meters) }}</span></span></template>
       </v-list-item>
     </v-list>
     <template v-if="selected">
@@ -28,7 +28,7 @@
         <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
           :aria-pressed="isFocused(section)" :active="isFocused(section)" color="primary" rounded="lg" @click="focus(section)">
           <span>km {{ formatKm(section.fromMeters, 2, true) }} bis {{ formatKm(section.toMeters, 2, true) }}<template v-if="section.corrected"> · korrigiert</template></span>
-          <template #append><strong>{{ formatLength(section.toMeters - section.fromMeters) }}</strong></template>
+          <template #append><strong>{{ amount(section.toMeters - section.fromMeters).value }}&nbsp;<small>{{ amount(section.toMeters - section.fromMeters).unit }}</small></strong></template>
         </v-list-item>
       </v-list>
       <div v-if="matching.length > visibleCount" class="surfaces__more">
@@ -38,7 +38,7 @@
   </section>
   <!-- The first calculation of a route: the surfaces' shape until they are known. -->
   <section v-else-if="store.routingPending" class="surfaces" aria-busy="true" aria-labelledby="surfaces-title">
-    <h3 id="surfaces-title" class="text-title-medium">Untergrund</h3>
+    <div class="section-heading"><h3 id="surfaces-title" class="text-title-medium">Untergrund</h3></div>
     <span class="skeleton surfaces__skeleton-bar" />
     <ul class="surfaces__skeleton-rows" aria-hidden="true">
       <li v-for="width in [52, 70, 40]" :key="width"><span class="skeleton surfaces__skeleton-dot" /><span class="skeleton" :style="{ width: `${width}%` }" />
@@ -67,6 +67,11 @@ const selected = ref<Surface | null>(null);
 const visibleCount = ref(10);
 const matching = computed(() => inspection.value?.sections.filter(section => section.surface === selected.value) ?? []);
 
+// A length as a bold figure with a small unit, as in the profile's header.
+function amount(meters: number) {
+  const text = formatLength(meters), cut = text.lastIndexOf(' ');
+  return { value: text.slice(0, cut), unit: text.slice(cut + 1) };
+}
 function share(meters: number) {
   const percent = meters / inspection.value!.distanceMeters * 100;
   return percent < 1 ? '< 1 %' : `${Math.round(percent)} %`;
@@ -103,11 +108,7 @@ watch(inspection, value => {
    selection reach 8 px past the content. */
 .surfaces { display: grid; gap: var(--space-3); transition: opacity .2s; }
 .surfaces--stale { opacity: .45; pointer-events: none; }
-h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
-.surfaces__heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-/* As the tools beside the stops' heading: its glyph, not its target, ends at the margin. */
-.surfaces__heading .v-btn { width: 36px; height: 36px; margin-right: -9px; }
-.surfaces__bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 5px; }
+.surfaces__bar { display: flex; gap: 2px; height: 10px; margin-top: var(--space-1); overflow: hidden; border-radius: 5px; }
 .surfaces__bar i { min-width: 3px; transition: opacity .15s; }
 .surfaces__bar .surfaces__part--faded { opacity: .25; }
 .surfaces__dot { width: .625rem; height: .625rem; border-radius: 50%; }
@@ -115,6 +116,8 @@ h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
 .surfaces__amount { display: inline-flex; align-items: baseline; gap: .5rem; }
 .surfaces__amount span { min-width: 2.6rem; color: var(--text-muted); font-size: .75rem; text-align: right; font-variant-numeric: tabular-nums; }
 .surfaces__totals, .surfaces__sections { margin: 0; padding: 0; overflow: visible; font-size: .9rem; }
+/* The first row's text 20 px under the bar, as from a stop's line to the next label. */
+.surfaces__totals { margin-top: -9px; }
 .v-list-item { width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: 44px; margin-inline: calc(-1 * var(--space-2));
   padding: 0 var(--space-2); text-align: left; }
 .v-list-item :deep(.v-list-item__overlay) { display: none; }
@@ -130,9 +133,10 @@ h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
 .surfaces__sections .v-list-item { padding-left: 44px; }
 h4 { margin: var(--space-3) 0 0 36px; color: var(--text-muted); font-size: .8rem; font-weight: 400; }
 strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+strong small { color: var(--text-muted); font-size: .8em; font-weight: 500; }
 .surfaces__more { margin-left: 28px; }
 .surfaces__more .v-btn { padding-inline: var(--space-2); color: var(--text); }
-.surfaces__skeleton-bar { height: 10px; border-radius: 5px; }
+.surfaces__skeleton-bar { height: 10px; margin-top: var(--space-1); border-radius: 5px; }
 .surfaces__skeleton-rows { display: grid; margin: 0; padding: 0; list-style: none; }
 .surfaces__skeleton-rows li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 4.5rem; align-items: center; column-gap: var(--space-3);
   min-height: 44px; }

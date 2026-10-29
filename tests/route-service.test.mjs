@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { routingEngine } from '../src/services/route.service.ts';
+import { PlacementError } from '../src/domain/route-model.ts';
 import { requestFor } from '../experiments/routing/engines.mjs';
 
 const from = [15.39325, 47.07655];
@@ -34,19 +35,21 @@ test('editor and comparison share the rule revision and search settings; histori
 });
 
 test('routing failures explain the cause without exposing arbitrary server content', async t => {
-  for (const [status, body, expected] of [
-    [400, 'datafile E10_N45.rd5 not found\n', /Kartendaten \(E10_N45\.rd5\)/],
-    [400, 'no track found at pass=1', /Keine passende Fahrradverbindung/],
-    [400, 'pass1 timeout after 60 seconds', /Zeitlimit/],
-    [400, 'memory limit reached', /Speicherlimit/],
-    [400, 'local routing rules version mismatch', /Routing-Regeln wurden geändert/],
-    [503, '', /Routing-Dienst ist nicht erreichbar/],
-    [500, '<html>Internal server error</html>', /nicht berechnet werden \(HTTP 500\)/],
+  // Problems fixed by moving the point (a stop shows them in its row) apart from those fixed elsewhere, such as installing
+  // map data, which the panel reports with a retry.
+  for (const [status, body, expected, place] of [
+    [400, 'datafile E10_N45.rd5 not found\n', /Kartendaten \(E10_N45\.rd5\)/, false],
+    [400, 'no track found at pass=1', /Keine passende Fahrradverbindung/, true],
+    [400, 'pass1 timeout after 60 seconds', /Zeitlimit/, false],
+    [400, 'memory limit reached', /Speicherlimit/, false],
+    [400, 'local routing rules version mismatch', /Routing-Regeln wurden geändert/, false],
+    [503, '', /Routing-Dienst ist nicht erreichbar/, false],
+    [500, '<html>Internal server error</html>', /nicht berechnet werden \(HTTP 500\)/, false],
   ]) {
     await t.test(`${status}: ${body || 'empty response'}`, async t => {
       t.mock.method(globalThis, 'fetch', async () => new Response(body, { status }));
       await assert.rejects(routingEngine.routeLeg(from, to, new AbortController().signal), expected);
-      await assert.rejects(routingEngine.snap(to, new AbortController().signal), expected);
+      await assert.rejects(routingEngine.snap(to, new AbortController().signal), error => expected.test(error.message) && (error instanceof PlacementError) === place);
     });
   }
 });

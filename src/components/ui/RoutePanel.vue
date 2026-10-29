@@ -1,7 +1,7 @@
 <template>
   <div class="planner">
     <section class="planner__section">
-      <div class="planner__heading">
+      <div class="section-heading">
         <h2 class="text-title-medium">Wegpunkte</h2>
         <span ref="tools" class="planner__tools">
           <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="act(() => routeStore.undo())"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
@@ -35,6 +35,7 @@
             <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord, 'planner__badge--error': routeStore.stopError(point) }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
             <div class="planner__stop-input">
               <AddressSearchInput
+                class="field-line"
                 :waypoint-id="point.id"
                 :label="stopLabel(point.kind, index)"
                 :model-value="point.userInput"
@@ -201,33 +202,37 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 <style scoped>
 .planner { display: flex; flex-direction: column; }
 /* On a 4 px grid: a 24 px marker column at the edge, text 36 px in; headings 36 px tall with 12 px to their content; stop
-   rows 64 px with the address line from 30 to 54 px, list rows 44 px; hover areas 8 px wider than the content. */
+   rows with the address line from 25 to 49 px and its field line 10 px under the address's baseline, list rows 44 px; hover
+   areas 8 px wider than the content. */
 /* One column no wider than the panel: wide content shrinks or wraps instead of stretching it past its edge. */
-.planner__section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--gutter-end) var(--space-4) var(--gutter);
-  border-bottom: 1px solid var(--border); }
-.planner__heading { display: flex; align-items: center; gap: var(--space-3); min-height: 36px; }
-.planner__heading h2 { margin: 0; }
+/* Measured to the letters: 24 px from the line above to a heading's capitals (12 px padding, 12 inside the heading row)
+   and 24 px from the last item to the line below. */
+.planner__section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-3) var(--gutter-end) var(--space-4) var(--gutter); }
+/* Sections are parted by a line from margin to margin; rows within one by lines from their text column on. */
+.planner__section ~ .planner__section { background: linear-gradient(var(--border), var(--border)) no-repeat var(--gutter) 0 / calc(100% - var(--gutter) - var(--gutter-end)) 1px; }
 /* The last tool's glyph, not its 36 px target, ends at the margin, as the other edges' glyphs do. */
 .planner__tools { display: flex; align-items: center; margin-left: auto; margin-right: -9px; }
 .planner__tools > span { display: flex; }
 /* Five tools beside the heading fit the narrowest panel at 36 px each. */
 .planner__tools :deep(.v-btn) { width: 36px; height: 36px; }
-.planner__stops { display: grid; margin: 0; padding: 0; list-style: none; }
+/* The first row's own padding is taken back, so the first label sits 12 px under the heading, as in every section. */
+.planner__stops { display: grid; margin: calc(-1 * var(--space-2)) 0 0; padding: 0; list-style: none; }
 /* Marker, field (its label above the address) and an intermediate stop's trash button; the button's column is kept in
    every row, so that the fields' × line up. */
 .planner__stop { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; align-items: start; column-gap: var(--space-3);
-  min-height: 64px; padding: var(--space-2) 0; transition: translate .16s cubic-bezier(.2, .8, .2, 1), box-shadow .16s, background-color .16s; }
-.planner__stop + .planner__stop::before { content: ''; position: absolute; top: 0; left: 36px; right: 0; border-top: 1px solid var(--border); }
+  padding: var(--space-2) 0; transition: translate .16s cubic-bezier(.2, .8, .2, 1), box-shadow .16s, background-color .16s; }
 /* Dots from marker to marker, with some room around each. */
-.planner__stop:not(:last-child)::after { content: ''; position: absolute; top: 60px; bottom: -24px; left: 10px; width: 4px;
+.planner__stop:not(:last-child)::after { content: ''; position: absolute; top: 55px; bottom: -19px; left: 10px; width: 4px;
   background: radial-gradient(circle, color-mix(in srgb, var(--text-muted) 70%, transparent) 1.3px, transparent 1.7px) center top / 4px 7px repeat-y; }
-.planner__badge { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 22px; border-radius: 50%; background: var(--accent);
+.planner__badge { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 17px; border-radius: 50%; background: var(--accent);
   color: #fff; font-size: .72rem; font-weight: 700; }
 .planner__badge--empty { border: 2px dashed var(--border-input); background: none; color: var(--text-muted); }
 .planner__badge--error { background: var(--danger); }
 .planner__stop-input { grid-column: 2; grid-row: 1; display: grid; gap: .3rem; }
-/* Vuetify's input adds 8 px above the address line: 14 + 8 put it 22 px below the row's padding, level with the marker. */
-.planner__stop-input :deep(.v-field--variant-plain) { --v-field-padding-top: 14px; --v-field-padding-bottom: 2px; }
+/* Vuetify's input adds 8 px above the address line: 9 + 8 put it 17 px below the row's padding, level with the marker,
+   10 px under its label's baseline; its line lies 10 px under the address's baseline, as in every field. */
+.planner__stop-input :deep(.v-field--variant-plain) { --v-field-padding-top: 9px; --v-field-padding-bottom: 0px; }
+.planner__stop-input .field-line { padding-bottom: 4px; }
 .planner__stop-input :deep(.v-field-label--floating) { top: 0; transform: none; color: var(--text-muted); opacity: 1; }
 /* The × level with the address line (the input sits 8 px below the field's padding, the × half of that), its icon flush
    with the right edge, as the Untergrund figures are. */
@@ -236,19 +241,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop-input :deep(.v-field__clearable > *) { translate: 0 var(--space-1); }
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
-.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 18px -8px 0 0; color: var(--text-muted); }
-.planner__grip { position: absolute; top: 42px; left: -18px; display: flex; padding: var(--space-1) 0; border: 0; background: none;
+.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 13px -8px 0 0; color: var(--text-muted); }
+.planner__grip { position: absolute; top: 37px; left: -18px; display: flex; padding: var(--space-1) 0; border: 0; background: none;
   color: var(--text-muted); opacity: .75; transform: translateY(-50%); cursor: grab; touch-action: none; }
 .planner__grip:active { cursor: grabbing; }
 /* Dragging a stop: lifted under the pointer, the others making room; the drop snaps it into place by the list's move
    transition alone. */
 .planner__stop--lifted { z-index: 3; border-radius: var(--radius); background: var(--surface); transition: box-shadow .16s, background-color .16s;
   box-shadow: 0 0 0 var(--space-2) var(--surface), 0 6px 18px var(--space-2) rgb(16 24 22 / .14), 0 1px 3px var(--space-2) rgb(16 24 22 / .1); }
-.planner__stop--lifted::before, .planner__stop--lifted::after { display: none; }
+.planner__stop--lifted::after { display: none; }
 .planner__stops--settling .planner__stop, .planner__stop-move { transition: transform .26s cubic-bezier(.2, 1.1, .3, 1.15); }
 @media (prefers-reduced-motion: reduce) { .planner__stop, .planner__stops--settling .planner__stop, .planner__stop-move { transition: none; } }
 /* The next stop's empty marker in the marker column, inside a round 44 px target. */
-.planner__add { display: grid; place-items: center; width: 44px; height: 44px; margin-left: -10px; padding: 0; border: 0; border-radius: 50%;
+.planner__add { display: grid; place-items: center; width: 40px; height: 40px; margin-left: -8px; padding: 0; border: 0; border-radius: 50%;
   background: none; color: var(--text-muted); cursor: pointer; }
 .planner__add:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
 .planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }

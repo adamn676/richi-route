@@ -446,13 +446,15 @@ only acts, and a long press shows the control's label instead.
 While an edit is calculated, the route it replaced stays on the map, faded, and
 the new sections show as grey running dots once the answer takes longer than 0.3
 s; each calculated section then fades in. A section that cannot be calculated
-stays a red dashed straight line. Each problem is reported once: a stop with no
-way within 250 m shows it in its row, in red there and on the map, and moving
-the point fixes it. A section's own problem, such as one too far for a single
-calculation, shows above the route figures with **Abschnitt zeigen**, which
-frames it on the map; a stop set on its red line splits it. Problems of the
-whole route, such as an unreachable routing service, offer **Erneut versuchen**
-there instead. On phones the sheet opens for them.
+stays a red dashed straight line. Each problem is reported once, where it is
+fixed: one that moving a stop fixes, such as no way within 250 m, shows in that
+stop's row, and the stop is red there and on the map (a shaping point, which has
+no row, turns red on the map and its problem shows in the panel). A section's own
+problem, such as one too far for a single calculation, shows in the panel with
+**Abschnitt zeigen**, which frames it on the map; a stop set on its red line
+splits it. Problems fixed elsewhere, such as an unreachable routing service or
+missing map data, offer **Erneut versuchen** there and leave the stops as they
+are. On phones the sheet opens for them.
 
 **Rad-Infos** independently toggles cycle paths, signed cycle routes,
 drinking-water sources, bicycle repair stations/shops, food stops and railway
@@ -725,16 +727,21 @@ requires the complete European datasets. Results go to `.cache/local-services/`.
 ## Suggest a loop
 
 With only a start set, **Runde vorschlagen** in the Route tab takes a distance
-and a climbing target and offers three loops that start and finish there, in
-blue, orange and purple, with the map showing all three. Selecting a card shows
+and a climbing target (**Distanz** 10 to 1,000 km, **Höhenmeter** up to
+15,000 m: type the figure or drag its slider, which steps finer where most rides
+lie) and offers three loops that
+start and finish there, with the map showing all three. Each card draws its
+loop's shape, all on one scale, beside its name and figures; blue, ink and sky
+blue tell the loops apart also with colour-blindness and are no surface colours.
+Selecting a card shows
 its loop as the route, in sections of about 5 km between shaping points with its
 heights and surfaces, so its distance, climbing, surfaces, elevation profile and
 Street View can be inspected, and the map zooms to it; the other two stay faint.
 Selecting another card replaces it in place, without a further undo step;
 selecting it again returns to the start and all three loops. Pointing at a card
 highlights its loop. On the map, pointing at a loop highlights its card and a click
-or tap selects it; while loops are offered, map clicks set no stops. **Übernehmen** keeps the selected loop and closes the
-suggestions; **Verwerfen** returns to the start alone. On a phone the sheet stays
+or tap selects it; while loops are offered, map clicks set no stops. **Runde übernehmen** on the selected card keeps it and
+closes the suggestions; the × beside the heading returns to the start alone. On a phone the sheet stays
 up while choosing. The last target is remembered in this browser.
 
 The loops come from BRouter's round-trip mode (`engineMode=4`) with the
@@ -744,7 +751,7 @@ rides in and back out; the planner cuts every stretch that returns to a point
 passed less than 1 km before, so dead ends and turning circles go while the road
 home a loop starts and ends on stays. It asks in twelve directions, then twice
 more per direction with the radius corrected towards the distance (36 requests,
-about 2–4 s locally). Direction decides most of the climbing: from Graz, loops to
+locally about 2–4 s for 50 km, 9 s for 500 km and 33 s for 1,000 km). Direction decides most of the climbing: from Graz, loops to
 the north climb far more than those to the south. Of all loops, it prefers those
 within 15% of the distance, then the closest climbing, and avoids roads ridden
 both ways; the three it shows head at least 60° apart. Each card is named after

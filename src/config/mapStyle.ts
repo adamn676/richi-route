@@ -12,5 +12,6 @@ export const routeStyle = {
   waiting: '#4d5753',
 };
 
-// Suggested loops, told apart on the map and in their cards (checked for colour-blind separation).
-export const loopColors = ['#2f5fd0', '#d9480f', '#8e3fb8'] as const;
+// Suggested loops, told apart on the map and in their cards by lightness as well as hue, so also with colour-blindness;
+// none is a surface colour, which the chosen loop then shows.
+export const loopColors = ['#2f5fd0', '#1c2421', '#38a3dd'] as const;

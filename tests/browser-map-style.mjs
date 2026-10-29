@@ -104,7 +104,7 @@ try {
   await page.getByText('Satellit', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'false');
   await chooseBasemap(page, 'street');
-  // Geländerelief is on at first and a switch, so the menu stays open for further choices.
+  // Geländerelief is on at first and a checkbox, so the menu stays open for further choices.
   await basemapMenu.click();
   await page.getByText('Geländerelief', { exact: true }).click();
   assert.equal(await basemapMenu.getAttribute('aria-expanded'), 'true');

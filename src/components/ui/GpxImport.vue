@@ -113,22 +113,23 @@ async function importSelected(event: Event) {
 </script>
 
 <style scoped>
-.gpx { display: grid; gap: .85rem; min-height: 100%; align-content: start; padding: 1rem var(--gutter-end) 1.5rem var(--gutter); }
+.gpx { display: grid; gap: var(--space-3); min-height: 100%; align-content: start; padding: var(--space-4) var(--gutter-end) var(--space-4) var(--gutter); }
 .gpx__track { display: flex; align-items: flex-start; gap: .5rem; }
-.gpx__title { display: grid; flex: 1; min-width: 0; gap: .15rem; }
+.gpx__title { display: grid; flex: 1; min-width: 0; gap: 2px; }
 .gpx__file { overflow-wrap: anywhere; }
 h3 { margin: 0; font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
 .gpx__tools { display: flex; flex-shrink: 0; }
 .gpx__loading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
-.gpx__open { display: grid; gap: .3rem; }
+.gpx__open { display: grid; gap: var(--space-1); }
 .gpx__color { width: 100%; }
 /* Each as wide as its label and the rest shared, so the long Untergrund keeps its padding in a narrow sidebar. */
 .gpx__color .v-btn { flex: 1 1 auto; min-width: 0; padding-inline: 8px; }
-.gpx__surfaces { display: grid; gap: .5rem; }
+.gpx__surfaces { display: grid; gap: var(--space-2); }
 .gpx__start { justify-self: start; }
 .gpx__surfaces ul { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; font-size: .8rem; }
 .gpx__surfaces li { display: flex; justify-content: space-between; gap: .5rem; font-variant-numeric: tabular-nums; }
 .gpx__surfaces li span:first-child { display: inline-flex; align-items: center; gap: .4rem; }
-.gpx__empty { display: grid; justify-items: center; gap: .6rem; padding: 1.75rem 1.25rem; border: 1.5px dashed var(--border-input);
+/* A box, so it starts 24 px under the tabs, where a track's name shows its capitals. */
+.gpx__empty { display: grid; justify-items: center; gap: .6rem; margin-top: var(--space-2); padding: 1.75rem 1.25rem; border: 1.5px dashed var(--border-input);
   border-radius: var(--radius-lg); color: var(--text-muted); text-align: center; }
 </style>

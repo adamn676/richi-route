@@ -31,8 +31,8 @@
               <v-radio v-for="item in group.items" :key="item.id" :label="item.label" :value="item.id"
                 @click="(event: MouseEvent) => event.detail && close()" />
             </v-radio-group>
-            <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }">
-              <v-switch v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
+            <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }" class="map-view__relief">
+              <v-checkbox v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
             </div>
           </template>
         </MapMenu>
@@ -172,7 +172,14 @@ function fitRoute() {
 @media (hover: none) { .map-view__escape { display: none; } }
 .map-view__tools { position: absolute; top: var(--gutter); right: var(--gutter); display: grid; gap: var(--space-2); }
 .map-view__navigation { position: absolute; right: var(--gutter); bottom: var(--gutter); }
-.map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale) { margin: 0 0 var(--gutter) var(--gutter); }
+/* The relief applies to every map, so it stands apart from the online group above it. */
+.map-view__relief { margin-top: var(--space-2); }
+/* The scale as a thin ink bracket with its distance above, a white halo keeping both readable on any map. */
+.map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale) { position: relative; margin: 0 0 var(--gutter) var(--gutter);
+  padding: 0 0 8px 2px; border: 0; background: none; color: var(--text); font-size: .7rem; font-weight: 500; line-height: 1;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff; }
+.map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale)::after { content: ''; position: absolute; inset: auto 0 0; height: 5px;
+  border: 1.5px solid var(--text); border-top: 0; filter: drop-shadow(0 0 1px #fff); }
 @media (max-width: 760px) {
   .map-view__profile { --profile-height: 7.5rem; padding: var(--space-2) var(--gutter); }
 }

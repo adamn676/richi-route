@@ -41,6 +41,24 @@
 .v-btn:focus-visible, .v-list-item:focus-visible, .v-selection-control--focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Placeholders say what a field takes, such as a search or a point on the map, so they read like labels. */
 .v-field:is(.v-field--active, .v-field--no-label) input::placeholder { opacity: var(--v-medium-emphasis-opacity); }
+/* A section's heading row, alike in every panel: 36 px tall for its tools, the last tool's glyph (not its target) at the
+   margin. The row ends 12 px under its baseline, so its content follows without a further gap, 16 px under the baseline. */
+.section-heading { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin-bottom: calc(-1 * var(--space-3)); }
+.section-heading > :is(h2, h3) { margin: 0; }
+.section-heading > .v-btn:last-child { width: 36px; height: 36px; margin: 0 -9px 0 auto; }
+/* A text field is a line under its text, alike everywhere: light at rest, darker under the pointer, and while typing an
+   ink line of 2 px that grows from the middle. Our own fields (.field-line) and Vuetify's underlined ones look the same:
+   the value 10 px under its label's baseline and the line 10 px under the value's (each field sets its padding to that). */
+.field-line { --line: var(--border); --typing: 0%; padding-bottom: 6px; background: linear-gradient(var(--accent), var(--accent)) center bottom / var(--typing) 2px no-repeat,
+  linear-gradient(var(--line), var(--line)) center bottom / 100% 1px no-repeat; transition: background-size .15s; }
+.field-line:hover { --line: var(--border-input); }
+.field-line:is(:focus, .v-input--focused) { --typing: 100%; }
+.v-field--variant-underlined { --v-field-padding-top: 1px; --v-field-padding-bottom: 5px; }
+/* A text longer than its field ends in an ellipsis while the field is not being edited, as an address does. */
+.v-field input:not(:focus) { text-overflow: ellipsis; }
+.v-field--variant-underlined .v-field__outline::before { border-color: var(--border); opacity: 1; }
+.v-field--variant-underlined:hover .v-field__outline::before { border-color: var(--border-input); }
+.v-field--variant-underlined .v-field__outline::after { border-color: var(--accent); transition-duration: .15s; }
 .maplibregl-map { width: 100%; height: 100%; }
 svg.tabler-icon { stroke-width: 1.75; }
 
@@ -76,6 +94,7 @@ svg.tabler-icon { stroke-width: 1.75; }
 }
 .route-marker--preview { border-color: var(--text); pointer-events: none; }
 .route-marker--error { background: var(--danger); }
+.route-marker--shape.route-marker--error { border-color: var(--danger); background: #fff; }
 .route-marker:active { cursor: grabbing; }
 /* MapLibre's popups as Material menus. */
 .maplibregl-popup-content { border-radius: var(--radius-lg); box-shadow: var(--shadow); }

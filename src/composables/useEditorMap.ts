@@ -23,6 +23,10 @@ export function useMap(container: string, creditsContainer: string) {
   const attribution = new AttributionControl({ compact: false,
     customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
   let creditsOutside = false;
+  // The providers' credits link away; as every link out of the planner, they open in a new tab, whoever wrote them.
+  const creditLinks = new MutationObserver(records => {
+    for (const { target } of records) for (const link of (target as Element).querySelectorAll('a')) Object.assign(link, { target: '_blank', rel: 'noopener noreferrer' });
+  });
   let vectorReady = false, vectorFailed = false;
   let vectorRequest: AbortController | undefined;
   const absoluteUrl = (url: string) => url.startsWith('/') ? location.origin + url : url;
@@ -150,17 +154,11 @@ export function useMap(container: string, creditsContainer: string) {
     });
     instance.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
     const credits = document.getElementById(creditsContainer);
-    if (credits) credits.append(attribution.onAdd(instance));
-    else instance.addControl(attribution);
+    if (credits) {
+      creditLinks.observe(credits, { childList: true, subtree: true });
+      credits.append(attribution.onAdd(instance));
+    } else instance.addControl(attribution);
     creditsOutside = Boolean(credits);
-    // Online providers require a visible credit, so the full list opens while one of their layers shows.
-    const details = credits?.closest('details');
-    const onlineLayers = [...onlineBasemaps.map(item => `online-${item.id}`), 'cycling-routes'];
-    let onlineShown = false;
-    if (details) instance.on('styledata', () => {
-      const shown = onlineLayers.some(id => instance.getLayer(id) && instance.getLayoutProperty(id, 'visibility') !== 'none');
-      if (shown !== onlineShown) details.open = onlineShown = shown;
-    });
     instance.on('error', event => {
       const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : '';
       // Rad-Infos reports problems with its own sources.
@@ -182,6 +180,7 @@ export function useMap(container: string, creditsContainer: string) {
     map.value = instance;
   });
   onBeforeUnmount(() => {
+    creditLinks.disconnect();
     vectorRequest?.abort(); vectorRequest = undefined;
     if (creditsOutside) attribution.onRemove();
     map.value?.remove();
