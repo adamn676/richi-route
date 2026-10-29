@@ -1,10 +1,12 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { cumulativeAscent, distanceMeters, type Coord } from './route-model.ts';
+import { cumulativeAscent, distanceMeters, pathMeters, type Coord } from './route-model.ts';
 
 export interface GpxSegment {
   name: string;
   coordinates: Coord[];
   elevations: (number | null)[];
+  // A routed leg's length by the router, which measures on the ellipsoid; its points are spaced to match.
+  distanceMeters?: number;
 }
 
 // The profile is drawn in this many columns; its gradient colours use the same resolution.
@@ -32,7 +34,7 @@ function samplesBefore(samples: readonly ProfileSample[], distance: number, incl
   return low;
 }
 
-// The profile between two distances, in the chart's units: x from 5 to 295, its lowest point at y 78 and its highest at
+// The profile between two distances, in the chart's units: x from 0 to 300, its lowest point at y 78 and its highest at
 // y 10. The work is bounded by the chart's width, retaining extremes; runs break the path at missing heights. One
 // sample beyond each end lets the line reach the edges, where the chart clips it.
 export function drawProfile(samples: readonly ProfileSample[], from: number, to: number) {
@@ -58,7 +60,7 @@ export function drawProfile(samples: readonly ProfileSample[], from: number, to:
   const fillBase = 1000;
   let path = '', areaPath = '', previousRun = -1, endX = 0;
   for (const sample of selected) {
-    const x = 5 + (span > 0 ? (sample.distance - from) / span * 290 : 0);
+    const x = span > 0 ? (sample.distance - from) / span * 300 : 0;
     const y = 78 - (sample.height - minimum) / Math.max(1, maximum - minimum) * 68;
     if (sample.run !== previousRun) {
       if (previousRun !== -1) areaPath += `L${endX.toFixed(1)},${fillBase} Z `;
@@ -89,10 +91,11 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     let previousLongitude = anchor;
     const displayCoordinates: Coord[] = [];
     const segmentDistances: number[] = [];
+    const scale = segment.distanceMeters ? segment.distanceMeters / (pathMeters(segment.coordinates) || segment.distanceMeters) : 1;
     for (let i = 0; i < segment.coordinates.length; i++) {
       const coord = segment.coordinates[i];
       const elevation = segment.elevations[i];
-      if (i > 0) distance += distanceMeters(segment.coordinates[i - 1], coord);
+      if (i > 0) distance += distanceMeters(segment.coordinates[i - 1], coord) * scale;
       segmentDistances.push(distance);
       pointCount++;
       if (elevation === null) run++;

@@ -17,7 +17,7 @@ export const useGpxReferenceStore = defineStore('gpx-reference', () => {
   const colorMode = ref<GpxColorMode>('plain');
   const focus = shallowRef<GpxFocus | null>(null);
   const gradients = computed(() => track.value ? gpxGradients(track.value) : []);
-  const colorRuns = computed(() => track.value ? gradientRuns(track.value, gradients.value) : []);
+  const colorRuns = computed(() => track.value ? gradientRuns(track.value) : []);
   const surfaces = shallowRef<SurfaceSpan[][] | null>(null);
   const surfaceLoading = ref(false);
   const surfaceError = ref('');

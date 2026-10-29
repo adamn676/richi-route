@@ -81,6 +81,14 @@ test('connected segments draw one profile, separate segments break it', () => {
   assert.deepEqual(connected.distances, separate.distances);
 });
 
+test('route legs are spaced to the length the router measured, so the profile ends at the route distance', () => {
+  const legs = [segment([[15, 47], [15.005, 47], [15.01, 47]], [100, 110, 120]), segment([[15.01, 47], [15.02, 47]], [120, 110])];
+  const measured = legs.map(leg => distanceMeters(leg.coordinates[0], leg.coordinates.at(-1)));
+  const track = buildGpxTrack('', '', legs.map((leg, i) => ({ ...leg, distanceMeters: measured[i] * 1.003 })), { connected: true });
+  assert.ok(Math.abs(track.distanceMeters - (measured[0] + measured[1]) * 1.003) < 1e-6);
+  assert.ok(Math.abs(track.distances[0][1] - measured[0] * 1.003 / 2) < 1e-6, 'Points keep their share of the leg');
+});
+
 test('missing elevations break the profile and prevent a misleading complete ascent', () => {
   const track = buildGpxTrack('Partial', 'partial.gpx', [
     segment([[15, 47], [15.01, 47], [15.02, 47], [15.03, 47]], [100, null, 300, 310]),

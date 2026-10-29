@@ -77,14 +77,8 @@
     </div>
 
     <LoopSuggestions v-if="routeStore.draftLoaded && (!hasEndpoints || loops.suggestions)" />
-    <section v-if="hasEndpoints" class="planner__section">
-      <dl class="stats planner__stats" aria-label="Streckendaten" aria-live="polite">
-        <div><dt>Distanz</dt><dd>{{ distanceLabel }}</dd></div>
-        <div><dt>Anstiege</dt><dd><span v-if="ascentLabel === '…'" class="skeleton planner__stat-skeleton" aria-label="wird berechnet" />
-          <template v-else>{{ ascentLabel }}</template></dd></div>
-      </dl>
-      <SurfaceDetails />
-    </section>
+    <!-- Distance and climbing are in the elevation profile's header, which stays in view. -->
+    <section v-if="hasEndpoints" class="planner__section"><SurfaceDetails /></section>
     <!-- A removed stop can come back at once. -->
     <v-snackbar v-model="removed" :timeout="5000">
       Zwischenstopp entfernt
@@ -105,7 +99,6 @@ import LoopSuggestions from '@/components/ui/LoopSuggestions.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
-import { formatKm, formatMeters } from '@/utils/format';
 import { useStopDragging } from '@/composables/useStopDragging';
 
 const routeStore = useRouteStore();
@@ -157,13 +150,6 @@ const hasEndpoints = computed(() => {
   const stops = routeStore.waypoints;
   return Boolean(stops[0]?.coord && stops[stops.length - 1]?.coord);
 });
-const distanceLabel = computed(() => {
-  if (!routeStore.route) return '…';
-  return `${routeStore.hasAirLines ? 'ca. ' : ''}${formatKm(routeStore.distanceMeters, 1, true)} km`;
-});
-const ascentLabel = computed(() => routeStore.ascentMeters !== null ? formatMeters(routeStore.ascentMeters)
-  : routeStore.routingPending ? '…' : 'unbekannt');
-
 // A point placed on the map without an address shows its position in the empty field.
 function placeholderFor(point: Waypoint): string {
   if (point.coord && !point.userInput) return `${point.coord[1].toFixed(5)}° N, ${point.coord[0].toFixed(5)}° E`;
@@ -217,11 +203,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 /* On a 4 px grid: a 24 px marker column at the edge, text 36 px in; headings 36 px tall with 12 px to their content; stop
    rows 64 px with the address line from 30 to 54 px, list rows 44 px; hover areas 8 px wider than the content. */
 /* One column no wider than the panel: wide content shrinks or wraps instead of stretching it past its edge. */
-.planner__section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--gutter);
+.planner__section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--gutter-end) var(--space-4) var(--gutter);
   border-bottom: 1px solid var(--border); }
 .planner__heading { display: flex; align-items: center; gap: var(--space-3); min-height: 36px; }
 .planner__heading h2 { margin: 0; }
-.planner__tools { display: flex; align-items: center; margin-left: auto; }
+/* The last tool's glyph, not its 36 px target, ends at the margin, as the other edges' glyphs do. */
+.planner__tools { display: flex; align-items: center; margin-left: auto; margin-right: -9px; }
 .planner__tools > span { display: flex; }
 /* Five tools beside the heading fit the narrowest panel at 36 px each. */
 .planner__tools :deep(.v-btn) { width: 36px; height: 36px; }
@@ -249,7 +236,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop-input :deep(.v-field__clearable > *) { translate: 0 var(--space-1); }
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
-.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 18px -4px 0; color: var(--text-muted); }
+.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 18px -8px 0 0; color: var(--text-muted); }
 .planner__grip { position: absolute; top: 42px; left: -18px; display: flex; padding: var(--space-1) 0; border: 0; background: none;
   color: var(--text-muted); opacity: .75; transform: translateY(-50%); cursor: grab; touch-action: none; }
 .planner__grip:active { cursor: grabbing; }
@@ -265,11 +252,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
   background: none; color: var(--text-muted); cursor: pointer; }
 .planner__add:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
 .planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }
-.planner__notices { display: grid; gap: var(--space-2); padding: var(--space-4) var(--gutter) 0; }
+.planner__notices { display: grid; gap: var(--space-2); padding: var(--space-4) var(--gutter-end) 0 var(--gutter); }
 .planner__error-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-.planner__stats dt { margin-bottom: var(--space-1); }
-.planner__stats dd { font-size: 1.5rem; }
-.planner__stat-skeleton { width: 5rem; height: 1.6rem; margin-top: var(--space-1); }
+/* Without surfaces to show, their section takes no room. */
+.planner__section:empty { display: none; }
 .planner__skeleton { display: grid; margin: 0; padding: 0; list-style: none; }
 .planner__skeleton li { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: end; column-gap: var(--space-3); min-height: 64px;
   padding: var(--space-2) 0; }

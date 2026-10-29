@@ -26,7 +26,7 @@
     </div>
     <!-- Confirmations pass by; errors stay above until resolved. -->
     <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="4000" @update:model-value="open => open || (message = '')">{{ message }}</v-snackbar>
-    <div class="sidebar__body">
+    <div ref="body" class="sidebar__body" :style="{ '--scrollbar': `${scrollbar}px` }">
       <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
@@ -67,14 +67,19 @@ function placePill() {
   if (selected) pill.value = { left: selected.offsetLeft, width: selected.offsetWidth };
 }
 watch(tab, () => nextTick(placePill));
+// The room kept for the scrollbar, which the content's right margin gives back (none where scrollbars overlay).
+const body = ref<HTMLElement | null>(null), scrollbar = ref(0);
+const measureScrollbar = () => { if (body.value) scrollbar.value = body.value.offsetWidth - body.value.clientWidth; };
 let resizes: ResizeObserver | undefined;
 onMounted(() => {
   placePill();
+  measureScrollbar();
   // Placed first without sliding in; from then on it moves.
   requestAnimationFrame(() => { pillMoves.value = true; });
-  resizes = new ResizeObserver(placePill);
+  resizes = new ResizeObserver(() => { placePill(); measureScrollbar(); });
   const tabs = sidebar.value?.querySelector('.sidebar__tabs');
   if (tabs) resizes.observe(tabs);
+  if (body.value) resizes.observe(body.value);
 });
 onBeforeUnmount(() => resizes?.disconnect());
 // An imported track opened as the route no longer needs its comparison line.
@@ -138,7 +143,7 @@ const draft = computed(() => ({
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
 /* A thin scrollbar, shown while the pointer is over the panel or the focus is in it; its room stays, so the content keeps
    its width when the scrollbar comes and goes or the panel's height changes. */
-.sidebar__body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin;
+.sidebar__body { --gutter-end: calc(var(--gutter) - var(--scrollbar, 0px)); flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin;
   scrollbar-color: transparent transparent; }
 .sidebar__body:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent; }
 .sidebar__credits { padding: .35rem var(--gutter); border-top: 1px solid var(--border); color: var(--text-muted); font-size: .68rem; line-height: 1.4; }

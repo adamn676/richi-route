@@ -25,13 +25,24 @@ test('profile colour runs follow the gradient and bridge sparse points', () => {
   const coords = Array.from({ length: 201 }, (_, i) => [15 + i / 10000, 47]);
   const distances = build(segment(coords, coords.map(() => 0))).distances[0];
   const climb = build(segment(coords, distances.map(d => 100 + Math.min(d, distances[100]) * .1)));
-  const runs = gradientRuns(climb, gpxGradients(climb));
+  const runs = gradientRuns(climb);
   assert.equal(runs[0].color, gradientColor(10));
   assert.equal(runs.at(-1).color, gradientColor(0));
   const sparse = build(segment([[15, 47], [15.002, 47], [15.1, 47]], [0, 20, 20]));
-  assert.deepEqual(gradientRuns(sparse, gpxGradients(sparse)).map(run => run.color), [gradientColor(13), gradientColor(0)]);
+  assert.deepEqual(gradientRuns(sparse).map(run => run.color), [gradientColor(13), gradientColor(0)]);
   const unknown = build(segment(coords.slice(0, 3), [0, null, 0]));
-  assert.deepEqual(gradientRuns(unknown, gpxGradients(unknown)), []);
+  assert.deepEqual(gradientRuns(unknown), []);
+});
+
+test('climb colour ends at the summit, not at the end of its column', () => {
+  // 30 km, so a column is 100 m: flat, 6 % up to a summit halfway through a column, 6 % down, flat.
+  const coords = Array.from({ length: 3001 }, (_, i) => [15 + i / 7600, 47]);
+  const distances = build(segment(coords, coords.map(() => 0))).distances[0];
+  const top = distances.at(-1) * .5017, base = top - 3000;
+  const track = build(segment(coords, distances.map(d => 300 + Math.max(0, 180 - Math.abs(d - top) * .06) * (d > base ? 1 : 0))));
+  const runs = gradientRuns(track);
+  assert.deepEqual(runs.map(run => run.color), [gradientColor(0), gradientColor(6), gradientColor(0)]);
+  assert.ok(Math.abs(runs[2].from * track.distanceMeters - top) < 15, 'The descent is not coloured as a climb');
 });
 
 test('stationary and isolated points have no fabricated gradient', () => {
@@ -114,9 +125,9 @@ test('a zoomed stretch is drawn, coloured and measured from its own points', () 
 
   const profile = drawProfile(track.samples, climb.from, climb.to);
   assert.ok(Math.abs(profile.minimum - 300) < 1 && Math.abs(profile.maximum - 360) < 1, 'The axis spans the stretch, not the track');
-  const xs = [...profile.path.matchAll(/[ML]([\d.]+),/g)].map(match => Number(match[1]));
-  assert.ok(xs[0] <= 5 && xs.at(-1) >= 295 && xs.slice(1, -1).every(x => x > 5 && x < 295), 'One point beyond each edge reaches it');
-  assert.equal(gradientRuns(track, gradients, climb.from + 100, climb.to - 100).length, 1, 'Only the climb colours the zoomed stretch');
+  const xs = [...profile.path.matchAll(/[ML](-?[\d.]+),/g)].map(match => Number(match[1]));
+  assert.ok(xs[0] <= 0 && xs.at(-1) >= 300 && xs.slice(1, -1).every(x => x > 0 && x < 300), 'One point beyond each edge reaches it');
+  assert.equal(gradientRuns(track, climb.from + 100, climb.to - 100).length, 1, 'Only the climb colours the zoomed stretch');
 
   const stats = sectionStats(track, gradients, climb.from, climb.to);
   close(stats.distance, 1000);

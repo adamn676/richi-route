@@ -20,8 +20,10 @@
   --skeleton: color-mix(in srgb, var(--border) 85%, transparent);
   --skeleton-light: color-mix(in srgb, var(--border) 35%, transparent);
   --gutter: 1.25rem;
+  /* The right margin, less a scrollbar's room where one is kept (the sidebar's body sets it). */
+  --gutter-end: var(--gutter);
   /* One spacing scale on a 4 px grid for paddings, gaps and columns. */
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px;
   accent-color: var(--accent);
   font-family: var(--font);
   color: var(--text);
@@ -42,9 +44,13 @@
 .maplibregl-map { width: 100%; height: 100%; }
 svg.tabler-icon { stroke-width: 1.75; }
 
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0; }
-.stats dt { color: var(--text-muted); font-size: .78rem; }
-.stats dd { margin: .1rem 0 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+/* Key figures: the value large in ink with its unit lighter, its name small above it. */
+.stats { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-6); margin: 0; }
+.stats > div { display: grid; gap: 2px; }
+.stats dt { color: var(--text-muted); font-size: .72rem; line-height: 1.2; white-space: nowrap; }
+.stats dd { margin: 0; color: var(--text); font-size: 1.25rem; font-weight: 650; line-height: 1.15; letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats dd small { color: var(--text-muted); font-size: .64em; font-weight: 500; letter-spacing: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin: 0; padding: 0; list-style: none; color: var(--text-muted); font-size: .75rem; }
 .legend li { display: inline-flex; align-items: center; gap: .35rem; }
 .swatch { width: 1rem; height: 4px; flex-shrink: 0; border-radius: 2px; }

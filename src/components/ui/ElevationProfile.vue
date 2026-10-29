@@ -3,13 +3,16 @@
        so its button keeps the focus. -->
   <section id="elevation-profile" class="profile" :class="{ 'profile--collapsed': collapsed }" aria-label="Höhenprofil">
     <div class="profile__header">
-      <strong>Höhenprofil</strong>
-      <!-- Distance and climbing stay in view when the phone sheet is folded or the drawer is closed. -->
-      <!-- A zoomed stretch shows its own figures instead. -->
+      <!-- The route's distance and climbing, in view also with the phone sheet folded or the drawer closed; the distance is
+           approximate while sections are still straight. A zoomed stretch shows its own figures instead. -->
       <ElevationRange v-if="inspection.track && inspection.range" :track="inspection.track" :gradients="inspection.gradients" :range="inspection.range"
         @reset="inspection.range = null" />
-      <span v-else class="profile__summary text-medium-emphasis"><template v-if="inspection.track">{{ formatKm(routeStore.distanceMeters, 1, true) }} km<template
-        v-if="routeStore.ascentMeters !== null"> · {{ formatMeters(routeStore.ascentMeters) }} Anstieg</template></template></span>
+      <dl v-else class="stats profile__figures" aria-live="polite">
+        <div><dt>Distanz</dt><dd><small v-if="routeStore.hasAirLines">ca.&nbsp;</small>{{ formatKm(routeStore.distanceMeters, 1, true) }}&nbsp;<small>km</small></dd></div>
+        <div><dt>Höhenmeter</dt><dd><template v-if="routeStore.ascentMeters !== null">{{ formatWhole(routeStore.ascentMeters) }}&nbsp;<small>m</small></template>
+          <span v-else-if="routeStore.routingPending" class="skeleton profile__figure-skeleton" aria-label="wird berechnet" />
+          <small v-else>unbekannt</small></dd></div>
+      </dl>
       <SlopeScale v-if="!collapsed && inspection.track && inspection.colorRuns.length" />
       <v-icon-button v-tooltip:top="toggleLabel" :aria-label="toggleLabel" :aria-expanded="!collapsed" aria-controls="elevation-profile"
         @click="collapsed = !collapsed">
@@ -34,7 +37,7 @@ import { IconChevronDown, IconChevronUp } from '@/components/icons';
 import ElevationChart from './ElevationChart.vue';
 import ElevationRange from './ElevationRange.vue';
 import SlopeScale from './SlopeScale.vue';
-import { formatKm, formatMeters } from '@/utils/format';
+import { formatKm, formatWhole } from '@/utils/format';
 import { useRouteProfileStore } from '../../stores/route-profile.store';
 import { useRouteStore } from '../../stores/route.store';
 
@@ -52,13 +55,15 @@ const message = computed(() => !routeStore.route ? 'Plane eine Route, um ihr Hö
 <style scoped>
 .profile { display: flex; flex-direction: column; height: var(--profile-height, auto); font-size: .8rem; }
 .profile--collapsed { height: auto; }
-.profile__header { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
-.profile__header > strong { font-weight: 600; }
-.profile__summary { margin-right: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* Phones show distance and climbing in the title's place, so they share one line with the scale; a zoomed stretch's
-   figures take the scale's place too. */
+.profile__header { display: flex; align-items: center; gap: var(--space-2); min-height: 2rem; margin-bottom: var(--space-1); }
+.profile__figures { margin-right: auto; }
+/* The fold arrow's glyph, not its target, ends at the margin. */
+.profile__header > .v-btn:last-child { margin-right: -12px; }
+.profile__figure-skeleton { display: inline-block; width: 3.5rem; height: 1.1rem; vertical-align: middle; }
+/* On phones the figures are smaller and stay on one line, and a zoomed stretch's figures take the scale's place. */
 @media (max-width: 760px) {
-  .profile__header:has(.profile__summary:not(:empty), .elevation-range) > strong { display: none; }
+  .profile__header :deep(.stats) { flex-wrap: nowrap; column-gap: var(--space-4); }
+  .profile__header :deep(:is(.stats dd, .slope-scale__scale)) { font-size: 1.05rem; }
   .profile__header:has(.elevation-range) .slope-scale { display: none; }
 }
 .profile > .elevation-chart { flex: 1; min-height: 0; --elevation-chart-height: minmax(0, 1fr); }

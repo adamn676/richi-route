@@ -175,19 +175,18 @@ function fitRoute() {
 .map-view__stage--overview :deep(.route-marker--shape) { display: none; }
 .map-view__canvas { position: absolute; inset: 0; }
 /* Below the map rather than over it, so the map's own controls stay visible. */
-/* Grows with the window, so climbs on long routes stay readable; phones keep a compact profile for the map's sake. */
-.map-view__profile { --profile-height: clamp(11rem, 28vh, 18rem); padding: .5rem 1rem .4rem; border-top: 1px solid var(--border); background: var(--surface); }
-.map-view__status { position: absolute; top: .75rem; left: .75rem; right: 4.5rem; display: grid; justify-items: start; gap: .5rem; pointer-events: none; }
+/* Grows with the window, so climbs on long routes stay readable; phones keep a compact profile for the map's sake. The
+   profile and the controls over the map keep the sidebar's margin from every edge. */
+.map-view__profile { --profile-height: clamp(11rem, 28vh, 18rem); padding: var(--space-3) var(--gutter); border-top: 1px solid var(--border); background: var(--surface); }
+.map-view__status { position: absolute; top: var(--gutter); left: var(--gutter); right: calc(2 * var(--gutter) + 40px); display: grid; justify-items: start; gap: var(--space-2); pointer-events: none; }
 .map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
 .map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }
 /* Touch screens have no Escape key; the pressed button ends the mode there. */
 @media (hover: none) { .map-view__escape { display: none; } }
-.map-view__tools { position: absolute; top: .75rem; right: .75rem; display: grid; gap: .5rem; }
-.map-view__navigation { position: absolute; right: .75rem; bottom: .75rem; }
+.map-view__tools { position: absolute; top: var(--gutter); right: var(--gutter); display: grid; gap: var(--space-2); }
+.map-view__navigation { position: absolute; right: var(--gutter); bottom: var(--gutter); }
+.map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale) { margin: 0 0 var(--gutter) var(--gutter); }
 @media (max-width: 760px) {
-  .map-view__status { top: .5rem; left: .5rem; }
-  .map-view__tools { top: .5rem; right: .5rem; }
-  .map-view__navigation { right: .5rem; bottom: .5rem; }
-  .map-view__profile { --profile-height: 7.5rem; padding: .35rem .75rem .25rem; }
+  .map-view__profile { --profile-height: 7.5rem; padding: var(--space-2) var(--gutter); }
 }
 </style>

@@ -406,30 +406,32 @@ provider credits, persisted selection and mobile layout. Reports are in
 ## Cycling overlays
 
 The map's tool column at the top right holds the basemap choice (layers icon),
-**Rad-Infos** (bike icon), **Street View** (figure icon) and **Auf Route zoomen**
-(focus icon); hover for their names. Zoom buttons sit at the bottom right; a
-compass joins them once the map is turned or tilted and turns it back north.
-Phones zoom with two fingers and show only the compass there. The map shows no
-more than the local map data's area, Europe: zooming out stops once Europe
-fills the map, and the world never repeats.
-Opening an example, a saved route or a
-GPX track as a route, or starting or completing one by address, also shows the whole
-route (or the first stop alone): nearby the map
-glides there, from farther away it jumps. In Street View mode a figure follows the
-pointer and snaps onto the route within 16 px, the route pauses its editing, and
-a click opens Street View at the nearest panorama; the figure turns grey where
-Google has none within 50 m. Escape or the button again cancels. The bottom of the sidebar credits OpenStreetMap; **Quellen** there lists
-all map and imagery sources. The sidebar is a navigation drawer 352–416 px wide,
-depending on the screen; the arrow on its edge folds it away for a full-width map,
-and the app remembers that choice. The map keeps its content in place while the
-drawer moves. Below 760 px the drawer becomes a sheet under the map:
-drag or tap its handle (or use the arrow keys on it) to show only its header and
-tabs, half the screen, or all of it. The map and elevation profile fill the rest.
-Opening a route, or completing one by address, lowers the sheet so the route shows.
-Typing an address opens it fully; choosing one closes the keyboard again. A tab
-tapped while only the header shows raises the sheet to half the screen. On touch
-screens a finger on the route pans the map; holding it still for a moment picks
-the route up to drag it.
+**Rad-Infos** (bike icon), **Street View** (figure icon) and **Auf Route
+zoomen** (focus icon); hover for their names. Zoom buttons sit at the bottom
+right; a compass joins them once the map is turned or tilted and turns it back
+north. Phones zoom with two fingers and show only the compass there. The map
+shows no more than the local map data's area, Europe: zooming out stops once
+Europe fills the map, and the world never repeats. Opening an example, a saved
+route or a GPX track as a route, or starting or completing one by address, also
+shows the whole route (or the first stop alone): nearby the map glides there,
+from farther away it jumps. In Street View mode a figure follows the pointer and
+snaps onto the route within 16 px, the route pauses its editing, and a click
+opens Street View at the nearest panorama; the figure turns grey where Google
+has none within 50 m. Escape or the button again cancels. The bottom of the
+sidebar credits OpenStreetMap; **Quellen** there lists all map and imagery
+sources. The sidebar, the elevation profile and the controls over the map keep
+one margin from every edge, 20 px (16 px on phones); icons without a background
+end there with their glyph. The sidebar is a navigation drawer 352–416 px wide,
+depending on the screen; the narrow tab on its edge folds it away for a
+full-width map, and the app remembers that choice. The map keeps its content in
+place while the drawer moves. Below 760 px the drawer becomes a sheet under the
+map: drag or tap its handle (or use the arrow keys on it) to show only its
+header and tabs, half the screen, or all of it. The map and elevation profile
+fill the rest. Opening a route, or completing one by address, lowers the sheet
+so the route shows. Typing an address opens it fully; choosing one closes the
+keyboard again. A tab tapped while only the header shows raises the sheet to
+half the screen. On touch screens a finger on the route pans the map; holding it
+still for a moment picks the route up to drag it.
 
 The **Route** tab lists the stops beside their markers; the + below them
 (**Zwischenstopp hinzufügen**) adds an empty stop to fill by search or on the
@@ -800,29 +802,38 @@ turn instructions. Physical cycling-computer imports have not been tested.
 ## Inspect the route elevation profile
 
 The planned route and imported GPX use the same interactive chart. The route's
-profile spans the width of the map below it, names the route's distance and
-climbing in its header, and can be hidden with its arrow button; the GPX profile
-stays in the **GPX** tab. Move the pointer or drag a finger across
+profile spans the width of the map below it, shows **Distanz** and
+**Höhenmeter** in its header, without a title (the only place for them, which
+stays in view with the sidebar or sheet folded; the distance is approximate
+while sections are still straight), and can be hidden with its arrow button; the
+GPX profile stays in the **GPX** tab. Move the pointer or drag a finger across
 **Höhenprofil** to see distance, elevation and estimated gradient beside the
 cursor, with the corresponding position marked on the map. The line and a light
 tint beneath it are coloured by climb, with the bands of the GPX **Steigung**
-track colours and a compact scale beside the title; descents share the colour of
-flat ground. Both axes use round steps on dotted grid lines, with more distance
-marks on wider screens. A click (or Enter) pins the position; the tooltip then
-links to Google Street View there, until Escape, another click or leaving the
-chart. Dragging across the profile with a mouse, or after a long press on
-phones, zooms into that stretch: the profile shows its own detail, axes and
-colours, the header its length, climbing, mean gradient and steepest climb, and
-the map frames its course while the rest of the route fades. A double click,
-Escape or the zoom-out button shows the whole profile again; so does a changed
-route. The GPX profile zooms the same way. A right-click on the map, or a long
-press on phones, offers Street View for any point. Without a key these links
-open Google Maps in a new tab; with a Google Maps Embed API key, Street View
-appears in place of the map and closes with ✕ or Escape. Opened on the route, it
-looks in the direction of travel and the elevation profile keeps marking that
-spot (pointing elsewhere on the profile returns to it). Google's frame does not
-report walking or turning inside Street View, so the mark stays where Street
-View was opened:
+track colours and a scale beside the figures, laid out as they are; descents
+share the colour of flat ground. Each part of the line shows the steepest climb
+held there over about its own width on the screen (100 to 500 m), so a long
+route keeps its passes visible instead of averaging them away with the flat
+ground and descents around them; the colour still ends at a summit and starts in
+a valley, so a descent is never coloured as a climb. The readout's dot shows the
+gradient at the cursor itself. Both axes use round steps on dotted grid lines,
+close to the plot, with more distance marks on wider screens; the distance axis
+ends at the route's exact length, the router's like the header's. A
+click (or Enter) pins the position; the tooltip then links to Google Street View
+there, until Escape, another click or leaving the chart. Dragging across the
+profile with a mouse, or after a long press on phones, zooms into that stretch:
+the profile shows its own detail, axes and colours, the header its length,
+climbing, mean gradient and steepest climb held over 100 m, the axis its exact
+ends, and the map frames its course while the rest of the route fades. A double
+click, Escape or the zoom-out button shows the whole profile again; so does a
+changed route. The GPX profile zooms the same way. A right-click on the map, or
+a long press on phones, offers Street View for any point. Without a key these
+links open Google Maps in a new tab; with a Google Maps Embed API key, Street
+View appears in place of the map and closes with ✕ or Escape. Opened on the
+route, it looks in the direction of travel and the elevation profile keeps
+marking that spot (pointing elsewhere on the profile returns to it). Google's
+frame does not report walking or turning inside Street View, so the mark stays
+where Street View was opened:
 
 1. In the Google Cloud console, enable the **Maps Embed API** and create an API
    key. Google asks for a billing account; Maps Embed API use is free and

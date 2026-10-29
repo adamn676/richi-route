@@ -8,22 +8,22 @@
     </div>
     <div class="elevation-chart__plot">
       <div class="elevation-chart__altitudes" aria-hidden="true">
-        <span v-for="tick in altitudeTicks" :key="tick.value" :style="{ top: `${tick.y / 88 * 100}%` }">{{ formatMeters(tick.value) }}</span>
+        <span v-for="tick in altitudeTicks" :key="tick.value" :style="{ top: `${tick.y / height * 100}%` }">{{ formatMeters(tick.value) }}</span>
       </div>
       <div ref="chart" class="elevation-chart__chart" role="slider" :tabindex="enabled ? 0 : -1" :aria-label="label"
         aria-valuemin="0" :aria-valuemax="track.distanceMeters" :aria-valuenow="focus?.distance ?? 0" :aria-valuetext="readout"
         :aria-disabled="!enabled" aria-description="Im Profil bewegen oder berühren; über einen Abschnitt ziehen (auf Touch nach langem Drücken) vergrößert ihn, Doppelklick oder Escape zeigt wieder alles. Pfeiltasten wählen die Position, Pos1 und Ende springen an die Endpunkte."
         @pointermove="move" @pointerdown="press" @pointerup="release" @pointerleave="leave" @pointercancel="cancel"
         @click="pin" @dblclick="showAll" @keydown="key" @focusout="leaveFocus">
-        <svg viewBox="0 0 300 88" preserveAspectRatio="none" role="img" :aria-label="chartLabel">
-          <defs><linearGradient :id="colorId" gradientUnits="userSpaceOnUse" x1="5" x2="295" y1="0" y2="0">
+        <svg :viewBox="`0 0 300 ${height}`" preserveAspectRatio="none" role="img" :aria-label="chartLabel">
+          <defs><linearGradient :id="colorId" gradientUnits="userSpaceOnUse" x1="0" x2="300" y1="0" y2="0">
             <template v-for="(run, i) in runs" :key="run.from">
               <stop :offset="run.from" :stop-color="run.color" /><stop :offset="runs[i + 1]?.from ?? 1" :stop-color="run.color" />
             </template>
           </linearGradient><clipPath :id="clipId"><rect width="300" height="78" /></clipPath>
           <!-- A zoomed profile continues past both sides; it ends at the plot's edges. -->
-          <clipPath :id="rangeClipId"><rect x="5" width="290" height="78" /></clipPath>
-          <clipPath :id="rangeLineClipId"><rect x="5" y="-20" width="290" height="120" /></clipPath></defs>
+          <clipPath :id="rangeClipId"><rect width="300" height="78" /></clipPath>
+          <clipPath :id="rangeLineClipId"><rect y="-20" width="300" height="120" /></clipPath></defs>
           <path class="elevation-chart__grid" :d="gridPath" fill="none" stroke-dasharray="2 3" vector-effect="non-scaling-stroke" />
           <template v-if="profile">
             <g :clip-path="`url(#${range ? rangeClipId : clipId})`"><path class="elevation-chart__area" :d="profile.areaPath" :fill="paint" :transform="profileTransform" /></g>
@@ -32,16 +32,16 @@
           </template>
           <rect v-if="choosing" class="elevation-chart__choice" :x="Math.min(xAt(choosing.start), xAt(choosing.end))" y="10"
             :width="Math.abs(xAt(choosing.end) - xAt(choosing.start))" height="68" />
-          <line v-if="shown" class="elevation-chart__cursor" :x1="focusX" :x2="focusX" y1="5" y2="84" vector-effect="non-scaling-stroke" />
+          <line v-if="shown" class="elevation-chart__cursor" :x1="focusX" :x2="focusX" y1="4" :y2="height" vector-effect="non-scaling-stroke" />
         </svg>
-        <span v-if="shown && focusY !== null" class="elevation-chart__position" :style="{ left: focusLeft, top: `${focusY / 88 * 100}%` }" />
+        <span v-if="shown && focusY !== null" class="elevation-chart__position" :style="{ left: focusLeft, top: `${focusY / height * 100}%` }" />
         <!-- Beside the cursor, on whichever side has more room. -->
         <div v-if="shown && focus" class="elevation-chart__tooltip"
           :class="{ 'elevation-chart__tooltip--left': focusX > 150, 'elevation-chart__tooltip--pinned': pinned }"
           :style="{ left: focusLeft }" :aria-hidden="!pinned">
           <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
           <span>{{ formatKm(focus.distance) }} km</span>
-          <span v-if="gradientText">{{ gradientText }} %</span>
+          <span v-if="gradientText"><i class="elevation-chart__slope" :style="{ background: gradientColor(focus.gradient!) }" aria-hidden="true" />{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
             :aria-label="streetViewLabel" v-tooltip:top="streetViewLabel" :aria-disabled="streetView.missing"
             @click="event => streetView.open(event, focus!.coordinate, onRoute ? focus!.distance : undefined)"><IconMan :size="16" aria-hidden="true" /></a>
@@ -49,7 +49,7 @@
         <span v-if="!profile && !shown" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
       <div class="elevation-chart__distances" aria-hidden="true">
-        <span v-for="tick in distanceTicks" :key="tick.x" :class="{ 'elevation-chart__tick--end': tick.end }" :style="{ left: `${tick.x / 3}%` }">{{ tick.label }}</span>
+        <span v-for="tick in distanceTicks" :key="tick.x" :style="{ left: `${tick.x / 3}%` }">{{ tick.label }}</span>
       </div>
     </div>
   </div>
@@ -64,7 +64,7 @@ import ElevationRange from './ElevationRange.vue';
 import { streetViewUrl } from '@/utils/street-view';
 import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
-import { gradientRuns, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
+import { gradientColor, gradientRuns, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
 // onRoute: distances are the planned route's, so Street View can mark its spot there (even where an out-and-back overlaps itself).
 const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; gradients: (number | null)[][]; focus: GpxFocus | null;
@@ -78,20 +78,23 @@ const range = defineModel<{ from: number; to: number } | null>('range', { defaul
 watch(() => props.track, () => { range.value = null; });
 const view = computed(() => range.value ?? { from: 0, to: props.track.distanceMeters });
 const profile = computed(() => range.value ? drawProfile(props.track.samples, range.value.from, range.value.to) : props.track.profile);
-const runs = computed(() => range.value ? gradientRuns(props.track, props.gradients, range.value.from, range.value.to) : props.colorRuns);
+const runs = computed(() => range.value ? gradientRuns(props.track, range.value.from, range.value.to) : props.colorRuns);
 const paint = computed(() => runs.value.length ? `url(#${colorId})` : unknownGpxColor);
 const focus = computed(() => props.focus);
 function selectDistance(distance: number | null) { emit('inspect', distance); }
 // A position chosen here must not outlive the chart, or its map marker would stay.
 onBeforeUnmount(() => selectDistance(null));
+// The viewBox: the plot from y 10 to 78, with room above for the line's highest point and little below, so the
+// distances sit close under it.
+const height = 82;
 // Plot coordinates in viewBox units for a distance along the track and an elevation on its axis, and back.
 const xAt = (meters: number) => {
   const { from, to } = view.value;
-  return 5 + (to > from ? (meters - from) / (to - from) * 290 : 0);
+  return to > from ? (meters - from) / (to - from) * 300 : 0;
 };
 function distanceAt(event: PointerEvent) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect(), { from, to } = view.value;
-  return Math.min(to, Math.max(from, from + ((event.clientX - rect.left) / rect.width * 300 - 5) / 290 * (to - from)));
+  return Math.min(to, Math.max(from, from + (event.clientX - rect.left) / rect.width * (to - from)));
 }
 const yAt = (elevation: number) => {
   const { from, to } = elevationAxis.value!;
@@ -103,20 +106,26 @@ const chartSize = ref({ width: 480, height: 136 });
 const resize = new ResizeObserver(([entry]) => { chartSize.value = { width: entry.contentRect.width, height: entry.contentRect.height }; });
 onMounted(() => resize.observe(chart.value!));
 onBeforeUnmount(() => resize.disconnect());
-// Distance marks at a round step, about one per 70 px; one at the right edge is right-aligned to stay inside.
+// Distance marks at a round step, about one per 70 px, and the exact distance at the end (at both ends of a zoomed
+// stretch), each centred on its grid line; a round mark too close to an exact one gives way.
 const distanceTicks = computed(() => {
   const { from, to } = view.value, { width } = chartSize.value;
   const step = niceStep(Math.max((to - from) / Math.max(2, Math.floor(width / 70)), 10)), first = Math.ceil(from / step);
-  return Array.from({ length: Math.max(0, Math.floor(to / step) - first + 1) }, (_, i) => {
-    const meters = (first + i) * step, x = xAt(meters);
-    return { x, label: `${formatKm(meters, 3)} km`, end: (300 - x) / 300 * width < 22 };
-  });
+  const apart = (a: number, b: number) => Math.abs(xAt(a) - xAt(b)) / 300 * width >= 52;
+  const round = Array.from({ length: Math.max(0, Math.floor(to / step) - first + 1) }, (_, i) => (first + i) * step)
+    .filter(meters => apart(meters, to) && (!range.value || apart(meters, from)));
+  const exact = (meters: number) => `${formatKm(meters, 1)} km`;
+  return [
+    ...range.value ? [{ x: xAt(from), label: exact(from) }] : [],
+    ...round.map(meters => ({ x: xAt(meters), label: `${formatKm(meters, 3)} km` })),
+    { x: xAt(to), label: exact(to) },
+  ];
 });
 // Elevation axis that starts and ends on a round step: at most five steps, marks at least 11 px apart,
 // and of those the one wasting the least height.
 const elevationAxis = computed(() => {
   if (!profile.value) return null;
-  const { minimum, maximum } = profile.value, plotHeight = (chartSize.value.height || 136) * 68 / 88;
+  const { minimum, maximum } = profile.value, plotHeight = (chartSize.value.height || 136) * 68 / height;
   let best: { from: number; to: number; step: number } | undefined;
   for (let i = 0, step = niceStep(Math.max(5, (maximum - minimum) / 8)); i < 6 || !best; i++, step = niceStep(step * 1.01)) {
     const from = Math.floor(minimum / step) * step, to = Math.max(Math.ceil(maximum / step) * step, from + step);
@@ -139,7 +148,7 @@ const profileTransform = computed(() => {
   return `matrix(1 0 0 ${scale} 0 ${yAt(drawn.minimum) - 78 * scale})`;
 });
 const gridPath = computed(() => (altitudeTicks.value.length ? altitudeTicks.value.map(tick => tick.y) : [10, 44, 78])
-  .map(y => `M5,${y} H295`).join(' ') + distanceTicks.value.map(tick => ` M${tick.x},10 V78`).join(''));
+  .map(y => `M0,${y} H300`).join(' ') + distanceTicks.value.map(tick => ` M${tick.x},10 V78`).join(''));
 // A position outside the zoomed stretch (chosen on the map) has no place in the chart.
 const shown = computed(() => focus.value !== null && focus.value.distance >= view.value.from && focus.value.distance <= view.value.to);
 const focusX = computed(() => xAt(focus.value?.distance ?? 0));
@@ -245,17 +254,24 @@ function key(event: KeyboardEvent) {
 .elevation-chart__heading > strong { margin-right: auto; }
 .elevation-chart strong { font-weight: 600; color: var(--text); white-space: nowrap; }
 @container (max-width: 20rem) { .slope-scale { display: none; } }
-/* At most half the chart wide, so it always fits on the side it opens to. */
+/* In the tooltips' ink, at most half the chart wide, so it always fits on the side it opens to. The gradient carries
+   the dot of its colour on the line. */
 .elevation-chart__tooltip { position: absolute; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; width: max-content;
-  max-width: calc(50% - .5rem); margin-left: .5rem; padding: .2rem .5rem; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); white-space: nowrap; font-size: .7rem; pointer-events: none; }
+  max-width: calc(50% - .5rem); margin-left: .5rem; padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--accent);
+  color: rgb(255 255 255 / .78); box-shadow: 0 2px 8px rgb(16 24 22 / .22); white-space: nowrap; font-size: .72rem; pointer-events: none; }
+.elevation-chart .elevation-chart__tooltip strong { color: #fff; }
+.elevation-chart__slope { display: inline-block; width: 7px; height: 7px; margin-right: var(--space-1); border-radius: 50%; vertical-align: 1px; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
 .elevation-chart__tooltip--pinned { pointer-events: auto; }
-.elevation-chart__street-view { display: inline-flex; align-self: center; margin: -.15rem; padding: .15rem; border-radius: var(--radius); color: var(--accent); }
-.elevation-chart__street-view:hover:not([aria-disabled=true]) { background: var(--accent-soft); }
-.elevation-chart__street-view[aria-disabled=true] { color: var(--text-muted); opacity: .6; cursor: not-allowed; }
-.elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto; }
+.elevation-chart__street-view { display: inline-flex; align-self: center; margin: -.15rem; padding: .15rem; border-radius: var(--radius); color: #fff; }
+.elevation-chart__street-view:hover:not([aria-disabled=true]) { background: rgb(255 255 255 / .14); }
+.elevation-chart__street-view[aria-disabled=true] { opacity: .45; cursor: not-allowed; }
+/* The plot takes all the width beside the elevations, leaving on the right half of its last distance, which is centred
+   on the last grid line. */
+.elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto;
+  padding-right: 1.25rem; }
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
-.elevation-chart__altitudes span { position: absolute; right: .5rem; transform: translateY(-50%); white-space: nowrap; }
+.elevation-chart__altitudes span { position: absolute; right: var(--space-2); transform: translateY(-50%); white-space: nowrap; }
 .elevation-chart__chart { grid-column: 2; grid-row: 1; position: relative; touch-action: none; cursor: crosshair; border-radius: var(--radius); }
 .elevation-chart__chart[aria-disabled=true] { cursor: default; opacity: .6; }
 svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -264,8 +280,7 @@ svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .elevation-chart__cursor { stroke: var(--text-muted); }
 .elevation-chart__choice { fill: var(--accent); fill-opacity: .1; }
 .elevation-chart__position { position: absolute; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--text); box-shadow: 0 0 0 1px var(--text); transform: translate(-50%, -50%); pointer-events: none; }
-.elevation-chart__distances { position: relative; grid-column: 2; height: 1.15rem; font-size: .65rem; }
-.elevation-chart__distances span { position: absolute; top: .25rem; transform: translateX(-50%); white-space: nowrap; }
-.elevation-chart__distances .elevation-chart__tick--end { transform: translateX(-100%); }
+.elevation-chart__distances { position: relative; grid-column: 2; height: 1rem; font-size: .65rem; }
+.elevation-chart__distances span { position: absolute; top: .1rem; transform: translateX(-50%); white-space: nowrap; }
 .elevation-chart__empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 </style>

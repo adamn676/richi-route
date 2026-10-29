@@ -20,8 +20,9 @@
         </div>
       </div>
       <dl class="stats">
-        <div><dt>Distanz</dt><dd>{{ formatKm(track.distanceMeters) }} km</dd></div>
-        <div><dt>Anstiege</dt><dd>{{ track.ascentMeters === null ? 'unbekannt' : formatMeters(track.ascentMeters) }}</dd></div>
+        <div><dt>Distanz</dt><dd>{{ formatKm(track.distanceMeters, 1, true) }}&nbsp;<small>km</small></dd></div>
+        <div><dt>Höhenmeter</dt><dd><template v-if="track.ascentMeters === null">unbekannt</template><template
+          v-else>{{ formatWhole(track.ascentMeters) }}&nbsp;<small>m</small></template></dd></div>
       </dl>
       <div class="gpx__open">
         <v-btn variant="flat" block :prepend-icon="IconRoute" aria-describedby="gpx-open-note" @click="emit('open-route')">Als Route öffnen</v-btn>
@@ -68,7 +69,7 @@ import { IconEye, IconEyeOff, IconFileImport, IconFocus2, IconRoute, IconTrash }
 import { useGpxReferenceStore } from '../../stores/gpx-reference.store';
 import { elevationColors, gradientBands, unknownGpxColor } from '../../domain/gpx-inspection';
 import GpxElevationProfile from './GpxElevationProfile.vue';
-import { formatKm, formatMeters } from '@/utils/format';
+import { formatKm, formatWhole } from '@/utils/format';
 import { surfaceLegend } from '../../domain/gpx-surfaces';
 import { surfaceLabels } from '../../domain/route-surfaces';
 import { routeStyle } from '../../config/mapStyle';
@@ -112,7 +113,7 @@ async function importSelected(event: Event) {
 </script>
 
 <style scoped>
-.gpx { display: grid; gap: .85rem; min-height: 100%; align-content: start; padding: 1rem var(--gutter) 1.5rem; }
+.gpx { display: grid; gap: .85rem; min-height: 100%; align-content: start; padding: 1rem var(--gutter-end) 1.5rem var(--gutter); }
 .gpx__track { display: flex; align-items: flex-start; gap: .5rem; }
 .gpx__title { display: grid; flex: 1; min-width: 0; gap: .15rem; }
 .gpx__file { overflow-wrap: anywhere; }

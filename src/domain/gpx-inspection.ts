@@ -13,9 +13,11 @@ export const gradientBands = [
   { max: Infinity, color: '#b9364f', label: '≥ 15 %' },
 ];
 
-export const gradientColor = (gradient: number) => gradientBands.find(band => gradient < band.max)!.color;
+const gradientBand = (gradient: number) => gradientBands.findIndex(band => gradient < band.max);
+export const gradientColor = (gradient: number) => gradientBands[gradientBand(gradient)].color;
 
-export function gpxGradients(track: GpxTrack): (number | null)[][] {
+// The gradient at each point, over the stretch within `half` metres to either side.
+export function gpxGradients(track: GpxTrack, half = 25): (number | null)[][] {
   return track.segments.map((segment, segmentIndex) => {
     const heights = segment.elevations, distances = track.distances[segmentIndex];
     const result: (number | null)[] = Array(heights.length).fill(null);
@@ -26,11 +28,11 @@ export function gpxGradients(track: GpxTrack): (number | null)[][] {
       while (end + 1 < heights.length && heights[end + 1] !== null) end++;
       let left = start, right = start;
       for (let i = start; i <= end; i++) {
-        while (left + 1 <= i && distances[left + 1] <= distances[i] - 25) left++;
+        while (left + 1 <= i && distances[left + 1] <= distances[i] - half) left++;
         right = Math.max(right, i);
-        while (right < end && distances[right] < distances[i] + 25) right++;
+        while (right < end && distances[right] < distances[i] + half) right++;
         const span = distances[right] - distances[left];
-        if (span >= 10) {
+        if (span >= half * .4) {
           const grade = (heights[right]! - heights[left]!) / span * 100;
           if (Number.isFinite(grade)) result[i] = grade;
         }
@@ -81,36 +83,52 @@ function colorFor(track: GpxTrack, mode: GpxColorMode, value: number | null): st
   return elevationColors[Math.max(0, Math.min(elevationColors.length - 1, bin))];
 }
 
-// Profile colour runs, each from an offset (0–1) along the distance shown, by the mean gradient per profile column.
+// Profile colour runs, each from an offset (0–1) along the distance shown. A column takes the steepest climb in it held
+// over about its own width (100 to 500 m): a climb shows even where a long column also holds flat ground or a descent,
+// which an average would let cancel it, and the stretch's length keeps single height errors out. Its colour fills the
+// column only where the line does not fall: it starts at the low point before the climb and ends at the top after it.
 // Columns without points continue the previous run, so sparse points on straight roads stay coloured.
-export function gradientRuns(track: GpxTrack, gradients: (number | null)[][], from = 0, to = track.distanceMeters) {
-  const sums = new Float64Array(profileColumns), counts = new Uint32Array(profileColumns);
+export function gradientRuns(track: GpxTrack, from = 0, to = track.distanceMeters) {
+  const span = to - from;
+  const sustained = gpxGradients(track, Math.min(500, Math.max(100, span / profileColumns)) / 2);
+  const columns = Array.from({ length: profileColumns }, () => [] as { distance: number; height: number; band: number }[]);
   track.distances.forEach((distances, s) => distances.forEach((distance, i) => {
-    const gradient = gradients[s][i];
+    const gradient = sustained[s][i];
     if (gradient === null || distance < from || distance > to) return;
-    const column = profileColumn(distance - from, to - from);
-    sums[column] += gradient;
-    counts[column]++;
+    columns[profileColumn(distance - from, span)].push({ distance, height: track.segments[s].elevations[i]!, band: gradientBand(gradient) });
   }));
   const runs: { from: number; color: string }[] = [];
-  for (let column = 0; column < profileColumns; column++) {
-    if (!counts[column]) continue;
-    const color = gradientColor(sums[column] / counts[column]);
-    if (runs.at(-1)?.color !== color) runs.push({ from: column / profileColumns, color });
-  }
+  let band = -1, previous: typeof columns[number] = [];
+  columns.forEach((points, column) => {
+    if (!points.length) return;
+    const steepest = points.reduce((max, point) => Math.max(max, point.band), 0);
+    if (steepest !== band) {
+      let turn = steepest > band ? points[0] : previous.at(-1)!, at = column / profileColumns;
+      if (steepest > band) {
+        for (const point of points) { if (point.height < turn.height) turn = point; if (point.band === steepest) break; }
+        if (turn !== points[0]) at = (turn.distance - from) / span;
+      } else {
+        for (let i = previous.length - 1; i >= 0; i--) { if (previous[i].height > turn.height) turn = previous[i]; if (previous[i].band === band) break; }
+        if (turn !== previous.at(-1)) at = (turn.distance - from) / span;
+      }
+      runs.push({ from: at, color: gradientBands[steepest].color });
+      band = steepest;
+    }
+    previous = points;
+  });
   return runs;
 }
 export type GradientRun = ReturnType<typeof gradientRuns>[number];
 
 // A stretch between two distances: its length, climbing and descent, its mean gradient from end to end and its steepest
-// climb.
+// climb held over 100 m, which a single height error does not make.
 export function sectionStats(track: GpxTrack, gradients: (number | null)[][], from: number, to: number) {
-  const heights: (number | null)[] = [];
+  const heights: (number | null)[] = [], sustained = gpxGradients(track, 50);
   let steepest: number | null = null;
   track.distances.forEach((distances, s) => distances.forEach((distance, i) => {
     if (distance < from || distance > to) return;
     heights.push(track.segments[s].elevations[i]);
-    const gradient = gradients[s][i];
+    const gradient = sustained[s][i];
     if (gradient !== null && (steepest === null || gradient > steepest)) steepest = gradient;
   }));
   const start = inspectGpxDistance(track, gradients, from).elevation, end = inspectGpxDistance(track, gradients, to).elevation;

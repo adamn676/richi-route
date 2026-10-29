@@ -94,7 +94,7 @@ watch(inspection, value => {
 <style scoped>
 /* In the stops' columns: the dot where the markers are, the text where the addresses are; 44 px rows whose hover and
    selection reach 8 px past the content. */
-.surfaces { display: grid; gap: var(--space-3); margin-top: var(--space-3); transition: opacity .2s; }
+.surfaces { display: grid; gap: var(--space-3); transition: opacity .2s; }
 .surfaces--stale { opacity: .45; pointer-events: none; }
 h3 { display: flex; align-items: center; min-height: 36px; margin: 0; }
 .surfaces__bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 5px; }

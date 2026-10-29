@@ -15,8 +15,8 @@
       <MapView />
       <!-- Folds the drawer away so the map gets the full width. -->
       <v-btn v-if="!phone" v-tooltip:end="toggleLabel" class="editor-layout__toggle" :aria-label="toggleLabel"
-        :aria-expanded="!collapsed" aria-controls="sidebar" variant="flat" color="surface" elevation="2" rounded="e-lg"
-        :width="32" :height="56" min-width="0" @click="collapsed = !collapsed">
+        :aria-expanded="!collapsed" aria-controls="sidebar" variant="flat" color="surface" rounded="e-lg"
+        :width="22" :height="48" min-width="0" @click="collapsed = !collapsed">
         <component :is="collapsed ? IconChevronRight : IconChevronLeft" :size="16" aria-hidden="true" />
       </v-btn>
     </v-main>
@@ -103,9 +103,10 @@ watch(width, measure, { flush: 'post' });
 .editor-layout__sidebar { height: 100%; }
 /* The map takes its new size at once rather than every frame, so it never jumps; the drawer slides over its own colour. */
 .editor-layout__main { height: 100dvh; background: rgb(var(--v-theme-surface)); transition: none; }
-/* A tab on the drawer's edge, halfway down the map. */
+/* A narrow tab on the drawer's edge, halfway down the map, with a soft shadow as the map's own controls. */
 .editor-layout__toggle {
-  position: absolute; top: 50%; left: var(--v-layout-left); z-index: 20; padding: 0;
+  position: absolute; top: 50%; left: var(--v-layout-left); z-index: 20; padding: 0; color: var(--text-muted);
+  box-shadow: 0 1px 2px rgb(60 64 67 / .3), 0 1px 3px 1px rgb(60 64 67 / .15);
   transform: translateY(-50%); transition: left .2s cubic-bezier(.4, 0, .2, 1);
 }
 /* A tall strip, so a thumb finds it. */

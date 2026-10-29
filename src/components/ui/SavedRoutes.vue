@@ -121,7 +121,7 @@ async function importSelected(event: Event) {
 </script>
 
 <style scoped>
-.library { display: grid; gap: 1.25rem; padding: 1rem var(--gutter) 1.5rem; }
+.library { display: grid; gap: 1.25rem; padding: 1rem var(--gutter-end) 1.5rem var(--gutter); }
 .library__save { display: flex; align-items: center; gap: .4rem; }
 .library__group { display: grid; gap: .5rem; }
 .library__heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }

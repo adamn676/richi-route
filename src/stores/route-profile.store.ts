@@ -14,12 +14,12 @@ export const useRouteProfileStore = defineStore('route-profile', () => {
     for (let i = 1; i < points.length; i++) {
       const leg = route.legs[legId(points[i - 1].id, points[i].id)];
       if (!leg || leg.status !== 'routed') return null;
-      segments.push({ name: '', coordinates: leg.coordinates, elevations: leg.elevations ?? leg.coordinates.map(() => null) });
+      segments.push({ name: '', coordinates: leg.coordinates, elevations: leg.elevations ?? leg.coordinates.map(() => null), distanceMeters: leg.distanceMeters });
     }
     return markRaw(buildGpxTrack('', '', segments, { connected: true }));
   });
   const gradients = computed(() => track.value ? gpxGradients(track.value) : []);
-  const colorRuns = computed(() => track.value ? gradientRuns(track.value, gradients.value) : []);
+  const colorRuns = computed(() => track.value ? gradientRuns(track.value) : []);
   // The stretch the profile zooms into, and its course for the map; a changed route shows whole again.
   const range = ref<{ from: number; to: number } | null>(null);
   watch(track, () => { range.value = null; });
