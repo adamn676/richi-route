@@ -3,6 +3,8 @@ import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/i
 import { openRoute } from './browser-ui.mjs';
 import { westernLoop } from './route-examples.ts';
 
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
+
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
@@ -24,7 +26,7 @@ async function shapeIds() {
   return page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').shapingPoints.map(point => point.id));
 }
 try {
-  await page.goto('http://127.0.0.1:5173/');
+  await page.goto(origin);
   await openRoute(page, westernLoop.coords, westernLoop.shapeIndices);
   await idle();
   assert.equal(routingRequests.length, 17, 'Nine snaps and eight legs, without repeated requests from action proxies');

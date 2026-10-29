@@ -316,7 +316,7 @@ The imagery service keeps its bounded worker and queue limits.
 Street names remain visible on Karte and Satellit with or without a route. They
 render above route lines and surface highlights, while route markers stay on top.
 
-**Geländerelief** (a switch in the map menu, on at first) adds soft shaded relief,
+**Geländerelief** (a checkbox in the map menu, on at first) adds soft shaded relief,
 softer still in town: beneath roads and labels on Karte, over OpenTopoMap. It stays off on Satellit,
 whose photos already show real shadows. Run
 `npm run terrain:setup` after `maps:setup`, then restart `maps:start`.
@@ -384,9 +384,8 @@ images, so they cannot move above route lines as vector labels can.
 long as its volunteer server is not overloaded, for example by bulk downloads;
 it asks for a clearly visible credit and gives no availability guarantee. Its
 [raster service is marked deprecated](https://github.com/der-stefan/OpenTopoMap)
-in favour of vector tiles, so it may change or disappear. While an online map
-or overlay shows, the source list at the bottom of the sidebar opens so their
-credits stay in view. Tiles are requested directly by the browser, without bulk
+in favour of vector tiles, so it may change or disappear. Its credit, like
+every map's, stays in view at the bottom of the sidebar. Tiles are requested directly by the browser, without bulk
 downloads, offline saving or prefetching. The imagery-saving command applies
 only to our registered aerial sources.
 
@@ -418,8 +417,8 @@ from farther away it jumps. In Street View mode a figure follows the pointer and
 snaps onto the route within 16 px, the route pauses its editing, and a click
 opens Street View at the nearest panorama; the figure turns grey where Google
 has none within 50 m. Escape or the button again cancels. The bottom of the
-sidebar credits OpenStreetMap; **Quellen** there lists all map and imagery
-sources. The sidebar, the elevation profile and the controls over the map keep
+sidebar lists the credits of the maps and imagery in view, OpenStreetMap once;
+like every link out of the planner, theirs open in a new tab. The sidebar, the elevation profile and the controls over the map keep
 one margin from every edge, 20 px (16 px on phones); icons without a background
 end there with their glyph. The sidebar is a navigation drawer 352–416 px wide,
 depending on the screen; the narrow tab on its edge folds it away for a
@@ -776,8 +775,9 @@ A second tab pauses draft saving when another tab changes it.
 **Meine Routen** stores named routes in IndexedDB. The list loads only route
 metadata; geometry is read when opening, duplicating or exporting a route.
 **Speichern** next to the name adds an entry. After opening it, the same button
-updates that entry, while the copy icon saves a separate one. Each entry's icons
-open, duplicate, rename or delete it. Reloading restores the draft; open
+updates that entry, while the copy icon saves a separate one. Each entry opens
+with its folder icon, which shows the route on the **Route** tab; its menu
+duplicates, renames or deletes it. Reloading restores the draft; open
 its saved entry again before updating that entry.
 
 Opening another route, starting **Neue Route**, or opening a GPX track as a route
@@ -1139,6 +1139,13 @@ a running routing engine. It covers large-route fidelity, backup round-trips,
 recovery on switching, conflicting tabs and transaction failures. Set
 `ROUTE_TEST_ORIGIN` to test a separate frontend port. Its screenshots and downloaded
 backup go to `.cache/saved-routes/`.
+
+Further browser checks, run the same way: `browser-initial-route.mjs` (a route
+appears at once, edits keep it visible, failures show dashed sections and one
+error), `browser-local-rules.mjs` (rule notices, refreshing stale routes, rule
+revisions), `browser-route-files.mjs` (reopening without routing, exact GPX
+export, drafts across tabs, full storage) and `browser-western-example.mjs`
+(the stored western loop with its shaping points, through reload and undo).
 
 To watch the editor check in a browser window and record a replay:
 

@@ -1,132 +1,114 @@
 # RichiRoute
 
-A road-cycling route planner for choosing the roads you want to ride.
+A route planner for road cyclists: it suggests round trips from your start, routes along roads that suit a road
+bike, and shows the climbs and the road surface before you ride.
 
-Place your stops, drag the route onto a preferred road, inspect the elevation and
-road surfaces, then export a GPX track. Editing one part of the route keeps the
-unaffected sections in place.
+![RichiRoute with a suggested 62 km loop from Graz: the route on the map, three loop suggestions and the elevation profile](docs/images/planner.jpg)
 
-RichiRoute is in active development, with routing tested around Graz and Styria,
-Austria. The planner currently has a German interface.
+RichiRoute runs on your own computer, with its own routing engine, maps and address search. Online services are
+contacted only for what you choose: OpenTopoMap, signed cycle routes, Street View, and aerial photos not saved
+locally. The interface is in German. The project is in
+active development and tested around Graz and Styria, Austria.
 
-## What it does
+## What you can do
 
-- Get three loop suggestions from your start for a distance and climbing target, inspect each with its profile and surfaces, and keep one as an editable route.
-- Plan routes with multiple stops and shaping points, including loops and return trips; stops set on the map show their street.
-- Drag points, route sections or intermediate stops in the list, with undo and redo.
-- Inspect distance, ascent, elevation and the surface along the route: paved, likely paved, cobblestones or wooden bridges, unpaved, or unknown.
-- Zoom the elevation profile into any stretch to see its length, climbing and gradients.
-- Highlight individual surface sections on the map, and report where the map data is wrong by tapping the stretch on the route; routing uses the correction from then on.
-- Choose the calm local map with shaded relief, or an aerial view with street names, or switch to OpenTopoMap online.
-- Switch on cycle paths, signed cycle routes, drinking-water sources, bicycle services, food stops and railway stations over any map.
-- Look at Google Street View from any point on the map or the elevation profile.
-- Save, reopen, rename and duplicate routes in a local route collection.
-- Back up editable routes as RichiRoute files and download calculated tracks as GPX.
-- Import GPX tracks to compare, with direction arrows, a linked elevation profile, and height or gradient colours, or open them as an editable route.
-- Estimate the surfaces of a GPX track on demand, with unknown sections kept separate.
+**Plan**
 
-Routing uses RichiRoute's own engine, a Rust port of BRouter, with a road-cycling
-profile. It prefers paved roads, but unpaved sections can still occur. Where
-OpenStreetMap records no surface, the road type often tells (residential streets
-are almost always paved, graded gravel tracks not); the rest is marked as unknown.
+- Get three round-trip suggestions from your start for a distance (10 to 1,000 km) and climbing target, each shown
+  with its shape, distance and climbing; pick one to see it as a route and keep it.
+- Plan a route through any number of stops; set them by address or on the map.
+- Drag the route onto the road you prefer and reorder stops in the list, with undo and redo.
 
-## Run locally
+**Check before you ride**
 
-The current planner uses Node.js 26.12.1, npm 12.2.1 and the routing engine in
-`engine/` (Rust) with shared routing rules. The native launcher supports Linux x64.
-Its verified routing data and profiles come from the separate
-`richiroute-ubuntu-benchmark/` bundle, placed next to this checkout. That bundle
-is required for routing and is not included in Git. The repository does not
-currently provide an automated download of that exact reviewed bundle.
+- See distance and climbing, and an elevation profile coloured by gradient; zoom it into any stretch for that
+  stretch's length, climbing and steepest gradient.
+- See the road surface along the route (paved, probably paved, cobblestones or wooden bridges, unpaved, unknown)
+  and highlight each section on the map.
+- Look at Google Street View from any point on the map or the profile.
+- Switch between a local map with shaded relief, an aerial view with street names, and OpenTopoMap online; show
+  cycle paths, signed cycle routes, drinking water, bike shops, food stops and railway stations.
 
-Follow the [native setup guide](docs/local-development.md#native-linux-setup)
-before starting the planner:
+**Keep and share**
+
+- Save routes in **Meine Routen**, reopen, rename and duplicate them.
+- Download a route as GPX for your bike computer, or as a RichiRoute file to keep it editable.
+- Open a GPX track to compare it with your route, or turn it into an editable route.
+
+Routing prefers paved roads, so unpaved sections are rare but possible. Where the map
+data records no surface, the road type usually tells; the rest is marked as unknown. When the map data has a surface
+wrong, you can correct it in the local planner, and routing uses the correction from then on.
+
+## Status and limits
+
+- **Platform:** the planner and its services run on Linux (x64). Open it in a browser on the same computer; desktop
+  and phone-sized windows are supported.
+- **Coverage:** routing covers 5–20° E and 45–50° N (Austria and the neighbouring regions). Maps, address search and
+  aerial overview cover Europe; detailed aerial photos cover Austria, Switzerland and France.
+- **Your data:** routes are stored in your browser. There are no accounts and no cloud sync; download RichiRoute
+  files to keep copies, because clearing the browser's data removes saved routes.
+- **Not yet:** using it offline on a phone, without the computer, is a goal but not available yet.
+
+## Getting started
+
+You need Linux on x64, about 100 GB of free disk space (the European map is about 25 GB, address search about 50 GB
+and more while it installs), and the verified routing bundle `richiroute-ubuntu-benchmark/` placed next to this
+checkout. The bundle is not part of this repository, and there is no download command for it yet.
 
 ```sh
-npm run dev:local
+node scripts/setup-native.mjs            # Node, GraalVM and Rust runtimes (any Node 22 or newer runs it)
+export PATH="$PWD/.cache/runtime/node/bin:$PATH"
+npm ci
+npm run search:setup                     # address search
+npm run maps:setup                       # European street map
+npm run terrain:setup                    # shaded relief
+npm run dev:local                        # starts everything
 ```
 
-Open **http://127.0.0.1:5173/**. Click the map to place a start and destination;
-further clicks extend the route. Drag the route to choose different roads (on a
-phone, hold it briefly first); the × in a stop's field empties it, and an
-intermediate stop's trash can removes it. Ctrl+C stops the planner,
-routing engine, search and map services. The launcher is included in `scripts/start-local.sh`.
+Then open **http://127.0.0.1:5173/**. The first downloads are large and take a while. Aerial photos
+(`npm run imagery:setup`) and the cycling overlays (`npm run cycling:setup`) are optional. Ctrl+C stops all
+services.
 
-Without the routing bundle, the frontend and unit tests can still be built
-from a clone with the required Node version:
+**First steps:** click the map to set a start, then a destination; further clicks add stops. Or set only a start and
+choose **Runden vorschlagen** for round trips. Drag the route to take another road (on a phone, hold it briefly
+first). **Neue Route** starts over; a changed route is kept in **Meine Routen** as a draft (Entwurf).
+
+The [local development guide](docs/local-development.md) covers every step in detail: data coverage and updates,
+offline aerial areas, online map choices, an optional Google Maps key for Street View inside the planner, and how
+each feature works.
+
+## Development
+
+Without the routing bundle you can still build the planner and run its tests (Node 26.12.1, see `.nvmrc`):
 
 ```sh
 npm ci
-npm test
-npm run bench:test
-npm run build
-npm run bench:build
+npm test               # unit tests
+npm run build          # planner
+npm run bench:test     # comparison app tests
+npm run bench:build    # comparison app
 ```
 
-`npm run dev` starts only the frontend. Live route calculation needs the prepared
-native service. The Docker configuration under `experiments/routing/` preserves
-an earlier comparison engine and does not serve the current planner's profile.
+`npm run dev` starts only the planner's frontend; route calculation needs `npm run dev:local`. Browser tests and
+the other checks are listed under [checks](docs/local-development.md#checks).
 
-Route calculation, European street maps and European address search run locally
-once their datasets are installed. Run `npm run search:setup` and
-`npm run maps:setup`, `npm run terrain:setup` and `npm run imagery:setup` before the first `npm run dev:local`; the initial downloads
-are large. See [local development](docs/local-development.md#european-map-data)
-for storage, coverage and update instructions. Search has no automatic public
-fallback. The aerial view combines a local European Sentinel overview with
-detailed photographs in Austria, Switzerland and France, with regional detail
-from Graz and Styria. Dense screens request finer imagery where available.
-New detail imagery needs internet; cached tiles and explicitly saved areas work offline. See
-[imagery and offline areas](docs/local-development.md#european-imagery).
-European map coverage does not extend the installed routing coverage.
-The map selector also offers **OpenTopoMap** (contour lines) online, local
-**Geländerelief** (shaded relief) as a layer, and signed cycle routes from
-Waymarked Trails under **Rad-Infos**. The online sources need no account or API
-key and are contacted only when selected; the local maps remain the default. See
-[map choices](docs/local-development.md#online-map-choices).
-Street View links open Google Maps in a new tab; with an optional Google Maps
-Embed API key in the git-ignored `.env.local`, Street View shows inside the
-planner. See [Street View setup](docs/local-development.md#inspect-the-route-elevation-profile).
-Water, bicycle-service and railway-station overlays use a separate local OSM extract. Their
-installed coverage and data date appear under **Rad-Infos**; the initial extract
-covers Austria. See [cycling overlays](docs/local-development.md#cycling-overlays)
-for setup and updates.
+| Folder | Contents |
+|---|---|
+| `src/` | The planner: Vue 3, Vuetify, TypeScript, Pinia, MapLibre GL JS |
+| `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)) |
+| `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
+| `scripts/` | Setup and the local launcher (`start-local.sh`) |
+| `tests/` | Unit and browser tests |
+| `experiments/routing/` | A comparison app for BRouter, GraphHopper and openrouteservice, and rider-reviewed routes kept as regression checks ([routing guide](experiments/routing/README.md)) |
+| `docs/` | The [local development guide](docs/local-development.md) |
 
-## Routing development
+Downloaded runtimes, map data, build output and local benchmark recordings stay outside version control.
 
-The engine in [`engine/`](engine/PORTING.md) answers every request exactly as
-BRouter 1.7.10 with the planner's rules does; its parity checks compare the two
-answer for answer.
+## Data and credits
 
-Local passage exceptions, bicycle turns and avoidance preferences live in
-[`config/routing-rules.json`](config/routing-rules.json). The engine and browser
-use this shared configuration. New locations of supported types need a data
-update and service restart. See the [rule workflow](docs/local-development.md#managing-local-routing-rules).
-
-A separate comparison app shows BRouter, GraphHopper and optional local
-openrouteservice routes, with elevation and surface details where available.
-With its separate engines and data prepared, start it with `npm run bench:dev`
-and open **http://127.0.0.1:5174/**.
-
-Rider-reviewed routes are kept as regression fixtures to check that profile
-changes preserve accepted routes.
-
-See the [routing guide](experiments/routing/README.md) for comparisons, review
-evidence and profile changes, or the [development checks](docs/local-development.md#checks)
-for test commands.
-
-The repository keeps source, routing configuration, tests, reviewed fixtures
-and dependency versions. Downloaded runtimes, map data, build output, browser
-drafts, logs and local benchmark recordings stay outside version control.
-
-## Project scope
-
-The current setup runs locally and uses regional map data. It does not provide
-accounts, cloud sync or a hosted service. Browser storage holds the current draft
-and a named route collection. Download RichiRoute backups to keep editable copies
-outside the browser; clearing browser data removes locally stored routes.
-
-Built with Vue 3, Vuetify (Material Design 3), TypeScript, Pinia and MapLibre GL JS; the routing engine is Rust. Routing data comes from
-OpenStreetMap. The planner serves its own [Protomaps](https://protomaps.com/)
-vector tiles, fonts and symbols. Photon supplies local address search. Imagery
-comes from Copernicus Sentinel, basemap.at, swisstopo and IGN, with attribution
-on the map. The historical comparison map still uses basemap.at.
+Map and routing data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Vector tiles by
+[Protomaps](https://protomaps.com/), address search by Photon, relief by Mapterhorn. Aerial imagery from Copernicus
+Sentinel, basemap.at, swisstopo and IGN; every source is credited in the planner. The routing engine is ported from
+[BRouter](https://github.com/abrensch/brouter) (MIT, see [`engine/LICENSE-BROUTER`](engine/LICENSE-BROUTER)). Icons
+from [Tabler Icons](https://tabler.io/icons) (MIT); checkboxes and radio buttons use the shapes of
+[Material Design Icons](https://pictogrammer.com/mdi/) (Apache 2.0).
