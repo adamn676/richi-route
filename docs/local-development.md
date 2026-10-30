@@ -876,8 +876,14 @@ share the colour of flat ground. Each part of the line shows the steepest climb
 held there over about its own width on the screen (100 to 500 m), so a long
 route keeps its passes visible instead of averaging them away with the flat
 ground and descents around them; the colour still ends at a summit and starts in
-a valley, so a descent is never coloured as a climb. The readout's dot shows the
-gradient at the cursor itself. Both axes use round steps on dotted grid lines,
+a valley, so a descent is never coloured as a climb. The line averages the heights
+over that same width, so it shows the road rather than the terrain data's errors of
+a few metres (common beside rivers, on embankments and bridges), and the line, its
+colours and the steepest climb tell the same story; the climbing figures use the
+heights as recorded. The height axis spans at least 1 % of the distance shown (50
+to 300 m), so a nearly flat stretch looks flat instead of its few metres filling the
+chart. The readout shows the line's height and the gradient at the cursor itself.
+Both axes use round steps on dotted grid lines,
 close to the plot, with more distance marks on wider screens; the distance axis
 ends at the route's exact length, the router's like the header's. A
 click (or Enter) pins the position; the tooltip then links to Google Street View

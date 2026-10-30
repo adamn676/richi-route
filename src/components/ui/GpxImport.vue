@@ -91,12 +91,12 @@ const colorModes = [
 const legend = computed(() => {
   if (reference.colorMode === 'surface') return surfaceLegend;
   if (reference.colorMode === 'gradient') return gradientBands;
-  const profile = track.value?.profile;
-  if (!profile) return [];
-  if (profile.minimum === profile.maximum) return [{ color: elevationColors[2], label: `${Math.round(profile.minimum)} m` }];
+  const heights = track.value?.heights;
+  if (!heights) return [];
+  if (heights.minimum === heights.maximum) return [{ color: elevationColors[2], label: `${Math.round(heights.minimum)} m` }];
   return elevationColors.map((color, i) => {
-    const from = profile.minimum + (profile.maximum - profile.minimum) * i / elevationColors.length;
-    const to = profile.minimum + (profile.maximum - profile.minimum) * (i + 1) / elevationColors.length;
+    const from = heights.minimum + (heights.maximum - heights.minimum) * i / elevationColors.length;
+    const to = heights.minimum + (heights.maximum - heights.minimum) * (i + 1) / elevationColors.length;
     return { color, label: `${Math.round(from)} bis ${Math.round(to)} m` };
   });
 });

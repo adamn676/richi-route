@@ -39,7 +39,7 @@
         <div v-if="shown && focus" class="elevation-chart__tooltip"
           :class="{ 'elevation-chart__tooltip--left': focusX > 150, 'elevation-chart__tooltip--pinned': pinned }"
           :style="{ left: focusLeft }" :aria-hidden="!pinned">
-          <strong>{{ focus.elevation === null ? 'Höhe unbekannt' : formatMeters(focus.elevation) }}</strong>
+          <strong>{{ focusHeight === null ? 'Höhe unbekannt' : formatMeters(focusHeight) }}</strong>
           <span>{{ formatKm(focus.distance) }} km</span>
           <span v-if="gradientText"><i class="elevation-chart__slope" :style="{ background: gradientColor(focus.gradient!) }" aria-hidden="true" />{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import { drawProfile, niceStep, type GpxTrack } from '../../domain/gpx-track';
+import { drawProfile, niceStep, profileWindow, smoothedHeight, type GpxTrack } from '../../domain/gpx-track';
 import { formatGradient, formatKm, formatMeters } from '@/utils/format';
 import SlopeScale from './SlopeScale.vue';
 import ElevationRange from './ElevationRange.vue';
@@ -123,9 +123,14 @@ const distanceTicks = computed(() => {
 });
 // Elevation axis that starts and ends on a round step: at most five steps, marks at least 11 px apart,
 // and of those the one wasting the least height.
+// A nearly flat stretch keeps some height on the axis, 1 % of its length (50 to 300 m) around its middle, so a few
+// metres up and down stay a gentle wave instead of filling the chart.
 const elevationAxis = computed(() => {
   if (!profile.value) return null;
-  const { minimum, maximum } = profile.value, plotHeight = (chartSize.value.height || 136) * 68 / height;
+  const least = Math.min(300, Math.max(50, (view.value.to - view.value.from) / 100));
+  const middle = (profile.value.minimum + profile.value.maximum) / 2;
+  const half = Math.max(profile.value.maximum - profile.value.minimum, least) / 2;
+  const [minimum, maximum] = [middle - half, middle + half], plotHeight = (chartSize.value.height || 136) * 68 / height;
   let best: { from: number; to: number; step: number } | undefined;
   for (let i = 0, step = niceStep(Math.max(5, (maximum - minimum) / 8)); i < 6 || !best; i++, step = niceStep(step * 1.01)) {
     const from = Math.floor(minimum / step) * step, to = Math.max(Math.ceil(maximum / step) * step, from + step);
@@ -153,13 +158,16 @@ const gridPath = computed(() => (altitudeTicks.value.length ? altitudeTicks.valu
 const shown = computed(() => focus.value !== null && focus.value.distance >= view.value.from && focus.value.distance <= view.value.to);
 const focusX = computed(() => xAt(focus.value?.distance ?? 0));
 const focusLeft = computed(() => `${focusX.value / 3}%`);
-const focusY = computed(() => focus.value?.elevation == null || !profile.value ? null : yAt(focus.value.elevation));
+// The height at the position as the line shows it, averaged like the line, so the dot sits on it.
+const focusHeight = computed(() => focus.value?.elevation == null ? null
+  : smoothedHeight(props.track.samples, focus.value.distance, profileWindow(view.value.to - view.value.from)));
+const focusY = computed(() => focusHeight.value === null || !profile.value ? null : yAt(focusHeight.value));
 const gradientText = computed(() => focus.value?.gradient == null ? undefined : formatGradient(focus.value.gradient));
 const gradientLabel = computed(() => gradientText.value ? `${gradientText.value} % Steigung` : 'Steigung unbekannt');
 const readout = computed(() => {
   if (!focus.value) return 'Noch keine Position gewählt';
   const f = focus.value;
-  const height = f.elevation === null ? 'Höhe unbekannt' : `${formatMeters(f.elevation)} Höhe`;
+  const height = focusHeight.value === null ? 'Höhe unbekannt' : `${formatMeters(focusHeight.value)} Höhe`;
   return `${formatKm(f.distance)} km, ${height}, ${gradientLabel.value}, Abschnitt ${f.segmentIndex + 1}`;
 });
 // A click or Enter pins the position, so the tooltip stays and links to Street View. Hovering no longer moves it;

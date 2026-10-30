@@ -96,8 +96,9 @@ test('missing elevations break the profile and prevent a misleading complete asc
   assert.equal(track.elevationCount, 3);
   assert.equal(track.ascentMeters, null);
   assert.equal(track.profile.path.match(/M/g).length, 2);
+  // the line averages heights along each run (a lone point stays as it is)
   assert.equal(track.profile.minimum, 100);
-  assert.equal(track.profile.maximum, 310);
+  assert.ok(Math.abs(track.profile.maximum - 310) < 1);
 });
 
 test('a single point remains visible and missing elevation stays unknown', () => {
@@ -121,12 +122,13 @@ test('date-line crossings use adjacent worlds for display while retaining origin
 test('long tracks retain all data and keep the elevation SVG bounded with extrema', () => {
   const length = 100000;
   const coordinates = Array.from({ length }, (_, i) => [15 + i / 100000, 47]);
-  const elevations = Array.from({ length }, (_, i) => i === 50001 ? 9999 : 300 + i % 20);
+  // a plateau 760 m long, wider than the line averages over, and a lone height error the line leaves out
+  const elevations = Array.from({ length }, (_, i) => i >= 50000 && i < 51000 ? 9999 : i === 20000 ? 5000 : 300 + i % 20);
   const track = buildGpxTrack('Long', 'long.gpx', [segment(coordinates, elevations)]);
   assert.equal(track.pointCount, length);
   assert.equal(track.geojson.features[0].geometry.coordinates.length, length);
   assert.equal(track.segments[0].elevations.length, length);
-  assert.equal(track.profile.maximum, 9999);
+  assert.ok(Math.abs(track.profile.maximum - 9999) < 1);
   assert.ok(track.profile.path.length < 25000);
   assert.ok(track.profile.areaPath.length < 26000, 'Area fill stays bounded for long tracks');
   assert.match(track.profile.path, /,10\.0/);
