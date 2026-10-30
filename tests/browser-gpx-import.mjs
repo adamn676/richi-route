@@ -22,6 +22,8 @@ const gpx = body => `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1
 const point = (lon, lat, ele = '') => `<trkpt lon="${lon}" lat="${lat}">${ele === '' ? '' : `<ele>${ele}</ele>`}</trkpt>`;
 const upload = (name, contents) => page.getByLabel('GPX-Datei auswählen', { exact: true })
   .setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
+// The sidebar's messages; the map reports its own, such as missing terrain data in CI.
+const alerts = () => page.locator('.sidebar__messages').getByRole('alert');
 const reading = () => page.waitForFunction(() => !document.querySelector('.sidebar__reading'));
 const state = () => page.evaluate(() => {
   const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
@@ -60,13 +62,13 @@ try {
 
   // A failed file changes nothing.
   await upload('invalid.gpx', gpx(`<trk><trkseg>${point(181, 47)}</trkseg></trk>`));
-  await page.getByRole('alert').waitFor();
+  await alerts().waitFor();
   await reading();
   same(await state(), original);
   await upload('oversized.gpx', Buffer.alloc(32 * 1024 * 1024 + 1));
-  await page.getByRole('alert').filter({ hasText: '32 MB' }).waitFor();
+  await alerts().filter({ hasText: '32 MB' }).waitFor();
   await upload('many.gpx', gpx(`<trk><trkseg>${'<trkpt lon="15" lat="47"/>'.repeat(250001)}</trkseg></trk>`));
-  await page.getByRole('alert').filter({ hasText: '250.000' }).waitFor();
+  await alerts().filter({ hasText: '250.000' }).waitFor();
   same(await state(), original);
 
   // Cancelling stops reading the file and its worker, and leaves no message.
@@ -80,7 +82,7 @@ try {
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await reading();
   assert.equal(await page.evaluate(() => window.workersStopped), 1);
-  assert.deepEqual(await page.getByRole('alert').allInnerTexts(), []);
+  assert.deepEqual(await alerts().allInnerTexts(), []);
   same(await state(), original);
 
   // A long track replaces the route with its exact path and heights, in sections of about 5 km; the route before goes
