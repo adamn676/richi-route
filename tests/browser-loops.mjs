@@ -55,7 +55,7 @@ context.on('page', page => page.on('pageerror', error => errors.push(error.messa
 const page = await context.newPage();
 const store = name => `document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('${name}')`;
 const mapState = () => page.evaluate(() => {
-  const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
   return { loops: map.getSource('loop-suggestions-source')?._data?.features?.length ?? map.getSource('loop-suggestions-source')?.serialize().data.features.length,
     highlight: map.getGlobalState().loopHighlight, selected: map.getGlobalState().loopSelected };
 });
@@ -65,7 +65,7 @@ const routeState = () => page.evaluate(`(() => { const s = ${store('route')}, l 
   loops: l.suggestions?.map(loop => loop.leg.distanceMeters) ?? null }; })()`);
 // The map's zoom once it has stopped moving.
 const zoom = () => page.evaluate(() => new Promise(resolve => {
-  const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
   const settle = () => setTimeout(() => map.isMoving() ? settle() : resolve(map.getZoom()), 400);
   settle();
 }));
@@ -97,7 +97,7 @@ try {
   assert.equal(shown.selected, null);
   assert.equal(shown.end, null);
   assert.ok((await cards.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-pressed')))).every(pressed => pressed === 'false'));
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayer('loop-suggestions-line'));
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getLayer('loop-suggestions-line'));
   const overview = await zoom();
 
   // Selecting a loop shows it as the route, with numbers, surfaces and profile, and zooms to it.

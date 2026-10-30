@@ -2,12 +2,12 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, watch } from 'vue';
-import { LngLatBounds, type ExpressionSpecification, type Map, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl';
+import { type ExpressionSpecification, type Map, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl';
 import type { FeatureCollection, LineString } from 'geojson';
 import type { LoopSuggestion } from '@/services/loop-suggestions.service';
 import { LOOP_OUTLINE_LAYER, MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '@/config/map.config';
 import { loopColors } from '@/config/mapStyle';
-import { fitAndSettle } from '@/utils/map-fit';
+import { showOnMap } from '@/utils/map-fit';
 
 // The suggested loops in their card colours, beneath the route. The selected one is the route itself; the others stay
 // faint for comparison, and the one pointed at in the list stands out.
@@ -54,23 +54,20 @@ function leave() {
   if (canvas.style.cursor === 'pointer') canvas.style.cursor = '';
   emit('highlight', null);
 }
-// The selected loop in view, otherwise all of them. The profile comes and goes with a selection, so the fit holds once
-// the map has changed size.
+// The selected loop in view, otherwise all of them.
 function fit() {
-  const bounds = new LngLatBounds();
   const shown = props.selected === null ? props.loops ?? [] : [props.loops![props.selected]];
-  for (const loop of shown) for (const coord of loop.leg.coordinates) bounds.extend(coord);
-  if (!bounds.isEmpty()) props.map.fitBounds(bounds, { padding: 50, maxZoom: 15, maxDuration: 1500 });
+  showOnMap(props.map, ...shown.map(loop => loop.leg.coordinates));
 }
 watch(() => props.loops, loops => {
   draw();
-  if (loops?.length) fitAndSettle(props.map, fit);
+  if (loops?.length) fit();
   else leave();
 });
 watch(() => props.highlighted, mark);
 watch(() => props.selected, () => {
   mark();
-  if (props.loops?.length) fitAndSettle(props.map, fit);
+  if (props.loops?.length) fit();
 });
 onMounted(() => {
   props.map.on('style.load', styleLoaded);

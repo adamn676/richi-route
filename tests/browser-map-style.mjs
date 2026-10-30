@@ -22,7 +22,7 @@ page.on('response', response => {
   if (response.url().includes('/maps/terrain/') && response.status() === 200) terrainTiles.push(response.url());
 });
 const mapState = () => page.evaluate(() => {
-  const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
   const layers = map.getStyle().layers.filter(l => l.id.startsWith('basemap-vector-'));
   const lineIds = layers.filter(l => l.type === 'line' && l['source-layer'] === 'roads').map(l => l.id);
   return { layers: layers.length, canvasWidth: map.getCanvas().width, cssWidth: map.getCanvas().clientWidth,
@@ -30,19 +30,19 @@ const mapState = () => page.evaluate(() => {
     visible: layers.some(l => l.type === 'line' && l['source-layer'] === 'roads' && l.layout.visibility !== 'none') };
 });
 const waitMap = () => page.waitForFunction(() => {
-  const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
   const ids = map?.getStyle().layers.filter(l => l.id.startsWith('basemap-vector-') && l.type === 'line').map(l => l.id);
   return ids?.length && map.areTilesLoaded() && map.queryRenderedFeatures({ layers: ids }).length > 30;
 }, {}, { timeout: 60000 });
 const waitAerial = target => target.waitForFunction(() => {
-  const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
   const ids = map?.getStyle().layers.filter(layer => layer.id.startsWith('basemap-hybrid-') && layer.type === 'symbol').map(layer => layer.id);
   return ids?.length && map.areTilesLoaded()
     && map.queryRenderedFeatures({ layers: ids }).length > 0
     && map.queryRenderedFeatures({ layers: ['basemap-hybrid-road'] }).length > 0;
 }, {}, { timeout: 60000 });
 const waitStreetNames = target => target.waitForFunction(() => {
-  const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
   const layers = map.getStyle().layers;
   const labels = layers.filter(layer => layer.id.includes('roads_labels_') && layer.layout.visibility !== 'none');
   const routeTop = Math.max(...layers.map((layer, index) => layer.id.startsWith('segments-') ? index : -1));
@@ -55,10 +55,10 @@ try {
   await waitStreetNames(page);
   for (const zoom of [5, 8, 11, 14, 18, 13]) {
     await page.evaluate(zoom => new Promise(resolve => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       map.once('idle', resolve); map.jumpTo({ zoom });
     }), zoom);
-    assert.ok(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    assert.ok(await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map
       .queryRenderedFeatures().some(feature => feature.layer['source-layer'] === 'roads')), `Roads remain visible at zoom ${zoom}`);
     await page.screenshot({ path: `${output}/street-zoom-${zoom}.png` });
   }
@@ -69,17 +69,17 @@ try {
   await waitAerial(page);
   await waitStreetNames(page);
   assert.equal((await mapState()).visible, false);
-  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+  assert.equal(await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map
     .getLayoutProperty('aerial', 'visibility')), 'visible');
   await chooseBasemap(page, 'street');
   await waitStreetNames(page);
   assert.equal((await mapState()).visible, true);
   assert.deepEqual(await page.evaluate(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return ['aerial', 'basemap-hybrid-road'].map(id => map.getLayoutProperty(id, 'visibility'));
   }), ['none', 'none']);
   // Karte uses the calm cycling colours of the map service's style.
-  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+  assert.equal(await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map
     .getPaintProperty('basemap-vector-roads_minor_casing', 'line-color')), '#c3c8c1');
   await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .resetRoute([[15.438, 47.068], [15.444, 47.074]]));
@@ -87,12 +87,12 @@ try {
     const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     return !route.pendingSnapCount && !route.pendingLegCount && route.distanceMeters > 0 && !route.hasAirLines;
   }, {}, { timeout: 60000 });
-  await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+  await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map
     .jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
   for (const mode of ['street', 'aerial']) {
     await chooseBasemap(page, mode);
     await waitStreetNames(page);
-    await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map
       .queryRenderedFeatures({ layers: ['segments-routed'] }).length > 0);
     await page.screenshot({ path: `${output}/street-names-route-${mode}.png` });
   }
@@ -111,10 +111,10 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem('richiroute.hillshade')), '0');
   await page.getByText('Geländerelief', { exact: true }).click();
   await closeMenus(page);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map
     .getLayoutProperty('basemap-hillshade', 'visibility') === 'visible');
   await page.evaluate(() => new Promise(resolve => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     map.once('idle', resolve); map.jumpTo({ center: [12.458, 47.001], zoom: 11 });
   }));
   await page.screenshot({ path: output + '/terrain-virgen.png' });
@@ -127,8 +127,8 @@ try {
   assert.equal(await page.locator('input[name=basemap]:checked').inputValue(), 'street');
   await closeMenus(page);
   assert.equal(await page.evaluate(() => localStorage.getItem('richiroute.hillshade')), '1');
-  await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707] }));
-  await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 13 }));
+  await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707] }));
+  await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ zoom: 13 }));
   await chooseBasemap(page, 'street');
   await waitMap();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -147,27 +147,27 @@ try {
   await aerial.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'aerial'));
   await aerial.goto(origin);
   await waitAerial(aerial);
-  await aerial.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
+  await aerial.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ center: [15.4395, 47.0707], zoom: 16 }));
   await waitAerial(aerial);
   await aerial.screenshot({ path: output + '/aerial-desktop.png' });
   const detailedResponse = aerial.waitForResponse(response => response.status() === 200
     && response.url().includes('/maps/imagery/20/'));
-  await aerial.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 20 }));
+  await aerial.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ zoom: 20 }));
   await detailedResponse.catch(async error => {
     console.log('High-zoom map state', await aerial.evaluate(() => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       return { zoom: map.getZoom(), center: map.getCenter(), loaded: map.areTilesLoaded(), error: document.querySelector('.map-view__error')?.textContent };
     }));
     throw error;
   });
   await aerial.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.areTilesLoaded() && map.isSourceLoaded('basemap-aerial');
   }, {}, { timeout: 60000 });
   assert.ok(detailedImagery > 0, 'The provider supplies actual level-20 imagery tiles');
   assert.equal(legacyLabels, 0, 'The aerial map uses crisp vector labels without the legacy raster overlay');
   await aerial.setViewportSize({ width: 390, height: 844 });
-  await aerial.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ zoom: 16 }));
+  await aerial.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ zoom: 16 }));
   await waitAerial(aerial);
   await aerial.screenshot({ path: output + '/aerial-mobile.png' });
   assert.ok(await aerial.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -187,7 +187,7 @@ try {
   unavailable = false;
   await fallback.getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await fallback.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.getSource('basemap-vector-europe') && map.areTilesLoaded() && map.queryRenderedFeatures().length > 30;
   });
   assert.equal(await fallback.getByRole('alert').count(), 0);
@@ -214,7 +214,7 @@ try {
   terrainUnavailable = false;
   await terrainFailure.getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await terrainFailure.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.isSourceLoaded('basemap-terrain') && map.areTilesLoaded();
   });
   assert.equal(await terrainFailure.getByRole('alert').count(), 0);

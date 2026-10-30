@@ -15,7 +15,7 @@ try {
  });
  await page.addInitScript(() => {localStorage.setItem('richiroute.review-basemap','street');localStorage.setItem('richiroute.cycling-overlays','[]');});
  await page.goto(origin);
- await page.waitForFunction(()=>document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
+ await page.waitForFunction(()=>document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
  const results=[];
  let responses=[];
  page.on('response',r=>{if(/\/maps\/imagery(?:-fast)?\//.test(r.url()) && r.status()===200)responses.push({url:r.url(),...r.headers()});});
@@ -30,9 +30,9 @@ try {
   responses=[];
   const start=performance.now();
   await chooseBasemap(page, mode);
-  await page.evaluate(({center,zoom})=>{window.tileIdle=false;const map=document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  await page.evaluate(({center,zoom})=>{window.tileIdle=false;const map=document.querySelector('.route-layer').__vueParentComponent.props.map;
    map.once('idle',()=>window.tileIdle=true);map.jumpTo({center,zoom});},{center,zoom});
-  await page.waitForFunction(()=>window.tileIdle && document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.areTilesLoaded(),{},{timeout:120000});
+  await page.waitForFunction(()=>window.tileIdle && document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded(),{},{timeout:120000});
   const result={name,ms:Math.round(performance.now()-start),tiles:responses.length,misses:responses.filter(r=>r['x-imagery-cache']==='miss').length,degraded:responses.filter(r=>r['x-imagery-degraded']==='1').length};
   results.push(result);console.log(result);
  }

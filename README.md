@@ -33,7 +33,7 @@ active development and tested around Graz and Styria, Austria.
 
 - Save routes in **Meine Routen**, reopen, rename and duplicate them.
 - Download a route as GPX for your bike computer, or as a RichiRoute file to keep it editable.
-- Open a GPX track to compare it with your route, or turn it into an editable route.
+- Open a GPX track as an editable route, with its exact path and heights.
 
 Routing prefers paved roads, so unpaved sections are rare but possible. Where the map
 data records no surface, the road type usually tells; the rest is marked as unknown. When the map data has a surface
@@ -71,7 +71,7 @@ services.
 
 **First steps:** click the map to set a start, then a destination; further clicks add stops. Or set only a start and
 choose **Runden vorschlagen** for round trips. Drag the route to take another road (on a phone, hold it briefly
-first). **Neue Route** starts over; a changed route is kept in **Meine Routen** as a draft (Entwurf).
+first). **Neue Route** starts over; an unsaved route stays under **Zuletzt bearbeitet** for a week.
 
 The [local development guide](docs/local-development.md) covers every step in detail: data coverage and updates,
 offline aerial areas, online map choices, an optional Google Maps key for Street View inside the planner, and how

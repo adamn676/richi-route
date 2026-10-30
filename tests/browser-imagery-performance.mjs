@@ -17,7 +17,7 @@ async function measure(name, positions) {
   requests = []; start = performance.now();
   for (const position of positions) {
     await page.evaluate(position => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       window.imageryViewIdle = false; map.once('idle', () => { window.imageryViewIdle = true; });
       map.jumpTo(position);
     }, position);
@@ -25,7 +25,7 @@ async function measure(name, positions) {
   }
   const finalView = performance.now();
   await page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return window.imageryViewIdle && map.areTilesLoaded() && map.isSourceLoaded('basemap-aerial');
   }, {}, { timeout: 90000 });
   const result = { name, completeMs: Math.round(performance.now() - finalView), requests: [...requests] };
@@ -37,7 +37,7 @@ async function measure(name, positions) {
 try {
   await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'aerial'));
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'), {}, { timeout: 90000 });
+  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'), {}, { timeout: 90000 });
   await measure('graz-detail', [{ center: [15.47, 47.08], zoom: 17 }]);
   await measure('graz-pan', [{ center: [15.48, 47.08], zoom: 17 }]);
   await measure('graz-zoom-and-pan', [

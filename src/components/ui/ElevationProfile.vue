@@ -20,9 +20,8 @@
       </v-icon-button>
     </div>
     <template v-if="!collapsed">
-      <ElevationChart v-if="inspection.track" v-model:range="inspection.range" :heading="false" :track="inspection.track" :color-runs="inspection.colorRuns"
-        :gradients="inspection.gradients" :focus="inspection.focus" on-route label="Position in der Route" chart-label="Höhenprofil der Route"
-        @inspect="inspection.focusAt" />
+      <ElevationChart v-if="inspection.track" v-model:range="inspection.range" :track="inspection.track" :color-runs="inspection.colorRuns"
+        :focus="inspection.focus" @inspect="inspection.focusAt" />
       <div v-else-if="routeStore.route && routeStore.routingPending" class="profile__skeleton" role="status">
         <span class="skeleton" aria-hidden="true" /><span class="sr-only">{{ message }}</span>
       </div>

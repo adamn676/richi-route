@@ -10,12 +10,9 @@ function requireRevision(actual: SavedRouteSummary | undefined, expected: SavedR
 }
 
 async function changeRoute<T>(expected: SavedRouteSummary, change: (tx: IDBTransaction, current: SavedRouteSummary) => T): Promise<T> {
-  return transaction('readwrite', ['summaries', 'payloads'], (tx, result, fail) => {
+  return transaction('readwrite', ['summaries', 'payloads'], (tx, result, _fail, guard) => {
     const request = tx.objectStore('summaries').get(expected.id);
-    request.onsuccess = () => {
-      try { result(change(tx, requireRevision(request.result, expected))); }
-      catch (cause) { fail(cause instanceof Error ? cause : new Error(conflictMessage)); }
-    };
+    request.onsuccess = guard(() => result(change(tx, requireRevision(request.result, expected))));
   });
 }
 

@@ -4,7 +4,7 @@ let connection: Promise<IDBDatabase> | undefined;
 
 function openDatabase(): Promise<IDBDatabase> {
   connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 2);
+    const request = indexedDB.open(databaseName, 4);
     let blocked = false;
     request.onupgradeneeded = event => {
       const db = request.result;
@@ -13,6 +13,12 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore('payloads');
       }
       if (event.oldVersion < 2) db.createObjectStore('draft');
+      // Version 3, never released, kept the recently edited routes whole in one store; listing them read every route.
+      if (event.oldVersion < 4) {
+        if (db.objectStoreNames.contains('recent')) db.deleteObjectStore('recent');
+        db.createObjectStore('recentSummaries', { keyPath: 'id' });
+        db.createObjectStore('recentPayloads');
+      }
     };
     request.onerror = () => reject(request.error);
     request.onblocked = () => {
@@ -29,8 +35,9 @@ function openDatabase(): Promise<IDBDatabase> {
   return connection;
 }
 
+// What a request callback throws would abort the transaction without its cause, so callbacks go through guard.
 export async function transaction<T>(mode: IDBTransactionMode, stores: string[], run: (
-  tx: IDBTransaction, result: (value: T) => void, fail: (error: Error) => void,
+  tx: IDBTransaction, result: (value: T) => void, fail: (error: Error) => void, guard: (callback: () => void) => () => void,
 ) => void): Promise<T> {
   const db = await openDatabase();
   return new Promise<T>((resolve, reject) => {
@@ -40,7 +47,10 @@ export async function transaction<T>(mode: IDBTransactionMode, stores: string[],
     tx.oncomplete = () => resolve(value);
     tx.onabort = () => reject(error ?? tx.error ?? new Error('Speichern wurde abgebrochen.'));
     const fail = (cause: Error) => { error = cause; tx.abort(); };
-    try { run(tx, result => { value = result; }, fail); }
-    catch (cause) { fail(cause instanceof Error ? cause : new Error('Routenspeicher nicht verfügbar.')); }
+    const guard = (callback: () => void) => () => {
+      try { callback(); }
+      catch (cause) { fail(cause instanceof Error ? cause : new Error('Routenspeicher nicht verfügbar.')); }
+    };
+    guard(() => run(tx, result => { value = result; }, fail, guard))();
   });
 }

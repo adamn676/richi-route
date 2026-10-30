@@ -33,7 +33,7 @@ try {
   });
   await page.goto(origin);
   await page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
     return map?.getSource('basemap-vector-europe') && map.loaded();
   });
   assert.deepEqual(external, [], 'Local maps do not contact online providers');
@@ -51,13 +51,13 @@ try {
     } } });
   });
   await page.waitForFunction(async () => {
-    const source = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('segments-source');
+    const source = document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('segments-source');
     return source?.loaded() && (await source.getData()).features.length > 0;
   });
-  const geometry = await page.evaluate(async () => JSON.stringify(await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('segments-source').getData()));
+  const geometry = await page.evaluate(async () => JSON.stringify(await document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('segments-source').getData()));
   await page.evaluate(() => {
     window.onlineMapErrors = [];
-    document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map
+    document.querySelector('.route-layer').__vueParentComponent.props.map
       .on('error', event => window.onlineMapErrors.push(event.error?.message));
   });
   const states = [];
@@ -65,23 +65,23 @@ try {
   for (const mode of ['opentopomap', 'street']) {
     await chooseBasemap(page, mode);
     await mapIs(page, mode => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       const online = map.getStyle().layers.filter(layer => layer.id.startsWith('online-') && layer.layout?.visibility === 'visible');
       return map.loaded() && map.areTilesLoaded() && (mode === 'street' ? !online.length : online.length === 1 && online[0].id === `online-${mode}`);
     }, mode);
     assert.equal(await page.getByRole('alert').count(), 0, `${mode}: ${JSON.stringify(await page.evaluate(() => window.onlineMapErrors))}`);
     if (mode !== 'street') assert.ok(tiles[mode] > 0, `${mode} loads its tiles`);
     const state = await page.evaluate(mode => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       return { mode, cyclewaysVisible: map.getLayoutProperty('cycling-cycleways', 'visibility'), localGlyphs: map.getGlyphs()?.includes('/maps/fonts/'),
         vectorVisible: map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-') && layer.layout?.visibility !== 'none') };
     }, mode);
     assert.equal(state.cyclewaysVisible, 'visible', 'Overlays stay on every map');
     assert.equal(state.vectorVisible, mode === 'street', `${mode}: the local map shows only on Karte`);
     assert.equal(state.localGlyphs, true, 'Overlay labels keep the local fonts');
-    assert.equal(await page.evaluate(async () => JSON.stringify(await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('segments-source').getData())), geometry);
+    assert.equal(await page.evaluate(async () => JSON.stringify(await document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('segments-source').getData())), geometry);
     assert.ok(await page.evaluate(() => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       const layers = map.getStyle().layers.filter(layer => 'source' in layer && layer.source === 'segments-source' && layer.type === 'line');
       return map.queryRenderedFeatures({ layers: layers.map(layer => layer.id) }).length;
     }), `${mode}: route remains visible`);
@@ -100,7 +100,7 @@ try {
   failing.delete('opentopomap');
   await page.getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await mapIs(page, () => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.loaded() && map.isSourceLoaded('online-opentopomap') && map.areTilesLoaded();
   });
   await chooseBasemap(page, 'street');
@@ -115,7 +115,7 @@ try {
   failing.delete('waymarkedtrails');
   await page.locator('.cycling-controls').getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await mapIs(page, () => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.getLayoutProperty('cycling-routes', 'visibility') === 'visible' && map.isSourceLoaded('cycling-routes') && map.areTilesLoaded();
   });
   assert.equal(await page.getByText('Radrouten konnten nicht geladen werden.').count(), 0);
@@ -131,7 +131,7 @@ try {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await chooseBasemap(page, 'opentopomap');
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded());
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.loaded());
   await page.locator('.maplibregl-ctrl-attrib a[href="https://opentopomap.org"]').first().waitFor({ state: 'visible' });
   await page.locator('.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"]').first().waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -142,13 +142,13 @@ try {
   await page.reload();
   await page.getByRole('alert').filter({ hasText: 'Lokale Straßenkarte' }).waitFor();
   await mapIs(page, () => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.loaded() && map.getLayoutProperty('online-opentopomap', 'visibility') === 'visible' && map.areTilesLoaded();
   });
   await page.unroute('**/maps/style.json');
   await page.getByRole('button', { name: 'Erneut laden', exact: true }).click();
   await mapIs(page, () => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.loaded() && map.getSource('basemap-vector-europe') && map.getGlyphs()?.includes('/maps/fonts/');
   });
   assert.equal(await page.getByRole('alert').count(), 0);

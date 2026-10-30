@@ -30,10 +30,10 @@ try {
     if (!localStorage.getItem('richiroute.cycling-overlays')) localStorage.setItem('richiroute.cycling-overlays', '[]');
   });
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('cycling-water'));
+  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getLayer('cycling-water'));
   assert.equal(pointRequests, 0, 'Disabled overlays do not fetch POIs');
   const jump = (center, zoom) => page.evaluate(({center,zoom}) => new Promise(resolve => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     map.once('idle', resolve); map.jumpTo({center,zoom});
   }), {center,zoom});
   await jump([15.4395,47.0707], 15);
@@ -42,7 +42,7 @@ try {
     await page.getByRole('checkbox', { name: label, exact: false }).check();
   }
   const waitWater = () => page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     return map.queryRenderedFeatures({ layers: ['cycling-water'] }).length > 0;
   });
   await waitWater();
@@ -50,7 +50,7 @@ try {
   await page.screenshot({path:`${output}/desktop.png`});
   await page.locator('.cycling-controls .map-menu__trigger').click();
   const target = await page.evaluate(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     const bounds = map.getCanvas().getBoundingClientRect();
     for (const feature of map.queryRenderedFeatures({layers:['cycling-water']})) {
       const point = map.project(feature.geometry.coordinates);
@@ -69,13 +69,13 @@ try {
   for (const mode of ['aerial','street']) {
     await chooseBasemap(page, mode);
     await waitWater();
-    assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('cycling-cycleways','visibility')), 'visible');
+    assert.equal(await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getLayoutProperty('cycling-cycleways','visibility')), 'visible');
   }
   assert.deepEqual(JSON.parse(await page.evaluate(()=>localStorage.getItem('richiroute.cycling-overlays'))).sort(), ['cycleways','food','repair','stations','water']);
   await page.reload();
   await waitWater();
   await page.evaluate(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     window.cyclingMapErrors = [];
     map.on('error', event => window.cyclingMapErrors.push(event.error?.message));
   });

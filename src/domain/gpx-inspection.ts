@@ -1,10 +1,7 @@
-import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { cumulativeAscent, type Coord } from './route-model.ts';
 import { profileColumn, profileColumns, profileWindow, type GpxTrack } from './gpx-track.ts';
 
-export type GpxColorMode = 'plain' | 'elevation' | 'gradient' | 'surface';
 export const unknownGpxColor = '#87939a';
-export const elevationColors = ['#3563b5', '#199b9b', '#74a840', '#db9d29', '#bd3c46'];
 // Only climbs are told apart; descents share the colour of flat ground.
 export const gradientBands = [
   { max: 3, color: '#359a78', label: '< 3 %' },
@@ -75,14 +72,6 @@ export function inspectGpxDistance(track: GpxTrack, gradients: (number | null)[]
 }
 export type GpxFocus = ReturnType<typeof inspectGpxDistance>;
 
-function colorFor(track: GpxTrack, mode: GpxColorMode, value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return unknownGpxColor;
-  if (mode === 'gradient') return gradientColor(value);
-  const range = track.heights ? track.heights.maximum - track.heights.minimum : 0;
-  const bin = range > 0 ? Math.floor((value - track.heights!.minimum) / range * elevationColors.length) : 2;
-  return elevationColors[Math.max(0, Math.min(elevationColors.length - 1, bin))];
-}
-
 // Profile colour runs, each from an offset (0–1) along the distance shown. A column takes the steepest climb in it held
 // over about its own width (100 to 500 m): a climb shows even where a long column also holds flat ground or a descent,
 // which an average would let cancel it, and the stretch's length keeps single height errors out. Its colour fills the
@@ -143,53 +132,6 @@ export function trackCoordinates(track: GpxTrack, gradients: (number | null)[][]
     return track.distances[s].flatMap((distance, i) => distance > from && distance < to ? [coords[i] as Coord] : []);
   });
   return [inspectGpxDistance(track, gradients, from).coordinate, ...inside, inspectGpxDistance(track, gradients, to).coordinate];
-}
-
-export function colorGpxTrack(track: GpxTrack, mode: Exclude<GpxColorMode, 'surface'>, gradients: (number | null)[][]): FeatureCollection<LineString | Point> {
-  if (mode === 'plain') return track.geojson;
-  const features: Feature<LineString | Point>[] = [];
-  const blockMeters = Math.max(50, track.distanceMeters / 5000);
-  track.segments.forEach((segment, s) => {
-    const original = track.geojson.features[s].geometry;
-    const coordinates = original.type === 'Point' ? [original.coordinates] : original.coordinates;
-    const values = mode === 'gradient' ? gradients[s] : segment.elevations;
-    if (coordinates.length === 1) {
-      features.push({ type: 'Feature', properties: { color: colorFor(track, mode, values[0]), segment: s }, geometry: original });
-      return;
-    }
-    let start = 0;
-    let current: Feature<LineString> | undefined;
-    while (start < coordinates.length - 1) {
-      let end = start + 1;
-      let known = values[start] !== null;
-      while (end < coordinates.length - 1 && track.distances[s][end] - track.distances[s][start] < blockMeters) {
-        known &&= values[end] !== null;
-        end++;
-      }
-      known &&= values[end] !== null;
-      const value = known ? (values[start]! / 2 + values[end]! / 2) : null;
-      const color = colorFor(track, mode, value);
-      if (!current || current.properties?.color !== color) {
-        current = { type: 'Feature', properties: { color, segment: s }, geometry: { type: 'LineString', coordinates: [coordinates[start]] } };
-        features.push(current);
-      }
-      for (let i = start + 1; i <= end; i++) current.geometry.coordinates.push(coordinates[i]);
-      start = end;
-    }
-  });
-  return { type: 'FeatureCollection', features };
-}
-
-export function gpxEndpoints(track: GpxTrack): FeatureCollection<Point> {
-  const features: Feature<Point>[] = [];
-  track.geojson.features.forEach((feature, segment) => {
-    const coordinates = feature.geometry.type === 'Point' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
-    const first = coordinates[0], last = coordinates[coordinates.length - 1];
-    const closed = first[0] === last[0] && first[1] === last[1];
-    features.push({ type: 'Feature', properties: { icon: closed ? 'gpx-both' : 'gpx-start', segment }, geometry: { type: 'Point', coordinates: first } });
-    if (!closed) features.push({ type: 'Feature', properties: { icon: 'gpx-end', segment }, geometry: { type: 'Point', coordinates: last } });
-  });
-  return { type: 'FeatureCollection', features };
 }
 
 // Distance along the track of its nearest point within `radius` metres of a coordinate, or null.

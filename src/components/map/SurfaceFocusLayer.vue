@@ -2,7 +2,7 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, watch } from 'vue';
-import { LngLatBounds, type Map, type GeoJSONSource } from 'maplibre-gl';
+import type { Map, GeoJSONSource } from 'maplibre-gl';
 import type { FeatureCollection, LineString, Point } from 'geojson';
 import type { Coord, Surface } from '@/domain/route-model';
 import { MAP_LABELS_ANCHOR } from '@/config/map.config';
@@ -10,8 +10,8 @@ import { routeStyle } from '@/config/mapStyle';
 
 // The chosen section in its surface colour (or a stretch of the profile in its own), lifted above the route on a white
 // outline and a soft shadow, with its ends marked; the rest of the route fades meanwhile, as the other parts of the
-// surface bar do. A section chosen in the list is framed; a stretch being reported stays where it was tapped.
-const props = defineProps<{ map: Map; focus: { coordinates: Coord[]; surface?: Surface; color?: string } | null; frame: boolean }>();
+// surface bar do.
+const props = defineProps<{ map: Map; focus: { coordinates: Coord[]; surface?: Surface; color?: string } | null }>();
 const source = 'surface-focus-source';
 const layers = ['surface-focus-shadow', 'surface-focus-outline', 'surface-focus-line', 'surface-focus-ends'];
 let ready = false;
@@ -38,13 +38,7 @@ function update() {
   props.map.setGlobalStateProperty('surfaceFocus', Boolean(props.focus));
 }
 function styleLoaded() { ready = true; update(); }
-watch(() => props.focus, focus => {
-  update();
-  if (!focus || !props.frame) return;
-  const bounds = new LngLatBounds();
-  focus.coordinates.forEach(coord => bounds.extend(coord));
-  if (!bounds.isEmpty()) props.map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 0 });
-});
+watch(() => props.focus, update);
 onMounted(() => {
   props.map.on('style.load', styleLoaded);
   ready = props.map.isStyleLoaded() === true;

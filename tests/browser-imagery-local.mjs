@@ -22,7 +22,7 @@ try {
     await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'aerial'));
     await page.goto(origin);
     await page.waitForFunction(() => {
-      const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
       return map?.getSource('basemap-vector-europe') && map.areTilesLoaded();
     }, {}, { timeout: 90000 });
     let requests = [];
@@ -34,9 +34,9 @@ try {
     for (const [name, center] of [['detail', [15.438, 47.071]], ['pan', [15.441, 47.071]]]) {
       requests = [];
       const start = performance.now();
-      await page.evaluate(center => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center, zoom: 18 }), center);
+      await page.evaluate(center => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ center, zoom: 18 }), center);
       await page.waitForFunction(() => {
-        const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+        const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
         return map.areTilesLoaded() && map.isSourceLoaded('basemap-aerial');
       }, {}, { timeout: 90000 });
       const milliseconds = Math.round(performance.now() - start);

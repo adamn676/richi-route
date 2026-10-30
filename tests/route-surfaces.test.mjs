@@ -22,6 +22,8 @@ function route(coords = [[15, 47], [15.001, 47], [15.002, 47], [15, 47]]) {
   return { points, legs: { [leg.id]: leg }, leg };
 }
 
+const section = (leg, fromIndex, toIndex, surface) => ({ id: `${leg.id}:${fromIndex}`, parts: [{ legId: leg.id, fromIndex, toIndex }], surface });
+
 test('surface totals cover the entire out-and-back geometry including unknown tails', () => {
   const { points, legs, leg } = route();
   const result = inspectSurfaces(points, legs);
@@ -29,7 +31,7 @@ test('surface totals cover the entire out-and-back geometry including unknown ta
   assert.ok(Math.abs(result.distanceMeters - expected) < 1e-8);
   assert.ok(Math.abs(result.totals.reduce((sum, t) => sum + t.meters, 0) - expected) < 1e-8);
   assert.deepEqual(result.totals.map(t => t.surface), ['unpaved', 'unknown']);
-  assert.equal(result.sections.at(-1).toIndex, leg.coordinates.length - 1);
+  assert.equal(result.sections.at(-1).parts.at(-1).toIndex, leg.coordinates.length - 1);
   assert.equal(result.sections.at(-1).surface, 'unknown');
   assert.equal(result.sections[1].fromMeters, result.sections[0].toMeters);
 });
@@ -51,9 +53,25 @@ test('neighbouring stretches of one group form one section, whatever their mater
     { fromIndex: 2, toIndex: 3, surface: 'rough' },
   ];
   const result = inspectSurfaces(points, legs);
-  assert.deepEqual(result.sections.map(s => [s.surface, s.fromIndex, s.toIndex]), [['unknown', 0, 2], ['rough', 2, 3]]);
+  assert.deepEqual(result.sections.map(s => [s.surface, s.parts[0].fromIndex, s.parts[0].toIndex]), [['unknown', 0, 2], ['rough', 2, 3]]);
   const unknown = distanceMeters(leg.coordinates[0], leg.coordinates[1]) + distanceMeters(leg.coordinates[1], leg.coordinates[2]);
   assert.ok(Math.abs(result.totals.find(t => t.surface === 'unknown').meters - unknown) < 1e-8);
+});
+
+test('a piece of a few metres forms no section: it joins its neighbours, unless the rider corrected it', () => {
+  const { points, legs, leg } = route([[15, 47], [15.001, 47], [15.00105, 47], [15.002, 47], [15.0021, 47]]);
+  leg.surfaces = [
+    { fromIndex: 0, toIndex: 1, surface: 'paved', surfaceTag: 'asphalt' },
+    { fromIndex: 1, toIndex: 2, surface: 'rough', surfaceTag: 'sett' },
+    { fromIndex: 2, toIndex: 3, surface: 'paved', surfaceTag: 'asphalt' },
+    { fromIndex: 3, toIndex: 4, surface: 'unpaved', surfaceTag: 'gravel' },
+  ];
+  const result = inspectSurfaces(points, legs);
+  assert.deepEqual(result.sections.map(s => [s.surface, s.parts[0].fromIndex, s.parts.at(-1).toIndex]), [['paved', 0, 4]],
+    'Cobbles of 4 m between asphalt join it; gravel of 8 m at the end joins the asphalt before it');
+  assert.deepEqual(result.totals.map(t => t.surface), ['paved']);
+  leg.surfaces[1] = { ...leg.surfaces[1], osm: { surface: 'asphalt' } };
+  assert.deepEqual(inspectSurfaces(points, legs).sections.map(s => s.surface), ['paved', 'rough', 'paved']);
 });
 
 test('section positions follow point order rather than leg completion order', () => {
@@ -63,8 +81,27 @@ test('section positions follow point order rather than leg completion order', ()
   const second = { ...leg, id: 'stop-b:stop-c', fromId: 'stop-b', toId: 'stop-c',
     coordinates: [[15.001, 47], [15.002, 47]], surfaces: [] };
   const result = inspectSurfaces(points, { [second.id]: second, [leg.id]: leg });
-  assert.deepEqual(result.sections.map(s => s.legId), [leg.id, second.id]);
+  assert.deepEqual(result.sections.map(s => s.parts.map(part => part.legId)), [[leg.id], [second.id]]);
   assert.equal(result.sections[1].fromMeters, result.sections[0].toMeters);
+});
+
+test('a section runs on across stops: the same surface on the next leg is the same section', () => {
+  const { points, leg } = route([[15, 47], [15.001, 47], [15.002, 47]]);
+  leg.surfaces = [{ fromIndex: 1, toIndex: 2, surface: 'paved' }];
+  points[1].kind = 'via';
+  points.push({ ...points[1], id: 'stop-c', kind: 'end', coord: [15.004, 47] });
+  const second = { ...leg, id: 'stop-b:stop-c', fromId: 'stop-b', toId: 'stop-c', fromCoord: [15.002, 47], toCoord: [15.004, 47],
+    coordinates: [[15.002, 47], [15.003, 47], [15.004, 47]], surfaces: [{ fromIndex: 0, toIndex: 2, surface: 'paved' }] };
+  const result = inspectSurfaces(points, { [leg.id]: leg, [second.id]: second });
+  assert.deepEqual(result.sections.map(s => [s.surface, s.parts]), [
+    ['unknown', [{ legId: leg.id, fromIndex: 0, toIndex: 1 }]],
+    ['paved', [{ legId: leg.id, fromIndex: 1, toIndex: 2 }, { legId: second.id, fromIndex: 0, toIndex: 2 }]],
+  ]);
+  setActivePinia(createPinia());
+  const store = useRouteStore();
+  store.restoreDraft({ version: 1, points, legs: { [leg.id]: leg, [second.id]: second } });
+  store.inspectSurface(result.sections[1]);
+  assert.deepEqual(store.focusedSurface.coordinates, [[15.001, 47], [15.002, 47], [15.002, 47], [15.003, 47], [15.004, 47]]);
 });
 
 test('incomplete routes have no surface totals and zero-length legs do not invent distance', () => {
@@ -115,7 +152,7 @@ test('surface inspection makes no routing calls or draft edits and stale selecti
   const store = useRouteStore();
   store.restoreDraft({ version: 1, points, legs });
   const before = serializeDraft(store.points, store.legs);
-  store.inspectSurface(leg.id, 0, 1, 'unpaved');
+  store.inspectSurface(section(leg, 0, 1, 'unpaved'));
   assert.deepEqual(store.focusedSurface.coordinates, leg.coordinates.slice(0, 2));
   assert.equal(store.focusedSurface.surface, 'unpaved');
   assert.equal(serializeDraft(store.points, store.legs), before);
@@ -123,13 +160,13 @@ test('surface inspection makes no routing calls or draft edits and stale selecti
   assert.equal(routingEngine.routeLeg.mock.callCount(), 0);
   assert.equal(routingEngine.snap.mock.callCount(), 0);
   store._remember();
-  store.inspectSurface(leg.id, 0, 1, 'unpaved');
+  store.inspectSurface(section(leg, 0, 1, 'unpaved'));
   store.undo();
   assert.equal(store.focusedSurface, null);
-  store.inspectSurface(leg.id, 0, 1, 'unpaved');
+  store.inspectSurface(section(leg, 0, 1, 'unpaved'));
   store.redo();
   assert.equal(store.focusedSurface, null);
-  store.inspectSurface(leg.id, 0, 1, 'unpaved');
+  store.inspectSurface(section(leg, 0, 1, 'unpaved'));
   store.legs = { [leg.id]: { ...leg, surfaces: [] } };
   assert.equal(store.focusedSurface, null);
 });
@@ -160,7 +197,7 @@ test('a stretch to report is picked on the route: start, then end, in either ord
   leg.surfaces = [{ fromIndex: 0, toIndex: 4, surface: 'unpaved', surfaceTag: 'gravel' }];
   const store = useRouteStore();
   store.restoreDraft({ version: 1, points, legs });
-  store.inspectSurface(leg.id, 0, 4, 'unpaved');
+  store.inspectSurface(section(leg, 0, 4, 'unpaved'));
   store.pickSurfacePoint(leg.id, 3);
   assert.equal(store.surfacePicking, null, 'only while reporting');
   store.setSurfaceReporting(true);

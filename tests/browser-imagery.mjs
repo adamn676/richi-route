@@ -59,18 +59,18 @@ try {
   });
   await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'aerial'));
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getLayer('basemap-hybrid-road'));
+  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getLayer('basemap-hybrid-road'));
   for (const [name, center, zoom] of offline ? [['graz-offline', [15.4395, 47.0707], 16]]
     : [['europe', [10, 52], 4], ['graz', [15.4395, 47.0707], 16], ['zurich', [8.5417, 47.3769], 16], ['paris', [2.3522, 48.8566], 16], ['berlin', [13.405, 52.52], 12]]) {
-    await page.evaluate(({ center, zoom }) => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center, zoom }), { center, zoom });
+    await page.evaluate(({ center, zoom }) => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ center, zoom }), { center, zoom });
     await page.waitForFunction(() => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       return map.areTilesLoaded() && map.isSourceLoaded('basemap-aerial');
     }, {}, { timeout: 120000 });
     assert.match(await page.locator('.maplibregl-ctrl-attrib').textContent(), /Copernicus Sentinel data 2026/);
     if (zoom >= 16) {
       const count = await page.evaluate(() => {
-        const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+        const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
         return map.queryRenderedFeatures({ layers: map.getStyle().layers.filter(layer => layer.id.startsWith('basemap-hybrid-roads_labels_')).map(layer => layer.id) }).length;
       });
       assert.ok(count > 0, `${name} has local street labels`);

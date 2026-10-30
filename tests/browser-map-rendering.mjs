@@ -14,7 +14,7 @@ try {
   await page.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
   await page.goto(origin);
   await page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
     return map?.getSource('basemap-vector-europe') && map.areTilesLoaded();
   }, {}, { timeout: 90000 });
   const hardware = await page.evaluate(() => {
@@ -28,7 +28,7 @@ try {
     await chooseBasemap(page, mode);
     for (const zoom of [12, 16, 18]) {
       const result = await page.evaluate(async ({ mode, zoom }) => {
-        const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+        const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
         const idle = action => new Promise((resolve, reject) => {
           const done = () => { clearTimeout(timeout); resolve(); };
           const timeout = setTimeout(() => { map.off('idle', done); reject(new Error('Map did not settle.')); }, 90000);

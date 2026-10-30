@@ -56,14 +56,13 @@ test('GPX parsing reads tracks across versions and namespaces and rejects invali
   }
 });
 
-test('GPX distance and ascent exclude jumps between track segments', () => {
+test('GPX distance excludes jumps between track segments', () => {
   const segments = [
     segment([[15, 47], [15.01, 47]], [100, 120]),
     segment([[16, 48], [16.01, 48]], [500, 505]),
   ];
-  const track = buildGpxTrack('Two tracks', 'two.gpx', segments);
+  const track = buildGpxTrack('Two tracks', segments);
   assert.equal(track.distanceMeters, distanceMeters(...segments[0].coordinates) + distanceMeters(...segments[1].coordinates));
-  assert.equal(track.ascentMeters, 25, 'The jump between segments does not count as a climb');
   assert.equal(track.geojson.features.length, 2);
   assert.equal(track.pointCount, 4);
   assert.equal(track.profile.path.match(/M/g).length, 2);
@@ -75,7 +74,7 @@ test('connected segments draw one profile, separate segments break it', () => {
   const legs = [segment([[15, 47], [15.01, 47]], [100, 120]), segment([[15.01, 47], [15.02, 47]], [126, 110])];
   const moves = track => [...track.profile.path.matchAll(/M/g)].length;
   const areas = track => [...track.profile.areaPath.matchAll(/Z/g)].length;
-  const separate = buildGpxTrack('', '', legs), connected = buildGpxTrack('', '', legs, { connected: true });
+  const separate = buildGpxTrack('', legs), connected = buildGpxTrack('', legs, { connected: true });
   assert.deepEqual([moves(separate), areas(separate)], [2, 2]);
   assert.deepEqual([moves(connected), areas(connected)], [1, 1]);
   assert.deepEqual(connected.distances, separate.distances);
@@ -84,17 +83,16 @@ test('connected segments draw one profile, separate segments break it', () => {
 test('route legs are spaced to the length the router measured, so the profile ends at the route distance', () => {
   const legs = [segment([[15, 47], [15.005, 47], [15.01, 47]], [100, 110, 120]), segment([[15.01, 47], [15.02, 47]], [120, 110])];
   const measured = legs.map(leg => distanceMeters(leg.coordinates[0], leg.coordinates.at(-1)));
-  const track = buildGpxTrack('', '', legs.map((leg, i) => ({ ...leg, distanceMeters: measured[i] * 1.003 })), { connected: true });
+  const track = buildGpxTrack('', legs.map((leg, i) => ({ ...leg, distanceMeters: measured[i] * 1.003 })), { connected: true });
   assert.ok(Math.abs(track.distanceMeters - (measured[0] + measured[1]) * 1.003) < 1e-6);
   assert.ok(Math.abs(track.distances[0][1] - measured[0] * 1.003 / 2) < 1e-6, 'Points keep their share of the leg');
 });
 
-test('missing elevations break the profile and prevent a misleading complete ascent', () => {
-  const track = buildGpxTrack('Partial', 'partial.gpx', [
+test('missing elevations break the profile', () => {
+  const track = buildGpxTrack('Partial', [
     segment([[15, 47], [15.01, 47], [15.02, 47], [15.03, 47]], [100, null, 300, 310]),
   ]);
   assert.equal(track.elevationCount, 3);
-  assert.equal(track.ascentMeters, null);
   assert.equal(track.profile.path.match(/M/g).length, 2);
   // the line averages heights along each run (a lone point stays as it is)
   assert.equal(track.profile.minimum, 100);
@@ -102,19 +100,16 @@ test('missing elevations break the profile and prevent a misleading complete asc
 });
 
 test('a single point remains visible and missing elevation stays unknown', () => {
-  const track = buildGpxTrack('Point', 'point.gpx', [segment([[15, 47]], [null])]);
+  const track = buildGpxTrack('Point', [segment([[15, 47]], [null])]);
   assert.equal(track.geojson.features[0].geometry.type, 'Point');
   assert.equal(track.distanceMeters, 0);
-  assert.equal(track.ascentMeters, null);
   assert.equal(track.profile, null);
-  assert.deepEqual(track.bounds, [[15, 47], [15, 47]]);
 });
 
 test('date-line crossings use adjacent worlds for display while retaining original coordinates', () => {
   const coordinates = [[179.9, 10], [-179.9, 10], [-179.8, 10]];
-  const track = buildGpxTrack('Date line', 'dateline.gpx', [segment(coordinates, [0, 1, 2])]);
+  const track = buildGpxTrack('Date line', [segment(coordinates, [0, 1, 2])]);
   assert.deepEqual(track.segments[0].coordinates, coordinates);
-  assert.ok(track.bounds[1][0] - track.bounds[0][0] < 1);
   assert.ok(track.geojson.features[0].geometry.coordinates[1][0] > 180);
   assert.ok(track.distanceMeters < 40000);
 });
@@ -124,7 +119,7 @@ test('long tracks retain all data and keep the elevation SVG bounded with extrem
   const coordinates = Array.from({ length }, (_, i) => [15 + i / 100000, 47]);
   // a plateau 760 m long, wider than the line averages over, and a lone height error the line leaves out
   const elevations = Array.from({ length }, (_, i) => i >= 50000 && i < 51000 ? 9999 : i === 20000 ? 5000 : 300 + i % 20);
-  const track = buildGpxTrack('Long', 'long.gpx', [segment(coordinates, elevations)]);
+  const track = buildGpxTrack('Long', [segment(coordinates, elevations)]);
   assert.equal(track.pointCount, length);
   assert.equal(track.geojson.features[0].geometry.coordinates.length, length);
   assert.equal(track.segments[0].elevations.length, length);
@@ -138,7 +133,7 @@ test('downsampled profiles keep heights beside missing values without bridging g
   const length = 10000;
   const coordinates = Array.from({ length }, (_, i) => [15 + i / 10000, 47]);
   const elevations = Array.from({ length }, (_, i) => i % 20 === 0 || (i >= 4000 && i < 6000) ? null : 300 + i % 7);
-  const { profile } = buildGpxTrack('Gaps', 'gaps.gpx', [segment(coordinates, elevations)]);
+  const { profile } = buildGpxTrack('Gaps', [segment(coordinates, elevations)]);
   const points = [...profile.path.matchAll(/([ML])([\d.]+),/g)].map(([, command, x]) => ({ command, x: Number(x) }));
   assert.ok(points.length > 480, 'Every chart column with heights stays visible');
   assert.ok(profile.path.length < 25000 && profile.areaPath.length < 26000);
@@ -146,17 +141,14 @@ test('downsampled profiles keep heights beside missing values without bridging g
     'The line does not bridge the missing block');
 });
 
-test('polar viewport bounds and nearly antipodal distances remain finite', () => {
-  const track = buildGpxTrack('Polar', 'polar.gpx', [segment([[0, 90], [180, 90]], [0, 0])]);
-  assert.ok(track.bounds[0][1] <= track.bounds[1][1]);
-  assert.ok(track.bounds[1][1] < 90);
+test('nearly antipodal distances remain finite', () => {
   for (const from of [[0, 0], [15.123, 47.999], [10, 60], [50.123456, 77.123456]]) {
     assert.ok(Number.isFinite(distanceMeters(from, [from[0] - 180, -from[1]])));
   }
 });
 
 test('extreme elevation values cannot produce an infinite ascent or an invalid SVG', () => {
-  assert.throws(() => buildGpxTrack('Overflow', 'overflow.gpx', [
+  assert.throws(() => buildGpxTrack('Overflow', [
     segment([[15, 47], [16, 48]], [-1e308, 1e308]),
   ]), /Höhenwerte/);
 });

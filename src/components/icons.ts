@@ -16,8 +16,6 @@ export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/Ic
 export { default as IconDownload } from '@tabler/icons-vue/dist/esm/icons/IconDownload.mjs';
 export { default as IconDroplet } from '@tabler/icons-vue/dist/esm/icons/IconDroplet.mjs';
 export { default as IconEraser } from '@tabler/icons-vue/dist/esm/icons/IconEraser.mjs';
-export { default as IconEye } from '@tabler/icons-vue/dist/esm/icons/IconEye.mjs';
-export { default as IconEyeOff } from '@tabler/icons-vue/dist/esm/icons/IconEyeOff.mjs';
 export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/IconFileImport.mjs';
 export { default as IconFocus2 } from '@tabler/icons-vue/dist/esm/icons/IconFocus2.mjs';
 export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/IconFolderOpen.mjs';
@@ -32,7 +30,6 @@ export { default as IconPencil } from '@tabler/icons-vue/dist/esm/icons/IconPenc
 export { default as IconPlus } from '@tabler/icons-vue/dist/esm/icons/IconPlus.mjs';
 export { default as IconRefresh } from '@tabler/icons-vue/dist/esm/icons/IconRefresh.mjs';
 export { default as IconRoad } from '@tabler/icons-vue/dist/esm/icons/IconRoad.mjs';
-export { default as IconRoute } from '@tabler/icons-vue/dist/esm/icons/IconRoute.mjs';
 export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStack2.mjs';
 export { default as IconTrain } from '@tabler/icons-vue/dist/esm/icons/IconTrain.mjs';
 export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';

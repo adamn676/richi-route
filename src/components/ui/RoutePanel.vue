@@ -10,6 +10,9 @@
             v-tooltip:bottom="'Route neu berechnen'" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
             v-tooltip:bottom="'Formpunkte entfernen: die weißen Punkte, die die Route formen'" @click="act(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button v-tooltip:bottom="'GPX-Datei öffnen (oder auf die Karte ziehen)'" aria-label="GPX-Datei öffnen"
+            @click="gpxInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
+          <input ref="gpxInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" aria-label="GPX-Datei auswählen" hidden @change="chooseGpx" />
           <!-- On a wrapper, so the reason also shows while the button is disabled. -->
           <span v-tooltip:bottom="exportReason ?? 'Route als GPX herunterladen'"><v-icon-button :disabled="Boolean(exportReason)"
             aria-label="GPX herunterladen" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></v-icon-button></span>
@@ -90,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconGripVertical, IconPlus, IconTrash, IconWand } from '@/components/icons';
+import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconFileImport, IconGripVertical, IconPlus, IconTrash, IconWand } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import { stopBadge, stopLabel } from '@/domain/route-model';
@@ -102,6 +105,8 @@ import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 import { useStopDragging } from '@/composables/useStopDragging';
 
+// A chosen GPX file opens as the route (AppSidebar).
+const emit = defineEmits<{ 'open-gpx': [file: File] }>();
 const routeStore = useRouteStore();
 const loops = useLoopSuggestionsStore();
 const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
@@ -117,6 +122,13 @@ routeStore.$onAction(({ name }) => {
   try { localStorage.setItem(shapedKey, '1'); } catch { /* Storage may be disabled. */ }
 });
 
+const gpxInput = ref<HTMLInputElement>();
+function chooseGpx(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (file) emit('open-gpx', file);
+}
 function downloadGpx() {
   const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));
   const link = document.createElement('a');
@@ -213,7 +225,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 /* The last tool's glyph, not its 36 px target, ends at the margin, as the other edges' glyphs do. */
 .planner__tools { display: flex; align-items: center; margin-left: auto; margin-right: -9px; }
 .planner__tools > span { display: flex; }
-/* Five tools beside the heading fit the narrowest panel at 36 px each. */
+/* Six tools beside the heading fit the narrowest panel at 36 px each. */
 .planner__tools :deep(.v-btn) { width: 36px; height: 36px; }
 /* The first row's own padding is taken back, so the first label sits 12 px under the heading, as in every section. */
 .planner__stops { display: grid; margin: calc(-1 * var(--space-2)) 0 0; padding: 0; list-style: none; }

@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { cumulativeAscent, distanceMeters, pathMeters, type Coord } from './route-model.ts';
+import { distanceMeters, pathMeters, type Coord } from './route-model.ts';
 
 export interface GpxSegment {
   name: string;
@@ -132,13 +132,12 @@ export function drawProfile(samples: readonly ProfileSample[], from: number, to:
 }
 
 // Connected segments (route legs) continue one another, so the profile joins them instead of breaking at each start.
-export function buildGpxTrack(name: string, fileName: string, segments: GpxSegment[], { connected = false } = {}) {
-  let distance = 0, pointCount = 0, elevationCount = 0, ascent = 0, run = 0;
+export function buildGpxTrack(name: string, segments: GpxSegment[], { connected = false } = {}) {
+  let distance = 0, pointCount = 0, elevationCount = 0, run = 0;
   let minimum = Infinity, maximum = -Infinity;
   const samples: ProfileSample[] = [];
   const features: Feature<LineString | Point>[] = [];
   const distances: number[][] = [];
-  let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
   const anchor = segments[0]?.coordinates[0]?.[0] ?? 0;
 
   for (const segment of segments) {
@@ -164,11 +163,8 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
       const longitude = coord[0] + 360 * Math.round((previousLongitude - coord[0]) / 360);
       previousLongitude = longitude;
       displayCoordinates.push(longitude === coord[0] ? coord : [longitude, coord[1]]);
-      west = Math.min(west, longitude); east = Math.max(east, longitude);
-      south = Math.min(south, coord[1]); north = Math.max(north, coord[1]);
     }
     distances.push(segmentDistances);
-    ascent += cumulativeAscent(segment.elevations).at(-1) ?? 0;
     if (displayCoordinates.length) features.push({
       type: 'Feature', properties: { name: segment.name },
       geometry: displayCoordinates.length === 1
@@ -177,18 +173,13 @@ export function buildGpxTrack(name: string, fileName: string, segments: GpxSegme
     });
   }
 
-  if (elevationCount && (!Number.isFinite(maximum - minimum) || !Number.isFinite(ascent))) {
+  if (elevationCount && !Number.isFinite(maximum - minimum)) {
     throw new Error('Die GPX-Höhenwerte sind für eine Auswertung zu groß.');
   }
 
-  const mapLatitude = (latitude: number) => Math.max(-85.051129, Math.min(85.051129, latitude));
   return {
-    name, fileName, segments, distances, pointCount, elevationCount, distanceMeters: distance,
-    ascentMeters: elevationCount === pointCount && pointCount > segments.length ? ascent : null,
+    name, segments, distances, pointCount, elevationCount, distanceMeters: distance,
     samples, profile: elevationCount ? drawProfile(samples, 0, distance) : null,
-    // the lowest and highest heights as recorded (the profile draws them averaged)
-    heights: elevationCount ? { minimum, maximum } : null,
-    bounds: [[west, mapLatitude(south)], [east, mapLatitude(north)]] as [Coord, Coord],
     geojson: { type: 'FeatureCollection', features } as FeatureCollection<LineString | Point>,
   };
 }

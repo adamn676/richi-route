@@ -1,17 +1,13 @@
-import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { sameKind, spanKind, type Coord, type LegGeometry, type Surface, type SurfaceSpan } from './route-model.ts';
 import type { GpxTrack } from './gpx-track.ts';
-import { bySurface, surfaceLabels, surfaces } from './route-surfaces.ts';
-import { routeStyle } from '../config/mapStyle.ts';
 
 export interface GpxPortion { segment: number; from: number; to: number; points: Coord[] }
-export const surfaceLegend = surfaces.map(surface => ({ color: routeStyle[surface], label: surfaceLabels[surface] }));
 
 // Portions of about 2 km are traced through a point every 100 m. Denser points snap onto sidewalks and side
 // streets and send the trace on detours; a portion that does not match is split and traced again.
 const portionMeters = 2000, anchorMeters = 100, minPortionMeters = 150;
 
-export function gpxPortion(track: GpxTrack, segment: number, from: number, to: number): GpxPortion {
+function gpxPortion(track: GpxTrack, segment: number, from: number, to: number): GpxPortion {
   const coordinates = track.segments[segment].coordinates, distances = track.distances[segment];
   const points = [coordinates[from]];
   let anchor = from;
@@ -44,6 +40,8 @@ export function splitGpxPortion(track: GpxTrack, portion: GpxPortion): GpxPortio
   while (middle < to - 1 && distances[middle] - distances[from] < (distances[to] - distances[from]) / 2) middle++;
   return [gpxPortion(track, segment, from, middle), gpxPortion(track, segment, middle, to)];
 }
+
+const largest = <T>(weights: Map<T, number>) => [...weights].reduce((most, next) => next[1] > most[1] ? next : most)[0];
 
 function longitudeDelta(from: number, to: number) { return ((to - from + 540) % 360) - 180; }
 
@@ -87,47 +85,26 @@ export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate
   for (const span of candidate.surfaces) for (let k = span.fromIndex; k < span.toIndex; k++) spanOf[k] = span;
   const spans: SurfaceSpan[] = [];
   for (let v = 1; v < original.length; v++) {
-    // The traced stretch paired with this track step; it takes a tag only when one span covers all of it.
-    const from = B.points[last[A.vertices[v - 1]]].at, to = B.points[first[A.vertices[v]]].at;
-    const low = Math.min(from, to), high = Math.max(from, to);
-    const startSegment = Math.min(Math.floor(low + .001), candidate.coordinates.length - 2);
-    const endSegment = Math.max(startSegment, Math.ceil(high - .001) - 1);
-    const span = spanOf[startSegment];
-    if (!span || span.surface === 'unknown' || span.toIndex <= endSegment) continue;
+    // The traced stretch paired with this track step, in metres per span. The step takes the surface covering most of
+    // it, with the tag of that surface's largest part: a junction, the next way of the same road or a few metres
+    // tagged otherwise within a long step leave no gap.
+    const a = last[A.vertices[v - 1]], b = first[A.vertices[v]];
+    const shares = new Map<SurfaceSpan | undefined, number>();
+    const share = (j: number, k: number) => {
+      const span = spanOf[Math.min(Math.floor((B.points[j].at + B.points[k].at) / 2), candidate.coordinates.length - 2)];
+      shares.set(span, (shares.get(span) ?? 0) + Math.hypot(B.points[k].x - B.points[j].x, B.points[k].y - B.points[j].y));
+    };
+    if (a === b) share(a, a);
+    for (let j = Math.min(a, b); j < Math.max(a, b); j++) share(j, j + 1);
+    const surfaces = new Map<Surface, number>();
+    for (const [span, metres] of shares) surfaces.set(span?.surface ?? 'unknown', (surfaces.get(span?.surface ?? 'unknown') ?? 0) + metres);
+    const surface = largest(surfaces);
+    if (surface === 'unknown') continue;
+    const span = largest(new Map([...shares].filter(([span]) => span?.surface === surface)))!;
     const fromIndex = portion.from + v - 1, toIndex = portion.from + v;
     const previous = spans.at(-1);
     if (previous?.toIndex === fromIndex && sameKind(previous, span)) previous.toIndex = toIndex;
     else spans.push({ fromIndex, toIndex, ...spanKind(span) });
   }
   return spans;
-}
-
-export function inspectGpxSurfaces(track: GpxTrack, matched: SurfaceSpan[][]) {
-  const features: Feature<LineString | Point>[] = [];
-  const totals = new Map<Surface, { surface: Surface; meters: number }>();
-  let estimatedMeters = 0;
-  track.geojson.features.forEach((feature, s) => {
-    if (feature.geometry.type === 'Point') {
-      features.push({ ...feature, properties: { color: routeStyle.unknown } });
-      return;
-    }
-    const coordinates = feature.geometry.coordinates;
-    function add(from: number, to: number, span?: SurfaceSpan) {
-      if (to <= from) return;
-      const surface = span?.surface ?? 'unknown', color = routeStyle[surface];
-      const meters = track.distances[s][to] - track.distances[s][from];
-      const total = totals.get(surface) ?? { surface, meters: 0 };
-      total.meters += meters; totals.set(surface, total);
-      if (surface !== 'unknown') estimatedMeters += meters;
-      const previous = features.at(-1);
-      if (previous?.geometry.type === 'LineString' && previous.properties?.segment === s && previous.properties.color === color) {
-        for (let i = from + 1; i <= to; i++) previous.geometry.coordinates.push(coordinates[i]);
-      } else features.push({ type: 'Feature', properties: { color, segment: s }, geometry: { type: 'LineString', coordinates: coordinates.slice(from, to + 1) } });
-    }
-    let cursor = 0;
-    for (const span of matched[s] ?? []) { add(cursor, span.fromIndex); add(span.fromIndex, span.toIndex, span); cursor = span.toIndex; }
-    add(cursor, coordinates.length - 1);
-  });
-  return { geojson: { type: 'FeatureCollection', features } as FeatureCollection<LineString | Point>, estimatedMeters,
-    totals: [...totals.values()].sort(bySurface) };
 }

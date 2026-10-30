@@ -29,12 +29,12 @@ import { forwardGeocode, reverseGeocode, type Place } from '../services/geocodin
 import { pointOnStreet } from '../services/street-point.service.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
-import { gpxSections, sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
+import { sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
 import { loopSections } from '../domain/loop-suggestions.ts';
 import { lookupGpxSurfaces } from '../services/gpx-surfaces.service.ts';
 import { saveSurfaceReport } from '../services/surface-corrections.service.ts';
 import { applyReport, osmSurfaces, type CorrectedSurface } from '../domain/surface-corrections.ts';
-import { inspectStretch } from '../domain/route-surfaces.ts';
+import { inspectStretch, type SurfaceSection } from '../domain/route-surfaces.ts';
 
 export type { ShapePoint, Waypoint } from '../domain/route-model.ts';
 
@@ -52,9 +52,8 @@ export type EditorRoute = FeatureCollection<LineString, RouteFeatureProperties>;
 export type RouteFeature = EditorRoute['features'][number];
 
 interface SurfaceFocus {
-  leg: RouteLeg;
-  fromIndex: number;
-  toIndex: number;
+  id: string;
+  parts: { leg: RouteLeg; fromIndex: number; toIndex: number }[];
   surface: Surface;
 }
 
@@ -249,10 +248,9 @@ export const useRouteStore = defineStore('route', {
     hasAirLines: (state): boolean => Object.values(state.legs).some((leg) => leg.status === 'air'),
     focusedSurface: (state) => {
       const focus = state.surfaceFocus;
-      if (!focus || state.legs[focus.leg.id] !== focus.leg) return null;
-      return { legId: focus.leg.id, fromIndex: focus.fromIndex, toIndex: focus.toIndex,
-        coordinates: focus.leg.coordinates.slice(focus.fromIndex, focus.toIndex + 1),
-        surface: focus.surface };
+      if (!focus?.parts.every(part => state.legs[part.leg.id] === part.leg)) return null;
+      return { id: focus.id, surface: focus.surface,
+        coordinates: focus.parts.flatMap(part => part.leg.coordinates.slice(part.fromIndex, part.toIndex + 1)) };
     },
     // A pick lasts while reporting goes on and its leg stays as it is.
     surfacePicking: (state): SurfacePick | null => {
@@ -318,11 +316,15 @@ export const useRouteStore = defineStore('route', {
     showSection(legId: string) {
       this.shownSection = { legId };
     },
-    inspectSurface(legId: string, fromIndex: number, toIndex: number, surface: Surface) {
-      const leg = this.legs[legId];
-      if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
-          fromIndex < 0 || toIndex <= fromIndex || toIndex >= leg.coordinates.length) return;
-      this.surfaceFocus = { leg: markRaw(leg), fromIndex, toIndex, surface };
+    inspectSurface({ id, parts, surface }: Pick<SurfaceSection, 'id' | 'parts' | 'surface'>) {
+      const focused: SurfaceFocus['parts'] = [];
+      for (const { legId, fromIndex, toIndex } of parts) {
+        const leg = this.legs[legId];
+        if (!leg || leg.status !== 'routed' || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
+            fromIndex < 0 || toIndex <= fromIndex || toIndex >= leg.coordinates.length) return;
+        focused.push({ leg: markRaw(leg), fromIndex, toIndex });
+      }
+      if (focused.length) this.surfaceFocus = { id, parts: focused, surface };
     },
     setSurfaceReporting(on: boolean) {
       this.surfaceReporting = on;
@@ -394,9 +396,7 @@ export const useRouteStore = defineStore('route', {
       if (coords.length) this.fitRequest++;
     },
     // Replaces the route with a GPX track; surfaces are looked up afterwards.
-    importTrack(track: GpxTrack) {
-      const sections = gpxSections(track);
-      if (!sections.length) throw new Error('Die GPX-Datei enthält keinen Streckenverlauf.');
+    importTrack(track: GpxTrack, sections: GpxSection[][]) {
       void this._lookupSurfaces(track, this._openSections(sections));
     },
     // Shows a suggested loop as the route; it already has its surfaces. Trying another loop replaces it without a

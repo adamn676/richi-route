@@ -35,7 +35,7 @@ try {
     });
     await page.goto(origin);
     await page.waitForFunction(() => {
-      const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer')?.__vueParentComponent.props.map;
       return map?.getSource('basemap-vector-europe') && map.areTilesLoaded();
     });
     const hardware = await page.evaluate(() => {
@@ -50,7 +50,7 @@ try {
       ['Paris', [2.3488, 48.8534], 16], ['Paris', [2.3488, 48.8534], 20],
     ]) {
       const measurement = await page.evaluate(async ({ center, zoom }) => {
-        const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+        const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
         const idle = action => new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Map did not settle')), 30000);
           map.once('idle', () => { clearTimeout(timeout); resolve(); });

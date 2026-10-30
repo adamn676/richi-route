@@ -4,11 +4,12 @@ export const surfaceLabels: Record<Surface, string> = {
   paved: 'Befestigt', likelyPaved: 'Vermutlich befestigt', rough: 'Kopfsteinpflaster/Holzbrücke', unpaved: 'Unbefestigt', unknown: 'Unbekannt',
 };
 
+export interface SurfacePart { legId: string; fromIndex: number; toIndex: number }
+
 export interface SurfaceSection {
   id: string;
-  legId: string;
-  fromIndex: number;
-  toIndex: number;
+  // A section runs on across the stops and shaping points between legs, one part on each leg.
+  parts: SurfacePart[];
   fromMeters: number;
   toMeters: number;
   surface: Surface;
@@ -19,10 +20,44 @@ export interface SurfaceSection {
 export const surfaces = Object.keys(surfaceLabels) as Surface[];
 export const bySurface = (a: { surface: Surface }, b: { surface: Surface }) => surfaces.indexOf(a.surface) - surfaces.indexOf(b.surface);
 
+// Neighbouring stretches of the same kind are one section, whatever their materials and legs, apart from corrected ones.
+function join(sections: SurfaceSection[], piece: SurfaceSection) {
+  const previous = sections.at(-1);
+  if (!previous || previous.toMeters !== piece.fromMeters || previous.surface !== piece.surface || previous.corrected !== piece.corrected) {
+    sections.push(piece);
+    return;
+  }
+  for (const part of piece.parts) {
+    const last = previous.parts.at(-1)!;
+    if (last.legId === part.legId && last.toIndex === part.fromIndex) last.toIndex = part.toIndex;
+    else previous.parts.push(part);
+  }
+  previous.toMeters = piece.toMeters;
+}
+
+// A piece of a few metres (GPS jitter where a track stops, a kerb) is no section of its own: between two of one
+// surface it joins them, otherwise its longer neighbour. What the rider corrected stays as it is.
+const sliverMeters = 10;
+function settle(pieces: SurfaceSection[]): SurfaceSection[] {
+  const sections: SurfaceSection[] = [];
+  const length = (section: SurfaceSection) => section.toMeters - section.fromMeters;
+  pieces.forEach((piece, i) => {
+    const before = sections.at(-1), after = pieces[i + 1];
+    if (length(piece) < sliverMeters && !piece.corrected) {
+      const neighbours = [before, after].filter((section): section is SurfaceSection => !!section && !section.corrected);
+      const into = neighbours.length === 2 && neighbours[0].surface === neighbours[1].surface ? neighbours[0]
+        : neighbours.sort((a, b) => length(b) - length(a))[0];
+      if (into) piece.surface = into.surface;
+    }
+    join(sections, piece);
+  });
+  return sections;
+}
+
 export function inspectSurfaces(points: RoutePoint[], legs: Record<string, RouteLeg>) {
   const placed = points.filter(isPlaced);
   if (placed.length < 2) return null;
-  const sections: SurfaceSection[] = [];
+  const pieces: SurfaceSection[] = [];
   let offset = 0;
 
   for (let index = 1; index < placed.length; index++) {
@@ -32,19 +67,11 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     for (let vertex = 1; vertex < leg.coordinates.length; vertex++) {
       distances.push(distances[vertex - 1] + distanceMeters(leg.coordinates[vertex - 1], leg.coordinates[vertex]));
     }
-    // Neighbouring stretches of the same kind are one section, whatever their materials, apart from corrected ones.
     function add(fromIndex: number, toIndex: number, span?: SurfaceSpan) {
       if (toIndex <= fromIndex || distances[toIndex] === distances[fromIndex]) return;
-      const surface = span?.surface ?? 'unknown', corrected = !!span?.osm, previous = sections.at(-1);
-      // (zero-length pieces in between are skipped above)
-      if (previous?.legId === leg.id && previous.toMeters === offset + distances[fromIndex] && previous.surface === surface
-        && previous.corrected === corrected) {
-        Object.assign(previous, { id: `${leg.id}:${previous.fromIndex}:${toIndex}`, toIndex, toMeters: offset + distances[toIndex] });
-        return;
-      }
-      sections.push({
-        id: `${leg.id}:${fromIndex}:${toIndex}`, legId: leg.id, fromIndex, toIndex,
-        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface, corrected,
+      pieces.push({
+        id: `${leg.id}:${fromIndex}`, parts: [{ legId: leg.id, fromIndex, toIndex }],
+        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface: span?.surface ?? 'unknown', corrected: !!span?.osm,
       });
     }
     let cursor = 0;
@@ -57,6 +84,7 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     offset += distances.at(-1)!;
   }
 
+  const sections = settle(pieces);
   const totals = new Map<Surface, { surface: Surface; meters: number }>();
   for (const section of sections) {
     const total = totals.get(section.surface) ?? { surface: section.surface, meters: 0 };

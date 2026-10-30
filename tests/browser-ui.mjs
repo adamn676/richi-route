@@ -1,3 +1,20 @@
+import assert from 'node:assert/strict';
+import { isDeepStrictEqual } from 'node:util';
+
+// assert.deepEqual diffs whole routes when they differ, which takes tens of GB; this names the first difference.
+function difference(a, b, path = '') {
+  if (isDeepStrictEqual(a, b)) return;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return `${path || 'value'}: ${JSON.stringify(a)?.slice(0, 200)} ≠ ${JSON.stringify(b)?.slice(0, 200)}`;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const found = difference(a[key], b[key], `${path}.${key}`);
+    if (found) return found;
+  }
+}
+export function same(actual, expected, message = 'Route data differs') {
+  const found = difference(actual, expected);
+  assert.ok(!found, `${message}: ${found}`);
+}
+
 // Picks a basemap through the map's "Kartenansicht" menu by keyboard, so a pointer hovering the map stays put.
 export async function chooseBasemap(page, id) {
   const menu = page.getByRole('button', { name: 'Kartenansicht', exact: true });
@@ -30,7 +47,3 @@ export async function openRoute(page, coords, shapeIndices = []) {
   await page.evaluate(([coords, shapeIndices]) => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .resetRoute(coords, shapeIndices), [coords, shapeIndices]);
 }
-
-// Track colours are segmented buttons: pick a mode, or read the chosen one.
-export const trackColor = (page, mode) => page.getByRole('group', { name: 'Trackfarbe', exact: true }).locator(`[data-mode="${mode}"]`).click();
-export const trackColorValue = page => page.getByRole('group', { name: 'Trackfarbe', exact: true }).locator('[aria-pressed=true]').getAttribute('data-mode');

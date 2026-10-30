@@ -1,4 +1,5 @@
 import { parseDraft, type RouteDraft } from './route-draft.ts';
+import { isPlaced, type Waypoint } from './route-model.ts';
 
 export interface SavedRouteSummary {
   id: string;
@@ -15,6 +16,15 @@ export function routeName(value: unknown): string {
     throw new Error('Bitte einen Routennamen mit 1 bis 120 Zeichen eingeben.');
   }
   return value.trim();
+}
+
+// A route by its placed stops' streets, "Hahnhofweg 26 → Roseggerweg", or a loop by its start; empty without two.
+export function routeTitle(waypoints: Waypoint[]): string {
+  const stops = waypoints.filter(isPlaced);
+  if (stops.length < 2) return '';
+  const name = (stop: typeof stops[number]) => (stop.address ?? stop.userInput).split(',')[0] || 'Punkt auf der Karte';
+  const [from, to] = [name(stops[0]), name(stops[stops.length - 1])];
+  return from === to ? `Runde ab ${from}` : `${from} → ${to}`;
 }
 
 export function routeSummary(name: string, draft: RouteDraft): SavedRouteSummary {

@@ -20,7 +20,7 @@ const current = () => page.evaluate(() => {
     draft: JSON.stringify({ points: route.points, legs: route.legs, undo: route.undoStack, redo: route.redoStack }) };
 });
 const waitDot = count => page.waitForFunction(async count => {
-  const source = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('route-profile-focus');
+  const source = document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('route-profile-focus');
   return source && (await source.getData()).features.length === count;
 }, count);
 try {
@@ -45,11 +45,11 @@ try {
   await chart.waitFor();
   await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chart.scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => !document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.isMoving());
+  await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   await waitDot(0);
   const before = await current();
   await page.evaluate(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     const source = map.getSource('segments-source');
     window.routeGeometryWrites = 0;
     for (const method of ['setData', 'updateData']) {
@@ -65,24 +65,24 @@ try {
   assert.ok(outward.elevation > 340 && outward.elevation < 360);
   assert.match(await chart.getAttribute('aria-valuetext'), /km.*m Höhe.*% Steigung/);
   await page.locator('.profile .elevation-chart__tooltip').waitFor();
-  const dot = await page.evaluate(async () => (await document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('route-profile-focus').getData()).features[0].geometry.coordinates);
+  const dot = await page.evaluate(async () => (await document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('route-profile-focus').getData()).features[0].geometry.coordinates);
   assert.deepEqual(dot, outward.coordinate);
   await page.mouse.move(box.x + box.width * .75, box.y + box.height / 2);
   await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route-profile').focus?.segmentIndex === 1);
   assert.ok((await current()).focus.gradient < 0);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.queryRenderedFeatures({ layers: ['route-profile-dot'] }).length > 0);
+  await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.queryRenderedFeatures({ layers: ['route-profile-dot'] }).length > 0);
   await page.screenshot({ path: output + '/desktop.png' });
   assert.equal((await current()).draft, before.draft);
   const basemaps = ['street', 'aerial'];
   for (const basemap of basemaps) {
     const selected = (await current()).focus;
     await chooseBasemap(page, basemap);
-    if (basemap === 'street') await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')
+    if (basemap === 'street') await page.waitForFunction(() => document.querySelector('.route-layer')
       .__vueParentComponent.props.map.getStyle().layers.some(layer => layer.id.startsWith('basemap-vector-')));
     await waitDot(1);
     assert.deepEqual((await current()).focus, selected, `${basemap} preserves the inspected position`);
     await page.mouse.move(box.x + box.width * .4, box.y + box.height / 2);
-    await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.queryRenderedFeatures({ layers: ['route-profile-dot'] }).length > 0);
+    await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.queryRenderedFeatures({ layers: ['route-profile-dot'] }).length > 0);
     assert.equal((await current()).draft, before.draft);
   }
   assert.equal(await page.evaluate(() => window.routeGeometryWrites), 0);
@@ -102,7 +102,7 @@ try {
   await page.locator('.elevation-range').waitFor();
   const zoomed = () => page.evaluate(async () => {
     const profile = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route-profile');
-    const source = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('surface-focus-source');
+    const source = document.querySelector('.route-layer').__vueParentComponent.props.map.getSource('surface-focus-source');
     return { range: profile.range && { ...profile.range }, marked: source ? (await source.getData()).features.length : 0 };
   });
   const stretch = await zoomed();
@@ -116,7 +116,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chart.scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => !document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.isMoving());
+  await page.waitForFunction(() => !document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving());
   const mobile = await chart.boundingBox();
   const cdp = await context.newCDPSession(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: mobile.x + mobile.width * .25, y: mobile.y + mobile.height / 2 }] });

@@ -53,7 +53,7 @@ try {
   await page.getByRole('button', { name: 'Auf Route zoomen', exact: true }).click();
   await chooseBasemap(page, 'street');
   await page.waitForFunction(() => {
-    const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+    const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
     const ids = map.getStyle().layers.filter(layer => layer.id.startsWith('basemap-vector-') && layer.type === 'line').map(layer => layer.id);
     return ids.length && !map.isMoving() && map.queryRenderedFeatures({ layers: ids }).length > 30;
   }, {}, { timeout: 60000 });
@@ -61,7 +61,7 @@ try {
   await page.screenshot({ path: output + '/route-from-search.png' });
 
   // A route opened as a whole moves the map to it, and its stops get the streets they lie on.
-  const mapView = () => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+  const mapView = () => document.querySelector('.route-layer').__vueParentComponent.props.map;
   await page.evaluate(`(${mapView})().jumpTo({ center: [16.37, 48.21], zoom: 12 })`);
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').waypoints[0].coord);

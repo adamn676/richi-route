@@ -31,13 +31,16 @@
         <template #append><v-btn variant="text" size="small" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</v-btn></template>
       </v-alert>
       <v-alert v-if="error" type="error">{{ error }}</v-alert>
+      <p v-if="reading" class="sidebar__reading" role="status">GPX wird eingelesen … <v-btn variant="text" size="small" @click="library.cancelGpx()">Abbrechen</v-btn></p>
     </div>
-    <!-- Confirmations pass by; errors stay above until resolved. -->
-    <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="4000" @update:model-value="open => open || (message = '')">{{ message }}</v-snackbar>
+    <!-- Confirmations pass by; errors stay above until resolved. A replaced route can be brought back from here. -->
+    <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="restorable ? 8000 : 4000" @update:model-value="open => open || (message = '')">
+      {{ message }}
+      <template v-if="restorable" #actions><v-btn variant="text" color="inverse-primary" @click="restore(restorable)">Wiederherstellen</v-btn></template>
+    </v-snackbar>
     <div ref="body" class="sidebar__body" :style="{ '--scrollbar': `${scrollbar}px` }">
-      <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" />
+      <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" @open-gpx="openGpx" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
-      <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
     <!-- The visible map's credits, always in view: the main ones in one line, the full list on demand (MapView places it
          here, useMap's credits container). -->
@@ -61,28 +64,21 @@ import { IconPlus } from '@/components/icons';
 import { routeStyle } from '@/config/mapStyle';
 import RoutePanel from '@/components/ui/RoutePanel.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
-import GpxImport from '@/components/ui/GpxImport.vue';
 import { useRouteLibrary } from '@/composables/useRouteLibrary';
 import { useRouteStore } from '@/stores/route.store';
-import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { saveDraftNow } from '@/services/draft.service';
+import { routeTitle, type SavedRouteSummary } from '@/domain/saved-route';
 
 // A tab chosen on the folded phone sheet raises it (HomeView).
 const emit = defineEmits<{ 'tab-click': [] }>();
 const { folded = false } = defineProps<{ folded?: boolean }>();
 const routeStore = useRouteStore();
-// From the first stop to the last, by their streets ("Hahnhofweg 26 → Roseggerweg"); a loop by its start.
-const summary = computed(() => {
-  const stops = routeStore.waypoints.filter(point => point.coord);
-  if (stops.length < 2) return '';
-  const name = (point: typeof stops[number]) => (point.address ?? point.userInput).split(',')[0] || 'Punkt auf der Karte';
-  const [from, to] = [name(stops[0]), name(stops[stops.length - 1])];
-  return from === to ? `Runde ab ${from}` : `${from} → ${to}`;
-});
+// Where the route goes, by its stops' streets.
+const summary = computed(() => routeTitle(routeStore.waypoints));
 const creditsOpen = ref(false);
 const library = useRouteLibrary();
-const { hasDraft, error, message } = library;
-const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'GPX' }] as const;
+const { hasDraft, error, message, restorable, reading } = library;
+const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }] as const;
 const tab = ref<typeof tabs[number]['id']>('route');
 const sidebar = ref<HTMLElement | null>(null);
 const pill = ref<{ left: number; width: number } | null>(null);
@@ -107,15 +103,25 @@ onMounted(() => {
   if (body.value) resizes.observe(body.value);
 });
 onBeforeUnmount(() => resizes?.disconnect());
-// An imported track opened as the route no longer needs its comparison line.
-const reference = useGpxReferenceStore();
-async function openTrack() {
-  if (!reference.track) return;
-  await library.openTrack(reference.track);
-  if (error.value) return;
-  reference.remove();
-  await showRoute();
+// A GPX file opens as the route, chosen in the route's tools or dropped anywhere on the page; a dropped backup is read
+// into the saved routes.
+async function openGpx(file: File) {
+  if (await library.openGpx(file)) await showRoute();
 }
+async function restore(entry: SavedRouteSummary) {
+  if (await library.openRecent(entry)) await showRoute();
+}
+const dragFiles = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); };
+function dropFile(event: DragEvent) {
+  const file = event.dataTransfer?.files[0];
+  if (!file) return;
+  event.preventDefault();
+  if (/\.json$/i.test(file.name)) void library.importFile(file);
+  else if (/\.gpx$/i.test(file.name) || /xml/.test(file.type)) void openGpx(file);
+  else error.value = 'Hier lassen sich GPX-Dateien und RichiRoute-Sicherungen öffnen.';
+}
+onMounted(() => { window.addEventListener('dragover', dragFiles); window.addEventListener('drop', dropFile); });
+onBeforeUnmount(() => { window.removeEventListener('dragover', dragFiles); window.removeEventListener('drop', dropFile); });
 // A new route starts in its Start field, except on phones, where the keyboard would cover the map.
 const { mobile } = useDisplay();
 async function newRoute() {
@@ -162,6 +168,7 @@ async function showRoute(focus = 'tab-route') {
 .sidebar__messages { display: grid; gap: .5rem; max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
 .sidebar__messages:not(:empty) { padding-top: var(--space-2); }
 .sidebar__messages:not(:empty) { padding-block: .75rem; }
+.sidebar__reading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
 /* A thin scrollbar, shown while the pointer is over the panel or the focus is in it; its room stays, so the content keeps
    its width when the scrollbar comes and goes or the panel's height changes. */
 .sidebar__body { --gutter-end: calc(var(--gutter) - var(--scrollbar, 0px)); flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin;

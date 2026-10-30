@@ -2,6 +2,7 @@ import type { Coord } from './route-model.ts';
 import { buildGpxTrack, type GpxSegment } from './gpx-track.ts';
 
 export const gpxMaxBytes = 32 * 1024 * 1024;
+export const gpxTooLarge = `Die GPX-Datei darf höchstens ${gpxMaxBytes / 1024 / 1024} MB groß sein.`;
 const maxPoints = 250000;
 const gpxNamespaces = ['http://www.topografix.com/GPX/1/0', 'http://www.topografix.com/GPX/1/1'];
 // A tag, comment, CDATA section, processing instruction or text, matched only at the current position.
@@ -59,7 +60,7 @@ function resolve(name: string, namespaces: Map<string, string>): [string | null,
 
 // Scans the XML without a DOM so that parsing can run in a worker.
 export function parseGpx(raw: string, fileName: string) {
-  if (raw.length > gpxMaxBytes) throw new Error('Die GPX-Datei darf höchstens 32 MB groß sein.');
+  if (raw.length > gpxMaxBytes) throw new Error(gpxTooLarge);
   if (/<!DOCTYPE/i.test(raw)) throw new Error('GPX-Dateien mit Dokumenttyp-Deklarationen werden nicht unterstützt.');
   const stack: OpenElement[] = [], segments: GpxSegment[] = [];
   let namespace: string | null | undefined;
@@ -147,5 +148,5 @@ export function parseGpx(raw: string, fileName: string) {
     ? 'Diese GPX-Datei enthält nur Routenpunkte. Bitte einen GPX-Track mit aufgezeichnetem Streckenverlauf exportieren.'
     : 'Die GPX-Datei enthält keine Trackpunkte.');
   const name = (metadata ? metadataName : documentName) || (trackCount === 1 ? trackName : '') || fileName.replace(/\.gpx$/i, '');
-  return buildGpxTrack(name || 'GPX-Track', fileName, segments);
+  return buildGpxTrack(name || 'GPX-Track', segments);
 }

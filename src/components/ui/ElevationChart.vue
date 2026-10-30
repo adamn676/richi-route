@@ -1,21 +1,15 @@
 <template>
   <div class="elevation-chart">
-    <!-- The route's profile shows its heading in its own header. -->
-    <div v-if="heading" class="elevation-chart__heading">
-      <strong>Höhenprofil</strong>
-      <ElevationRange v-if="range" :track="track" :gradients="gradients" :range="range" @reset="range = null" />
-      <SlopeScale v-if="colorRuns.length" />
-    </div>
     <div class="elevation-chart__plot">
       <div class="elevation-chart__altitudes" aria-hidden="true">
         <span v-for="tick in altitudeTicks" :key="tick.value" :style="{ top: `${tick.y / height * 100}%` }">{{ formatMeters(tick.value) }}</span>
       </div>
-      <div ref="chart" class="elevation-chart__chart" role="slider" :tabindex="enabled ? 0 : -1" :aria-label="label"
+      <div ref="chart" class="elevation-chart__chart" role="slider" tabindex="0" aria-label="Position in der Route"
         aria-valuemin="0" :aria-valuemax="track.distanceMeters" :aria-valuenow="focus?.distance ?? 0" :aria-valuetext="readout"
-        :aria-disabled="!enabled" aria-description="Im Profil bewegen oder berühren; über einen Abschnitt ziehen (auf Touch nach langem Drücken) vergrößert ihn, Doppelklick oder Escape zeigt wieder alles. Pfeiltasten wählen die Position, Pos1 und Ende springen an die Endpunkte."
+        aria-description="Im Profil bewegen oder berühren; über einen Abschnitt ziehen (auf Touch nach langem Drücken) vergrößert ihn, Doppelklick oder Escape zeigt wieder alles. Pfeiltasten wählen die Position, Pos1 und Ende springen an die Endpunkte."
         @pointermove="move" @pointerdown="press" @pointerup="release" @pointerleave="leave" @pointercancel="cancel"
         @click="pin" @dblclick="showAll" @keydown="key" @focusout="leaveFocus">
-        <svg :viewBox="`0 0 300 ${height}`" preserveAspectRatio="none" role="img" :aria-label="chartLabel">
+        <svg :viewBox="`0 0 300 ${height}`" preserveAspectRatio="none" role="img" aria-label="Höhenprofil der Route">
           <defs><linearGradient :id="colorId" gradientUnits="userSpaceOnUse" x1="0" x2="300" y1="0" y2="0">
             <template v-for="(run, i) in runs" :key="run.from">
               <stop :offset="run.from" :stop-color="run.color" /><stop :offset="runs[i + 1]?.from ?? 1" :stop-color="run.color" />
@@ -25,7 +19,13 @@
           <clipPath :id="rangeClipId"><rect width="300" height="78" /></clipPath>
           <clipPath :id="rangeLineClipId"><rect y="-20" width="300" height="120" /></clipPath></defs>
           <path class="elevation-chart__grid" :d="gridPath" fill="none" stroke-dasharray="2 3" vector-effect="non-scaling-stroke" />
-          <template v-if="profile">
+          <!-- Zooming, the whole profile moves from the view before to the one chosen, which then shows in its own detail. -->
+          <template v-if="zooming && track.profile">
+            <g :clip-path="`url(#${rangeClipId})`"><path class="elevation-chart__area elevation-chart__zoom" :d="track.profile.areaPath" :fill="paint" /></g>
+            <g :clip-path="`url(#${rangeLineClipId})`"><path class="elevation-chart__line elevation-chart__zoom" :d="track.profile.path"
+              :stroke="paint" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" /></g>
+          </template>
+          <template v-else-if="profile">
             <g :clip-path="`url(#${range ? rangeClipId : clipId})`"><path class="elevation-chart__area" :d="profile.areaPath" :fill="paint" :transform="profileTransform" /></g>
             <g :clip-path="range ? `url(#${rangeLineClipId})` : undefined"><path class="elevation-chart__line" :d="profile.path" :transform="profileTransform"
               :stroke="paint" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" /></g>
@@ -44,7 +44,7 @@
           <span v-if="gradientText"><i class="elevation-chart__slope" :style="{ background: gradientColor(focus.gradient!) }" aria-hidden="true" />{{ gradientText }} %</span>
           <a v-if="pinned" class="elevation-chart__street-view" :href="streetViewUrl(focus.coordinate)" target="_blank" rel="noopener noreferrer"
             :aria-label="streetViewLabel" v-tooltip:top="streetViewLabel" :aria-disabled="streetView.missing"
-            @click="event => streetView.open(event, focus!.coordinate, onRoute ? focus!.distance : undefined)"><IconMan :size="16" aria-hidden="true" /></a>
+            @click="event => streetView.open(event, focus!.coordinate, focus!.distance)"><IconMan :size="16" aria-hidden="true" /></a>
         </div>
         <span v-if="!profile && !shown" class="elevation-chart__empty">Keine Höhendaten</span>
       </div>
@@ -56,19 +56,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { drawProfile, niceStep, profileWindow, smoothedHeight, type GpxTrack } from '../../domain/gpx-track';
 import { formatGradient, formatKm, formatMeters } from '@/utils/format';
-import SlopeScale from './SlopeScale.vue';
-import ElevationRange from './ElevationRange.vue';
 import { streetViewUrl } from '@/utils/street-view';
 import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
 import { gradientColor, gradientRuns, unknownGpxColor, type GpxFocus, type GradientRun } from '../../domain/gpx-inspection';
 
-// onRoute: distances are the planned route's, so Street View can mark its spot there (even where an out-and-back overlaps itself).
-const props = withDefaults(defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; gradients: (number | null)[][]; focus: GpxFocus | null;
-  enabled?: boolean; label: string; chartLabel: string; onRoute?: boolean; heading?: boolean }>(), { enabled: true, heading: true });
+// The distances are the planned route's, so Street View can mark its spot there (even where an out-and-back overlaps itself).
+const props = defineProps<{ track: GpxTrack; colorRuns: GradientRun[]; focus: GpxFocus | null }>();
 const emit = defineEmits<{ inspect: [distance: number | null] }>();
 const streetView = useStreetViewStore();
 const colorId = `elevation-colors-${useId()}`, clipId = `elevation-clip-${useId()}`;
@@ -78,7 +75,8 @@ const range = defineModel<{ from: number; to: number } | null>('range', { defaul
 watch(() => props.track, () => { range.value = null; });
 const view = computed(() => range.value ?? { from: 0, to: props.track.distanceMeters });
 const profile = computed(() => range.value ? drawProfile(props.track.samples, range.value.from, range.value.to) : props.track.profile);
-const runs = computed(() => range.value ? gradientRuns(props.track, range.value.from, range.value.to) : props.colorRuns);
+// Zooming, the whole profile moves, in its own colours.
+const runs = computed(() => range.value && !zooming.value ? gradientRuns(props.track, range.value.from, range.value.to) : props.colorRuns);
 const paint = computed(() => runs.value.length ? `url(#${colorId})` : unknownGpxColor);
 const focus = computed(() => props.focus);
 function selectDistance(distance: number | null) { emit('inspect', distance); }
@@ -96,10 +94,7 @@ function distanceAt(event: PointerEvent) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect(), { from, to } = view.value;
   return Math.min(to, Math.max(from, from + (event.clientX - rect.left) / rect.width * (to - from)));
 }
-const yAt = (elevation: number) => {
-  const { from, to } = elevationAxis.value!;
-  return 78 - (elevation - from) / (to - from) * 68;
-};
+const yAt = (elevation: number, { from, to }: { from: number; to: number } = elevationAxis.value!) => 78 - (elevation - from) / (to - from) * 68;
 // The chart's size decides how many axis marks fit.
 const chart = ref<HTMLElement>();
 const chartSize = ref({ width: 480, height: 136 });
@@ -145,12 +140,36 @@ const altitudeTicks = computed(() => {
   return Array.from({ length: Math.round((axis.to - axis.from) / axis.step) + 1 }, (_, i) => axis.from + i * axis.step)
     .map(value => ({ value, y: yAt(value) }));
 });
-// The profile is drawn from its lowest (y 78) to its highest point (y 10); this maps it onto the axis.
+// A profile is drawn from its lowest (y 78) to its highest point (y 10); its height and offset on an axis.
+function onAxis(drawn: { minimum: number; maximum: number }, axis: { from: number; to: number }) {
+  const scale = Math.max(1, drawn.maximum - drawn.minimum) / (axis.to - axis.from);
+  return { scale, y: yAt(drawn.minimum, axis) - 78 * scale };
+}
 const profileTransform = computed(() => {
-  const drawn = profile.value;
-  if (!drawn) return undefined;
-  const { from, to } = elevationAxis.value!, scale = Math.max(1, drawn.maximum - drawn.minimum) / (to - from);
-  return `matrix(1 0 0 ${scale} 0 ${yAt(drawn.minimum) - 78 * scale})`;
+  if (!profile.value) return undefined;
+  const { scale, y } = onAxis(profile.value, elevationAxis.value!);
+  return `matrix(1 0 0 ${scale} 0 ${y})`;
+});
+// The whole profile placed in a view and on its axis, as a CSS transform.
+function placeWhole(shown: { from: number; to: number }, axis: { from: number; to: number }) {
+  const width = shown.to - shown.from, { scale, y } = onAxis(props.track.profile!, axis);
+  return `matrix(${props.track.distanceMeters / width}, 0, 0, ${scale}, ${-shown.from / width * 300}, ${y})`;
+}
+// Zooming in and back out both move, as the map does with them; the motion is left out where it is not wanted.
+const zooming = ref<object | null>(null);
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+watch([view, elevationAxis, () => props.track], async ([shown, axis, track], [before, axisBefore, trackBefore]) => {
+  if (shown === before || track !== trackBefore || !axis || !axisBefore || !track.profile || reducedMotion.matches) return;
+  const frames = [{ transform: placeWhole(before, axisBefore) }, { transform: placeWhole(shown, axis) }];
+  const current = {};
+  zooming.value = current;
+  await nextTick();
+  const moves = [...chart.value?.querySelectorAll('.elevation-chart__zoom') ?? []].map(path => {
+    path.getAnimations().forEach(animation => animation.cancel());
+    return path.animate(frames, { duration: 400, easing: 'cubic-bezier(.2, 0, 0, 1)', fill: 'forwards' });
+  });
+  await Promise.all(moves.map(move => move.finished)).catch(() => {});
+  if (zooming.value === current) zooming.value = null;
 });
 const gridPath = computed(() => (altitudeTicks.value.length ? altitudeTicks.value.map(tick => tick.y) : [10, 44, 78])
   .map(y => `M0,${y} H300`).join(' ') + distanceTicks.value.map(tick => ` M${tick.x},10 V78`).join(''));
@@ -180,7 +199,7 @@ const streetViewLabel = computed(() => streetView.missing ? 'Kein Street View hi
 const fromTooltip = (event: Event) => event.target instanceof Element && event.target.closest('.elevation-chart__tooltip') !== null;
 function pin(event: MouseEvent) {
   if (chose) { chose = false; return; }
-  if (props.enabled && focus.value && !fromTooltip(event)) pinned.value = true;
+  if (focus.value && !fromTooltip(event)) pinned.value = true;
 }
 function leaveFocus(event: FocusEvent) { if (!chart.value?.contains(event.relatedTarget as Node | null)) selectDistance(null); }
 // Dragging with a mouse chooses a stretch to zoom into, as does dragging after a long press on touch, where a plain
@@ -189,7 +208,7 @@ const choosing = ref<{ start: number; end: number } | null>(null);
 let pressed: { x: number; distance: number; touch: boolean } | null = null, longPress: ReturnType<typeof setTimeout> | undefined;
 let chose = false;
 function move(event: PointerEvent) {
-  if (!props.enabled || fromTooltip(event)) return;
+  if (fromTooltip(event)) return;
   const distance = distanceAt(event);
   if (choosing.value) {
     choosing.value = { ...choosing.value, end: distance };
@@ -207,7 +226,7 @@ function move(event: PointerEvent) {
   selectDistance(distance);
 }
 function press(event: PointerEvent) {
-  if (!props.enabled || fromTooltip(event)) return;
+  if (fromTooltip(event)) return;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   chose = false;
   const distance = distanceAt(event);
@@ -241,7 +260,6 @@ function cancel() {
 }
 function leave(event: PointerEvent) { if (event.pointerType === 'mouse' && !pinned.value) selectDistance(null); }
 function key(event: KeyboardEvent) {
-  if (!props.enabled) return;
   if (event.key === 'Enter' && focus.value) { pinned.value = true; return; }
   if (event.key === 'Escape' && range.value) { range.value = null; return; }
   const { from, to } = view.value, distance = focus.value?.distance ?? from, step = (to - from) / 1000;
@@ -257,12 +275,8 @@ function key(event: KeyboardEvent) {
 </script>
 
 <style scoped>
-.elevation-chart { container-type: inline-size; display: flex; flex-direction: column; font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-/* The chart follows its heading 16 px below the baseline, as every section's content does. */
-.elevation-chart__heading { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; min-height: 1.6rem; }
-.elevation-chart__heading > strong { margin-right: auto; }
+.elevation-chart { display: flex; flex-direction: column; font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .elevation-chart strong { font-weight: 600; color: var(--text); white-space: nowrap; }
-@container (max-width: 20rem) { .slope-scale { display: none; } }
 /* In the tooltips' ink, at most half the chart wide, so it always fits on the side it opens to. The gradient carries
    the dot of its colour on the line. */
 .elevation-chart__tooltip { position: absolute; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; width: max-content;
@@ -282,7 +296,6 @@ function key(event: KeyboardEvent) {
 .elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
 .elevation-chart__altitudes span { position: absolute; right: var(--space-2); transform: translateY(-50%); white-space: nowrap; }
 .elevation-chart__chart { grid-column: 2; grid-row: 1; position: relative; touch-action: none; cursor: crosshair; border-radius: var(--radius); }
-.elevation-chart__chart[aria-disabled=true] { cursor: default; opacity: .6; }
 svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .elevation-chart__area { fill-opacity: .16; }
 .elevation-chart__grid { stroke: var(--border-input); stroke-opacity: .45; }

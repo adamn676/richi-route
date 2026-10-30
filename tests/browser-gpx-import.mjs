@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { chooseBasemap } from './browser-ui.mjs';
+import { same } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-import';
@@ -14,31 +14,41 @@ await context.addInitScript(origin => {
   if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street');
 }, origin);
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
+// Surfaces of an opened track are looked up by routing; that lookup failing leaves them unknown.
 await context.route('**/routing/**', route => { routingRequests++; return route.abort(); });
 const page = await context.newPage();
 page.on('pageerror', error => errors.push(error.message));
-const gpx = (body, namespace = 'http://www.topografix.com/GPX/1/1', version = '1.1') => `<gpx version="${version}" xmlns="${namespace}">${body}</gpx>`;
+const gpx = body => `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">${body}</gpx>`;
 const point = (lon, lat, ele = '') => `<trkpt lon="${lon}" lat="${lat}">${ele === '' ? '' : `<ele>${ele}</ele>`}</trkpt>`;
-const upload = async (name, contents) => {
-  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
-  await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
-  await page.waitForFunction(() => !document.querySelector('.gpx')?.textContent.includes('GPX wird eingelesen'));
-};
+const upload = (name, contents) => page.getByLabel('GPX-Datei auswählen', { exact: true })
+  .setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
+const reading = () => page.waitForFunction(() => !document.querySelector('.sidebar__reading'));
 const state = () => page.evaluate(() => {
   const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
-  return JSON.stringify({ points: store.points, legs: store.legs, undo: store.undoStack });
+  return JSON.parse(JSON.stringify({ points: store.points, legs: store.legs }));
 });
+// The route's legs in order: their kinds, statuses, lengths and the path and heights they make together.
+const opened = () => page.evaluate(() => {
+  const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+  const placed = store.points;
+  const legs = placed.slice(0, -1).map((point, i) => store.legs[`${point.id}:${placed[i + 1].id}`]);
+  return { kinds: placed.map(point => point.type === 'stop' ? point.kind : 'shape'), statuses: legs.map(leg => leg?.status),
+    coordinates: legs.flatMap((leg, i) => i ? leg.coordinates.slice(1) : leg.coordinates),
+    elevations: legs.flatMap((leg, i) => i ? leg.elevations.slice(1) : leg.elevations), distances: legs.map(leg => leg.distanceMeters) };
+});
+const routeName = () => page.getByLabel('Routenname', { exact: true }).inputValue();
 try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
 
-  // A GPX import must not alter an existing editable route or trigger routing.
+  // There is no separate GPX area: a file opens as the route, from the route's tools.
+  assert.equal(await page.getByRole('tab', { name: 'GPX', exact: true }).count(), 0);
   await page.evaluate(async () => {
     const { routingPolicyVersion } = await import('/src/config/routing-policy.ts');
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     const points = [
-      { id: 'stop-a', type: 'stop', kind: 'start', coord: [15.4, 47.1], address: null, userInput: 'Existing start', isGeocoding: false },
-      { id: 'stop-b', type: 'stop', kind: 'end', coord: [15.5, 47.2], address: null, userInput: 'Existing end', isGeocoding: false },
+      { id: 'stop-a', type: 'stop', kind: 'start', coord: [15.4, 47.1], address: 'Hahnhofweg 26, 8010 Graz', userInput: 'Hahnhofweg 26, 8010 Graz', isGeocoding: false },
+      { id: 'stop-b', type: 'stop', kind: 'end', coord: [15.5, 47.2], address: 'Roseggerweg, 8044 Graz', userInput: 'Roseggerweg, 8044 Graz', isGeocoding: false },
     ];
     store.restoreDraft({ version: 1, points, legs: { 'stop-a:stop-b': {
       id: 'stop-a:stop-b', fromId: 'stop-a', toId: 'stop-b', fromCoord: points[0].coord, toCoord: points[1].coord,
@@ -47,140 +57,106 @@ try {
     } } });
   });
   const original = await state();
+
+  // A failed file changes nothing.
+  await upload('invalid.gpx', gpx(`<trk><trkseg>${point(181, 47)}</trkseg></trk>`));
+  await page.getByRole('alert').waitFor();
+  await reading();
+  same(await state(), original);
+  await upload('oversized.gpx', Buffer.alloc(32 * 1024 * 1024 + 1));
+  await page.getByRole('alert').filter({ hasText: '32 MB' }).waitFor();
+  await upload('many.gpx', gpx(`<trk><trkseg>${'<trkpt lon="15" lat="47"/>'.repeat(250001)}</trkseg></trk>`));
+  await page.getByRole('alert').filter({ hasText: '250.000' }).waitFor();
+  same(await state(), original);
+
+  // Cancelling stops reading the file and its worker, and leaves no message.
+  await page.evaluate(() => {
+    const NativeWorker = Worker;
+    window.workersStopped = 0;
+    window.Worker = class extends NativeWorker { terminate() { window.workersStopped++; super.terminate(); } };
+  });
+  const big = gpx('<trk><trkseg>' + Array.from({ length: 200000 }, (_, i) => point(15.4 + i / 1e6, 47.1, 300)).join('') + '</trkseg></trk>');
+  await upload('big.gpx', big);
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+  await reading();
+  assert.equal(await page.evaluate(() => window.workersStopped), 1);
+  assert.deepEqual(await page.getByRole('alert').allInnerTexts(), []);
+  same(await state(), original);
+
+  // A long track replaces the route with its exact path and heights, in sections of about 5 km; the route before goes
+  // to the recently edited ones, and the confirmation brings it back.
   const length = 50000;
   const coords = Array.from({ length }, (_, i) => [15.4 + i / 500000, 47.1 + Math.sin(i / 1000) / 100]);
-  const longXml = gpx('<metadata><name>Große GPX-Runde</name></metadata><trk><name>Original</name><trkseg>' +
-    coords.map(([lon, lat], i) => point(lon, lat, 300 + i % 50)).join('') +
-    `</trkseg><trkseg>${point(16, 48, 600)}${point(16.01, 48.01)}</trkseg></trk>` +
-    `<trk><name>Einzelpunkt</name><trkseg>${point(16.1, 48.1, 700)}</trkseg></trk>`);
   const started = performance.now();
-  await upload('long.gpx', longXml);
-  await page.getByRole('heading', { name: 'Große GPX-Runde', exact: true }).waitFor();
-  await page.waitForFunction(async () => {
-    const map = document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map;
-    return map?.getSource('gpx-reference') && (await map.getSource('gpx-reference').getData()).features.length === 3;
-  });
-  const rendered = await page.evaluate(async () => {
-    const layer = document.querySelector('.gpx-reference-layer').__vueParentComponent;
-    const track = layer.props.track;
-    const geojson = await layer.props.map.getSource('gpx-reference').getData();
-    return { coords: geojson.features[0].geometry.coordinates, count: track.pointCount,
-      elevationCount: track.elevationCount, ascent: track.ascentMeters,
-      lastType: geojson.features[2].geometry.type, elevations: track.segments[0].elevations,
-      pathLength: track.profile.path.length, boundsVisible: track.bounds.every(coord => layer.props.map.getBounds().contains(coord)) };
-  });
-  assert.deepEqual(rendered.coords, coords);
-  assert.deepEqual(rendered.elevations, coords.map((_, i) => 300 + i % 50));
-  assert.equal(rendered.count, length + 3);
-  assert.equal(rendered.elevationCount, length + 2);
-  assert.equal(rendered.ascent, null);
-  assert.equal(rendered.lastType, 'Point');
-  assert.equal(rendered.boundsVisible, true);
-  assert.ok(rendered.pathLength < 25000);
-  assert.equal(await state(), original);
-  assert.equal(routingRequests, 0);
+  await upload('long.gpx', gpx('<metadata><name>Große GPX-Runde</name></metadata><trk><trkseg>' +
+    coords.map(([lon, lat], i) => point(lon, lat, 300 + i % 50)).join('') + '</trkseg></trk>'));
+  await page.getByText('Vorige Route liegt in „Zuletzt bearbeitet“.').waitFor();
   const importMs = Math.round(performance.now() - started);
-
-  await page.getByLabel('Track einblenden', { exact: true }).uncheck();
-  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('gpx-reference-line', 'visibility')), 'none');
-  await page.getByRole('button', { name: 'Auf Track zoomen', exact: true }).click();
-  assert.equal(await page.getByLabel('Track einblenden', { exact: true }).isChecked(), true);
-  await chooseBasemap(page, 'aerial');
-  await chooseBasemap(page, 'street');
-  assert.equal(await page.evaluate(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getLayoutProperty('gpx-reference-line', 'visibility')), 'visible');
-  await upload('invalid.gpx', gpx(`<trk><trkseg>${point(181, 47)}</trkseg></trk>`));
-  await page.locator('.gpx__error').waitFor();
-  assert.equal(await page.getByRole('heading', { name: 'Große GPX-Runde', exact: true }).count(), 1, 'Failed imports retain the previous reference');
-  assert.equal(await state(), original);
-
-  const limits = await page.evaluate(async () => {
-    const { useGpxReferenceStore } = await import('/src/stores/gpx-reference.store.ts');
-    const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
-    const store = useGpxReferenceStore(pinia);
-    const old = store.track;
-    await store.importFile(new File([new Uint8Array(32 * 1024 * 1024 + 1)], 'oversized.gpx'));
-    const fileLimit = store.error.includes('32 MB') && store.track === old;
-    const many = new File([`<gpx version="1.1"><trk><trkseg>${'<trkpt lon="15" lat="47"/>'.repeat(250001)}</trkseg></trk></gpx>`], 'many.gpx');
-    await store.importFile(many);
-    const pointLimit = store.error.includes('250.000') && store.track === old;
-    const file = new File(['<gpx version="1.1"><trk><trkseg><trkpt lon="0" lat="0"/></trkseg></trk></gpx>'], 'late.gpx');
-    let release;
-    file.arrayBuffer = () => new Promise(resolve => { release = resolve; });
-    const pending = store.importFile(file);
-    store.cancel();
-    release(new TextEncoder().encode('<gpx version="1.1"><trk><trkseg><trkpt lon="0" lat="0"/></trkseg></trk></gpx>').buffer);
-    await pending;
-    const cancelled = store.track === old && !store.loading;
-    const NativeWorker = Worker;
-    let stopped = 0, started;
-    const created = new Promise(resolve => { started = resolve; });
-    window.Worker = class extends NativeWorker {
-      constructor(...args) { super(...args); started(); }
-      terminate() { stopped++; super.terminate(); }
-    };
-    const parsing = store.importFile(many);
-    await created;
-    store.cancel();
-    await parsing;
-    window.Worker = NativeWorker;
-    return { fileLimit, pointLimit, cancelled, workerStopped: stopped === 1 && store.track === old && !store.loading && !store.error };
+  const track = await opened();
+  same(track.coordinates, coords, 'The route follows the track exactly');
+  same(track.elevations, coords.map((_, i) => 300 + i % 50));
+  assert.equal(track.kinds[0], 'start');
+  assert.equal(track.kinds.at(-1), 'end');
+  assert.ok(track.kinds.slice(1, -1).every(kind => kind === 'shape') && track.kinds.length > 3);
+  assert.ok(track.statuses.every(status => status === 'routed'));
+  assert.ok(track.distances.slice(0, -1).every(distance => distance >= 5000));
+  assert.equal(await routeName(), 'Große GPX-Runde', 'Saving suggests the track’s name');
+  const recentNames = () => page.evaluate(async () => {
+    const { recentRoutes } = await import('/src/services/recent-routes.service.ts');
+    return (await recentRoutes.list()).map(row => row.name);
   });
-  assert.deepEqual(limits, { fileLimit: true, pointLimit: true, cancelled: true, workerStopped: true });
+  assert.deepEqual(await recentNames(), ['Hahnhofweg 26 → Roseggerweg']);
+  const imported = await state();
+  await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).click();
+  await page.getByText('„Hahnhofweg 26 → Roseggerweg“ geöffnet.').waitFor();
+  same(await state(), original);
+  assert.deepEqual(await recentNames(), ['Große GPX-Runde'], 'The route brought back leaves the list as the other one joins it');
+  // The track went to the recently edited ones in turn.
+  await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).last().click();
+  await page.getByText('„Große GPX-Runde“ geöffnet.').waitFor();
+  same(await state(), imported);
 
-  await upload('long.gpx', longXml);
-  await page.locator('.gpx').evaluate(el => el.scrollIntoView({ block: 'start' }));
-  await page.screenshot({ path: output + '/desktop.png', fullPage: true });
+  // A file dropped anywhere on the map opens the same way.
+  const routeCoords = coords.filter((_, i) => i % 50 === 0);
+  await page.locator('#map').evaluate((map, xml) => {
+    const data = new DataTransfer();
+    data.items.add(new File([xml], 'runde.gpx', { type: 'application/gpx+xml' }));
+    map.dispatchEvent(new DragEvent('dragover', { dataTransfer: data, bubbles: true, cancelable: true }));
+    map.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  }, gpx('<trk><name>Runde</name><trkseg>' + routeCoords.map(([lon, lat], i) => point(lon, lat, 300 + i % 20)).join('') + '</trkseg></trk>'));
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points.length > 3);
+  await reading();
+  same((await opened()).coordinates, routeCoords);
+  assert.equal(await routeName(), 'Runde');
+  // The stops get their streets in the background.
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').waypoints.every(stop => stop.address !== null));
+  const runde = await state();
+  // Opening a file is one step in the route's history.
+  await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
+  same(await state(), imported);
+  await page.getByRole('button', { name: 'Wiederholen', exact: true }).click();
+  same(await state(), runde);
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').draftStatus === 'saved');
+  await page.reload();
+  await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').draftLoaded);
+  same(await state(), runde, 'An opened track stays the current route');
+  await page.screenshot({ path: output + '/desktop.png' });
+
+  // On a phone the sheet makes way for the opened route; the route's tools fit beside their heading.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Auf Track zoomen', exact: true }).click();
-  await page.locator('.gpx').evaluate(el => el.scrollIntoView({ block: 'start' }));
-  for (const button of await page.locator('.gpx button:visible').all()) {
+  await upload('single.gpx', gpx('<trk><name>Kurz</name><trkseg>' + routeCoords.slice(0, 20).map(([lon, lat]) => point(lon, lat, 300)).join('') + '</trkseg></trk>'));
+  await page.getByText('Vorige Route liegt in „Zuletzt bearbeitet“.').waitFor();
+  assert.match(await page.locator('.editor-layout').getAttribute('class'), /editor-layout--peek/);
+  await page.getByRole('button', { name: 'Bereich vergrößern', exact: true }).click();
+  for (const button of await page.locator('.planner__tools button').all()) {
     const box = await button.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= 390);
   }
-  await page.screenshot({ path: output + '/mobile.png', fullPage: true });
-  await page.getByRole('button', { name: 'Track entfernen', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.getSource('gpx-reference'));
-  assert.equal(await state(), original);
-  await upload('single.gpx', gpx(`<trk><trkseg>${point(15.4, 47.1, 0)}</trkseg></trk>`));
-  await page.getByRole('heading', { name: 'single', exact: true }).waitFor();
-  await page.reload();
-  await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Track entfernen', exact: true }).count(), 0, 'Reference is session-only');
-  assert.equal(routingRequests, 0);
-
-  // "Als Route öffnen" replaces the route with the exact track in sections of about 5 km, saves the previous route
-  // first and leaves the comparison line out; undo brings the previous route back.
-  const before = JSON.parse(await state());
-  const routeCoords = coords.filter((_, i) => i % 50 === 0);
-  await upload('runde.gpx', gpx('<trk><name>Runde</name><trkseg>' + routeCoords.map(([lon, lat], i) => point(lon, lat, 300 + i % 20)).join('') + '</trkseg></trk>'));
-  await page.getByRole('button', { name: 'Als Route öffnen', exact: true }).click();
-  await page.getByRole('tab', { name: 'Route', selected: true }).waitFor();
-  await page.getByText('Bisherige Route in „Meine Routen“ gesichert.').waitFor();
-  const opened = await page.evaluate(() => {
-    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
-    const placed = store.points;
-    const legs = placed.slice(0, -1).map((point, i) => store.legs[`${point.id}:${placed[i + 1].id}`]);
-    return { kinds: placed.map(point => point.type === 'stop' ? point.kind : 'shape'), statuses: legs.map(leg => leg.status),
-      coordinates: legs.flatMap((leg, i) => i ? leg.coordinates.slice(1) : leg.coordinates),
-      distances: legs.map(leg => leg.distanceMeters), reference: Boolean(document.querySelector('.gpx-reference-layer').__vueParentComponent.props.track) };
-  });
-  assert.deepEqual(opened.coordinates, routeCoords, 'The route follows the track exactly');
-  assert.equal(opened.kinds[0], 'start');
-  assert.equal(opened.kinds.at(-1), 'end');
-  assert.ok(opened.kinds.slice(1, -1).every(kind => kind === 'shape') && opened.kinds.length > 3);
-  assert.ok(opened.statuses.every(status => status === 'routed'));
-  assert.ok(opened.distances.slice(0, -1).every(distance => distance >= 5000));
-  assert.equal(opened.reference, false);
-  // On a phone the sheet makes way for the opened route; its handle brings the route panel back.
-  assert.match(await page.locator('.editor-layout').getAttribute('class'), /editor-layout--peek/);
-  await page.getByRole('button', { name: 'Bereich vergrößern', exact: true }).click();
-  await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
-  const restored = JSON.parse(await state());
-  assert.deepEqual([restored.points, restored.legs], [before.points, before.legs]);
+  await page.screenshot({ path: output + '/mobile.png' });
   assert.deepEqual(errors, []);
-  await writeFile(output + '/report.json', JSON.stringify({ points: length + 3, importAndReadbackMs: importMs, svgCharacters: rendered.pathLength,
-    routingRequests, exactGeometryAndElevations: true, limits, passed: true }, null, 2) + '\n');
-  console.log('GPX import: worker parsing, exact long-track geometry, segment gaps, partial elevation, controls, limits, cancellation, mobile, unchanged editor and opening as a route passed.');
+  await writeFile(output + '/report.json', JSON.stringify({ points: length, importMs, routingRequests, exactGeometryAndElevations: true, passed: true }, null, 2) + '\n');
+  console.log('GPX import: opening as the route with exact geometry and heights, recently edited and restore, undo, drop on the map, limits, cancellation, reload and mobile passed.');
 } finally {
   await context.close();
   await browser.close();

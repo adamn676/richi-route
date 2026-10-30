@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildGpxTrack, drawProfile } from '../src/domain/gpx-track.ts';
-import { colorGpxTrack, elevationColors, gpxEndpoints, gpxGradients, gradientBands, gradientColor, gradientRuns, inspectGpxDistance, sectionStats,
-  trackCoordinates, unknownGpxColor } from '../src/domain/gpx-inspection.ts';
+import { gpxGradients, gradientColor, gradientRuns, inspectGpxDistance, sectionStats, trackCoordinates } from '../src/domain/gpx-inspection.ts';
 
 const segment = (coordinates, elevations) => ({ name: '', coordinates, elevations });
-const build = (...segments) => buildGpxTrack('Inspection', 'test.gpx', segments);
+const build = (...segments) => buildGpxTrack('Inspection', segments);
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
 
 test('gradient uses distance and direction, without crossing missing heights or segments', () => {
@@ -73,46 +72,6 @@ test('inspection follows the short path across the date line', () => {
   const focus = inspectGpxDistance(track, gpxGradients(track), track.distanceMeters / 2);
   close(focus.coordinate[0], 180);
   close(focus.elevation, 15);
-});
-
-test('colour modes preserve vertices and segment gaps and mark unknown sections', () => {
-  const track = build(
-    segment([[15, 47], [15.01, 47], [15.02, 47], [15.03, 47], [15.04, 47]], [0, 100, null, 200, 300]),
-    segment([[16, 48], [16.01, 48]], [500, 500]),
-    segment([[17, 48]], [null]),
-  );
-  assert.strictEqual(colorGpxTrack(track, 'plain', []), track.geojson);
-  for (const mode of ['elevation', 'gradient']) {
-    const colored = colorGpxTrack(track, mode, gpxGradients(track));
-    assert.ok(colored.features.some(f => f.properties.color === unknownGpxColor));
-    track.geojson.features.forEach((feature, index) => {
-      const parts = colored.features.filter(f => f.properties.segment === index);
-      if (feature.geometry.type === 'Point') assert.deepEqual(parts[0].geometry, feature.geometry);
-      else {
-        const coordinates = parts.flatMap((part, i) => part.geometry.coordinates.slice(i ? 1 : 0));
-        assert.deepEqual(coordinates, feature.geometry.coordinates);
-      }
-    });
-  }
-  const flat = build(segment([[15, 47], [16, 47]], [30, 30]));
-  assert.equal(colorGpxTrack(flat, 'elevation', []).features[0].properties.color, elevationColors[2]);
-  assert.equal(colorGpxTrack(flat, 'gradient', gpxGradients(flat)).features[0].properties.color, gradientBands[0].color);
-});
-
-test('long tracks bound colour sections without dropping geometry', () => {
-  const length = 100000;
-  const track = build(segment(Array.from({ length }, (_, i) => [i / 1000, 47]), Array.from({ length }, (_, i) => i % 100)));
-  const colored = colorGpxTrack(track, 'elevation', []);
-  assert.ok(colored.features.length <= 5001);
-  assert.equal(colored.features.reduce((n, f) => n + f.geometry.coordinates.length - 1, 1), length);
-});
-
-test('endpoints distinguish open tracks, closed loops and isolated points', () => {
-  const track = build(segment([[15, 47], [16, 47]], [0, 0]),
-    segment([[17, 47], [18, 47], [17, 47]], [0, 0, 0]), segment([[19, 47]], [0]));
-  const endpoints = gpxEndpoints(track).features;
-  assert.deepEqual(endpoints.map(f => f.properties.icon), ['gpx-start', 'gpx-end', 'gpx-both', 'gpx-both']);
-  assert.deepEqual(endpoints.map(f => f.geometry.coordinates), [[15, 47], [16, 47], [17, 47], [19, 47]]);
 });
 
 test('a zoomed stretch is drawn, coloured and measured from its own points', () => {

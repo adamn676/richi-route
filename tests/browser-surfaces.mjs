@@ -27,7 +27,7 @@ async function snapshot(page) {
 async function checkFocus(page, surface) {
   await page.waitForFunction(() => {
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
-    return map.isSourceLoaded('surface-focus-source') && map.queryRenderedFeatures({ layers: ['surface-focus-line'] }).length;
+    return !map.isMoving() && map.isSourceLoaded('surface-focus-source') && map.queryRenderedFeatures({ layers: ['surface-focus-line'] }).length;
   });
   assert.equal(await page.evaluate(async surface => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
@@ -57,17 +57,42 @@ try {
   const original = await snapshot(page);
   const details = page.getByRole('region', { name: 'Untergrund' });
   assert.match(await details.locator('.surfaces__totals').textContent(),
-    /^Befestigt293,6\skm.*Vermutlich befestigt44,1\skm.*Kopfsteinpflaster\/Holzbrücke92\sm.*Unbefestigt382\sm.*Unbekannt232\sm/);
+    /^Befestigt293,6\skm.*Vermutlich befestigt44\skm.*Kopfsteinpflaster\/Holzbrücke89\sm.*Unbefestigt364\sm.*Unbekannt232\sm/);
+  // Gravel of a few metres at junctions is no section: the unpaved part is one stretch, with nothing to step through.
   await details.getByRole('button', { name: /Unbefestigt/ }).click();
   await checkFocus(page, 'unpaved');
-  assert.equal(await details.locator('.surfaces__sections button').count(), 4);
+  assert.equal(await details.locator('.surfaces__sections button').count(), 1);
   assert.match(await details.locator('.surfaces__sections').textContent(), /364\sm/);
+  const heading = details.locator('.surfaces__step h4');
+  assert.equal(await heading.textContent(), 'Unbefestigt · 1 Abschnitt');
+  assert.equal(await details.getByRole('button', { name: 'Nächster Abschnitt', exact: true }).count(), 0);
+  // Correcting starts where the section is shown.
+  const view = () => page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.getBounds().toArray().flat().map(n => n.toFixed(6)).join());
+  const before = await view();
+  await details.getByRole('button', { name: 'Untergrund korrigieren', exact: true }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await view(), before, 'Starting a correction keeps the map where it is');
+  await details.getByRole('button', { name: 'Untergrund korrigieren', exact: true }).click();
+  await details.getByRole('button', { name: /Unbefestigt/ }).click();
+  await details.getByRole('button', { name: /Unbefestigt/ }).click();
+  await checkFocus(page, 'unpaved');
   await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.areTilesLoaded());
   await page.screenshot({ path: new URL('desktop.png', directory).pathname });
   await details.getByRole('button', { name: /Vermutlich befestigt/ }).click();
   assert.equal(await details.locator('.surfaces__sections button').count(), 10);
   await details.getByRole('button', { name: 'Weitere Abschnitte', exact: true }).click();
   assert.equal(await details.locator('.surfaces__sections button').count(), 20);
+  // The sections one after another, round from the last to the first; the map glides to each.
+  const count = Number((await heading.textContent()).match(/^Vermutlich befestigt · 1 von (\d+)$/)[1]);
+  await details.getByRole('button', { name: 'Nächster Abschnitt', exact: true }).click();
+  assert.equal(await page.evaluate(() => document.querySelector('.route-layer').__vueParentComponent.props.map.isMoving()), true, 'The map glides');
+  await checkFocus(page, 'likelyPaved');
+  assert.equal(await heading.textContent(), `Vermutlich befestigt · 2 von ${count}`);
+  await details.getByRole('button', { name: 'Voriger Abschnitt', exact: true }).click();
+  await details.getByRole('button', { name: 'Voriger Abschnitt', exact: true }).click();
+  await checkFocus(page, 'likelyPaved');
+  assert.equal(await heading.textContent(), `Vermutlich befestigt · ${count} von ${count}`);
+  assert.equal(await details.locator('.surfaces__sections button[aria-pressed=true]').count(), 1, 'The list grows to show the last section');
   await details.locator('.surfaces__sections button[aria-pressed=true]').click();
   await page.waitForFunction(async () => {
     const map = document.querySelector('.route-layer').__vueParentComponent.props.map;

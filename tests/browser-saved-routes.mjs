@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { same } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/saved-routes';
@@ -17,6 +18,7 @@ await context.route('**/routing/**', route => { requests++; return route.abort()
 context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
 const page = await context.newPage();
 const list = page.locator('.library__list');
+const recent = page.locator('.library__recent');
 const entry = name => list.getByRole('listitem', { name, exact: true });
 const idle = () => page.waitForFunction(() => !document.querySelector('.library')?.textContent.includes('Wird aktualisiert'));
 const state = () => page.evaluate(async () => {
@@ -78,28 +80,42 @@ try {
   const backup = JSON.parse(await readFile(output + '/roundtrip.richiroute.json', 'utf8'));
   assert.deepEqual(backup.draft, JSON.parse(original));
 
+  // A changed route replaced without saving goes to the recently edited ones, not to the saved routes; the confirmation
+  // brings it back.
   await setQuery('Ungesicherte Änderung');
   const changed = await state();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
-  await waitRows(2);
+  await page.getByText('Vorige Route liegt in „Zuletzt bearbeitet“.').waitFor();
+  await idle();
   assert.ok(JSON.parse(await state()).points.every(p => p.coord === null));
   const recovered = await page.evaluate(async () => {
-    const { routeLibrary } = await import('/src/services/route-library.service.ts');
-    const summary = (await routeLibrary.list()).find(row => row.name.startsWith('Entwurf ·'));
-    return (await routeLibrary.read(summary.id)).payload;
+    const { recentRoutes } = await import('/src/services/recent-routes.service.ts');
+    const kept = await recentRoutes.list();
+    return { names: kept.map(row => row.name), payload: await recentRoutes.read(kept[0].id) };
   });
-  assert.deepEqual(JSON.parse(recovered), JSON.parse(changed));
+  assert.deepEqual(recovered.names, ['Lange Runde']);
+  same(JSON.parse(recovered.payload), JSON.parse(changed));
+  await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).click();
+  await page.getByText('„Lange Runde“ geöffnet.').waitFor();
+  same(JSON.parse(await state()), JSON.parse(changed));
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
+  await idle();
+  assert.equal(await recent.count(), 0, 'A route brought back leaves the recently edited ones');
+  assert.equal(await list.getByRole('listitem').count(), 1);
+  await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
+  await idle();
   // A new route starts on the Route tab.
   assert.equal(await page.getByRole('tab', { name: 'Route', exact: true }).getAttribute('aria-selected'), 'true');
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
+  await recent.getByRole('listitem', { name: 'Lange Runde', exact: true }).waitFor();
   await entry('Lange Runde').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await idle();
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(original));
+  same(JSON.parse(await state()), JSON.parse(original));
   assert.equal(requests, 0, 'Opening current geometry makes no routing requests');
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await idle();
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  assert.equal(await list.getByRole('listitem').count(), 2, 'An unchanged saved route needs no recovery duplicate');
+  assert.equal(await recent.getByRole('listitem').count(), 1, 'An unchanged saved route needs no recovery copy');
   await entry('Lange Runde').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await idle();
   assert.equal(await page.getByRole('tab', { name: 'Route', exact: true }).getAttribute('aria-selected'), 'true', 'An opened route shows on the Route tab');
@@ -108,33 +124,33 @@ try {
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await page.getByRole('button', { name: 'Änderungen speichern', exact: true }).click();
   await idle();
-  assert.equal(await list.getByRole('listitem').count(), 2, 'Saving an opened route updates it');
+  assert.equal(await list.getByRole('listitem').count(), 1, 'Saving an opened route updates it');
   const edited = await state();
   await more(entry('Lange Runde'), 'Duplizieren');
-  await waitRows(3);
+  await waitRows(2);
   await more(entry('Lange Runde (Kopie)'), 'Umbenennen');
   await page.getByLabel('Neuer Routenname', { exact: true }).fill('Zweite Runde');
   await page.getByRole('button', { name: 'Namen speichern', exact: true }).click();
   await entry('Zweite Runde').waitFor();
   await more(entry('Zweite Runde'), 'Löschen');
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
-  assert.equal(await list.getByRole('listitem').count(), 3);
+  assert.equal(await list.getByRole('listitem').count(), 2);
   await more(entry('Zweite Runde'), 'Löschen');
   await page.getByRole('button', { name: 'Endgültig löschen', exact: true }).click();
-  await waitRows(2);
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
+  await waitRows(1);
+  same(JSON.parse(await state()), JSON.parse(edited));
 
   await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute.json');
-  await waitRows(3);
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(edited), 'Import adds a route without replacing the current draft');
+  await waitRows(2);
+  same(JSON.parse(await state()), JSON.parse(edited), 'Import adds a route without replacing the current draft');
   await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
   await page.getByRole('alert').filter({ hasText: 'Ungültige oder nicht unterstützte' }).waitFor();
-  assert.equal(await list.getByRole('listitem').count(), 3);
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
+  assert.equal(await list.getByRole('listitem').count(), 2);
+  same(JSON.parse(await state()), JSON.parse(edited));
   await page.reload();
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  await waitRows(3);
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(edited));
+  await waitRows(2);
+  same(JSON.parse(await state()), JSON.parse(edited));
   assert.equal(requests, 0);
 
   // Real IndexedDB transactions must reject stale mutations and roll back both stores on failure.
@@ -199,26 +215,28 @@ try {
 
   // A failed recovery save must leave the displayed draft untouched.
   await page.evaluate(() => {
-    window.originalAdd = IDBObjectStore.prototype.add;
-    IDBObjectStore.prototype.add = function(...args) {
-      if (this.name === 'payloads') throw new DOMException('Full', 'QuotaExceededError');
-      return window.originalAdd.apply(this, args);
+    window.originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === 'recentSummaries') throw new DOMException('Full', 'QuotaExceededError');
+      return window.originalPut.apply(this, args);
     };
   });
   const beforeFailure = await state();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Browserspeicher ist voll' }).waitFor();
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(beforeFailure));
-  await page.evaluate(() => { IDBObjectStore.prototype.add = window.originalAdd; });
+  same(JSON.parse(await state()), JSON.parse(beforeFailure));
+  await page.evaluate(() => { IDBObjectStore.prototype.put = window.originalPut; });
   await page.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
   await idle();
 
   // Edits made while a recovery transaction is pending must not be replaced on completion.
   await page.evaluate(() => {
     window.originalTransaction = IDBDatabase.prototype.transaction;
-    IDBDatabase.prototype.transaction = function(stores, ...args) {
-      const tx = window.originalTransaction.call(this, stores, ...args);
-      if (stores.includes('payloads')) {
+    window.holdRecovery = true;
+    IDBDatabase.prototype.transaction = function(stores, mode, ...args) {
+      const tx = window.originalTransaction.call(this, stores, mode, ...args);
+      if ([stores].flat().includes('recentSummaries') && mode === 'readwrite' && window.holdRecovery) {
+        window.holdRecovery = false;
         IDBDatabase.prototype.transaction = window.originalTransaction;
         tx.addEventListener('complete', event => {
           event.stopImmediatePropagation();
@@ -233,8 +251,8 @@ try {
   await setQuery('Bearbeitung während des Wechsels');
   const duringSwitch = await state();
   await page.evaluate(() => window.releaseRecovery());
-  await page.getByRole('alert').filter({ hasText: 'während des Speicherns geändert' }).waitFor();
-  assert.deepEqual(JSON.parse(await state()), JSON.parse(duringSwitch));
+  await page.getByRole('alert').filter({ hasText: 'während des Wechsels geändert' }).waitFor();
+  same(JSON.parse(await state()), JSON.parse(duringSwitch));
 
   const second = await context.newPage();
   await second.goto(origin);
@@ -264,11 +282,10 @@ try {
     .waypoints.every(point => point.address === 'Testweg, 8010 Graz' && point.userInput === point.address));
   await idle();
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  const rows = await list.getByRole('listitem').count();
   await page.getByRole('button', { name: 'Neue Route', exact: true }).click();
   await idle();
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  assert.equal(await list.getByRole('listitem').count(), rows, 'Filled-in street names need no recovery copy');
+  assert.equal(await recent.getByRole('listitem', { name: 'Ohne Straßennamen', exact: true }).count(), 0, 'Filled-in street names need no recovery copy');
   assert.equal(await page.evaluate(async () => {
     const { routeLibrary } = await import('/src/services/route-library.service.ts');
     return (await routeLibrary.read((await routeLibrary.list()).find(row => row.name === 'Ohne Straßennamen').id)).payload;
@@ -283,7 +300,7 @@ try {
     assert.ok(box && box.x >= 0 && box.x + box.width <= 390, 'Saved-route controls fit mobile width');
   }
   await page.screenshot({ path: output + '/mobile.png', fullPage: true });
-  await page.locator('#panel-library .section-heading').evaluate(element => element.scrollIntoView({ block: 'start' }));
+  await page.locator('#panel-library .section-heading').filter({ hasText: 'Gespeicherte Routen' }).evaluate(element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: output + '/mobile-list.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Saved routes: long-route fidelity, update/copy/rename/delete, recovery, backup import/export, reload, cross-tab conflicts, atomic rollback and mobile controls passed.');

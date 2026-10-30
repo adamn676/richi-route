@@ -411,9 +411,8 @@ right; a compass joins them once the map is turned or tilted and turns it back
 north. Phones zoom with two fingers and show only the compass there. The map
 shows no more than the local map data's area, Europe: zooming out stops once
 Europe fills the map, and the world never repeats. Opening an example, a saved
-route or a GPX track as a route, or starting or completing one by address, also
-shows the whole route (or the first stop alone): nearby the map glides there,
-from farther away it jumps. In Street View mode a figure follows the pointer and
+route or a GPX track, or starting or completing one by address, also
+shows the whole route (or the first stop alone), gliding there in one second. In Street View mode a figure follows the pointer and
 snaps onto the route within 16 px, the route pauses its editing, and a click
 opens Street View at the nearest panorama; the figure turns grey where Google
 has none within 50 m. Escape or the button again cancels. The bottom of the
@@ -834,10 +833,13 @@ with its folder icon, which shows the route on the **Route** tab; its menu
 duplicates, renames or deletes it. Reloading restores the draft; open
 its saved entry again before updating that entry.
 
-Opening another route, starting **Neue Route**, or opening a GPX track as a route
-first saves a changed route as an **Entwurf** entry. A start alone is not kept,
-nor a suggested loop that is only being looked at. If saving fails or the editor changes
-during that save, the switch stops and the current route stays open. Saving or
+Opening another route, starting **Neue Route**, or opening a GPX track puts an
+unsaved route under **Zuletzt bearbeitet** (the last three, for seven days), and
+the confirmation's **Wiederherstellen** brings it back. Each entry opens again,
+which takes it off that list, or saves to **Meine Routen**. The same route kept
+twice shows once. A start alone is not kept, nor a suggested loop that is only
+being looked at. If keeping it fails or the editor changes meanwhile, the switch
+stops and the current route stays open. Saving or
 deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
@@ -862,16 +864,13 @@ turn instructions. Physical cycling-computer imports have not been tested.
 
 ## Inspect the route elevation profile
 
-The planned route and imported GPX use the same interactive chart. The route's
-profile spans the width of the map below it, shows **Distanz** and
+The route's profile spans the width of the map below it, shows **Distanz** and
 **Höhenmeter** in its header, without a title (the only place for them, which
 stays in view with the sidebar or sheet folded; the distance is approximate
-while sections are still straight), and can be hidden with its arrow button; the
-GPX profile stays in the **GPX** tab. Move the pointer or drag a finger across
+while sections are still straight), and can be hidden with its arrow button. Move the pointer or drag a finger across
 **Höhenprofil** to see distance, elevation and estimated gradient beside the
 cursor, with the corresponding position marked on the map. The line and a light
-tint beneath it are coloured by climb, with the bands of the GPX **Steigung**
-track colours and a scale beside the figures, laid out as they are; descents
+tint beneath it are coloured by climb; descents
 share the colour of flat ground. Each part of the line shows the steepest climb
 held there over about its own width on the screen (100 to 500 m), so a long
 route keeps its passes visible instead of averaging them away with the flat
@@ -893,7 +892,7 @@ the profile shows its own detail, axes and colours, the header its length,
 climbing, mean gradient and steepest climb held over 100 m, the axis its exact
 ends, and the map frames its course while the rest of the route fades. A double
 click, Escape or the zoom-out button shows the whole profile again; so does a
-changed route. The GPX profile zooms the same way. A right-click on the map, or
+changed route. A right-click on the map, or
 a long press on phones, offers Street View for any point. Without a key these
 links open Google Maps in a new tab; with a Google Maps Embed API key, Street
 View appears in place of the map and closes with ✕ or Escape. Opened on the
@@ -926,67 +925,32 @@ including mouse, touch, keyboard, out-and-back legs, missing heights and stale
 positions. It also checks the marker across all three map modes. Reports and
 screenshots go to `.cache/profile-hover/`.
 
-## Import a GPX track
+## Open a GPX track
 
-**GPX-Datei öffnen** (or dropping a file on the **GPX** tab) reads GPX 1.0 and 1.1 tracks locally and displays them as a
-separate reference layer for comparison. Importing leaves the editable route, its undo history,
-saved routes and GPX export unchanged. It sends no routing requests.
-
-**Als Route öffnen** then makes the track the editable route, with the usual
-map line, profile, distance, ascent and surfaces. An unsaved current route is
-saved to **Meine Routen** first, the reference line is removed, and
-**Rückgängig** returns to the previous route. The route keeps the track's exact
+**GPX-Datei öffnen**, or dropping a file anywhere on the map, reads GPX 1.0 and
+1.1 tracks locally and makes the track the editable route, with the usual map
+line, profile, distance, ascent and surfaces. An unsaved current route goes to
+**Zuletzt bearbeitet** first, and **Rückgängig** returns to it as well. A file
+that cannot be read changes nothing. The route keeps the track's exact
 coordinates and heights, cut into sections of about 5 km (none shorter than
 2.5 km) at shaping points, so an edit re-plans only the section it touches.
 Shaping points show from zoom 11, so long routes are not covered in dots. Gaps
-between track segments are routed. Surfaces are then looked up in the
-background, as with the GPX colour mode **Untergrund**, with progress shown on the map;
-sections edited meanwhile keep their own. Saving suggests the track's name. Parsing
+between track segments are routed. Saving suggests the track's name. Parsing
 runs in a background worker, so large files keep the page responsive, and
-**Abbrechen** stops it. The icons beside the track's name show or hide it, fit the map to it, open
-another file and remove it. A successful import replaces the previous
-reference; an invalid file leaves it intact.
+**Abbrechen** stops it.
 
-All tracks and nonempty track segments in the file are retained separately.
-Single-point segments appear as dots. Distance is calculated along each segment,
-without adding connections across gaps. Missing elevation remains unknown;
-ascent is shown only when all elevations are present. A rise counts once it
-climbs more than 2 m above the last low, and then in full, so small wobbles are
-ignored but no climb is cut short. Planned routes filter the router's heights
-the same way with 5 m, since its terrain grid steps by whole metres; BRouter's
-own filtered ascent runs about a tenth low. On a 98 km ride with 1,673 m by the
-Garmin's barometer, the file gives 1,663 m and the same path routed 1,685 m
-(BRouter: 1,490 m). The small elevation chart reduces display samples for long tracks,
-while stored coordinates, elevations and the map source retain every point.
-Date-line crossings shift display longitudes by whole worlds without changing
-the imported coordinates.
+Missing elevation remains unknown. A rise counts once it climbs more than 2 m
+above the last low, and then in full, so small wobbles are ignored but no climb
+is cut short. Planned routes filter the router's heights the same way with 5 m,
+since its terrain grid steps by whole metres; BRouter's own filtered ascent runs
+about a tenth low. On a 98 km ride with 1,673 m by the Garmin's barometer, the
+file gives 1,663 m and the same path routed 1,685 m (BRouter: 1,490 m).
 
-Arrows follow the recorded point order. Each segment has **S** and **Z** markers
-for its start and finish. A closed segment or single point uses **S/Z**. Move
-across the elevation profile with a mouse or finger to show that position on the
-map. The chart itself supports keyboard input: arrow keys move the position,
-Page Up/Down move further, Home/End select the endpoints and Escape clears it.
-There is no separate slider. A floating readout shows distance, available
-elevation and estimated gradient. Screen readers also receive the segment
-number. Crossing a segment
-boundary jumps to the next segment without inventing a connecting line.
-
-**Trackfarbe** offers a plain line, elevation bands relative to the track's
-minimum and maximum, or fixed gradient bands. Each colour mode has a legend;
-grey means unknown. Gradients use a roughly 50 m window within continuous
-elevation data. Sparse points can extend that window; spans shorter than 10 m
-have no gradient estimate. These are estimates from the file's heights, so noisy
-recordings can still distort them. Colour sections use at least 50 m, increasing
-for very long tracks to limit rendering work, while preserving all vertices.
-Profile movement updates only the map dot, without rebuilding the track.
-
-The **Untergrund** colour mode starts optional surface lookup using the existing local
-BRouter service. Nothing is requested during import. Lookup traces four
-portions at a time and leaves two routing slots free; queued route edits take
-priority. A 98 km recorded ride takes about 4 s. Switching away from this colour mode,
-hiding the track, cancelling, removing or replacing it stops outstanding work.
-Completed results stay in memory for this track; switching back reuses them.
-Service errors preserve completed portions and offer a retry.
+Surfaces are then looked up in the background using the local BRouter service,
+with progress shown on the map; sections edited meanwhile keep their own. Lookup
+traces four portions at a time and leaves two routing slots free; queued route
+edits take priority. A 98 km recorded ride takes about 4 s. Opening another file
+stops outstanding work. Service errors leave the rest unknown.
 
 This is conservative route-following with geometry checks, not a probabilistic
 GPS map matcher. Each request traces a portion of about 2 km through a recorded
@@ -995,45 +959,34 @@ the trace on detours. Edges longer than 200 m are left unknown. The trace must
 follow the original in travel order within 8 m: both lines are walked forwards
 in 5 m steps and compared by their discrete Fréchet distance, so GPS jitter and
 small length differences do not matter. A portion that fails is split in half
-and traced again, down to 150 m. A known material is copied only if it covers
-the whole original edge; transitions within an edge remain unknown. This
-preserves every original coordinate and segment break. Distances and percentages
-use the original track, including unknown parts. On a 98 km recorded ride, the
-previous fixed check found surfaces for 31.5 km; this one finds 76.8 km, out of
-about 83 km whose roads carry surface tags.
+and traced again, down to 150 m. Each step of the track takes the surface that
+covers most of it; a step mostly without a known surface stays unknown. This
+preserves every original coordinate and segment break. On a 98 km recorded
+ride, the previous fixed check found surfaces for 31.5 km; this one finds
+76.8 km, out of about 83 km whose roads carry surface tags.
 
 The checks reject detours, reversed paths and missing loop legs, but closely
 parallel roads and noisy recordings can still produce a wrong or missing
-estimate. Surface colours are therefore labelled as estimates. Road materials
-come from BRouter's OSM tags, not the online basemap. The multi-point request
-format is documented in [BRouter's server handler](https://github.com/abrensch/brouter/blob/master/brouter-server/src/main/java/btools/server/request/ServerHandler.java).
+estimate. Road materials come from BRouter's OSM tags, not the online basemap.
+The multi-point request format is documented in [BRouter's server handler](https://github.com/abrensch/brouter/blob/master/brouter-server/src/main/java/btools/server/request/ServerHandler.java).
 
-The reference lasts for the current page session and is not included in saved
-routes or RichiRoute backups. Reimport the original GPX after reloading, or open
-it as a route to keep it. Files containing only route points or waypoints
-are rejected with an explanation because they do not supply a track geometry.
-Time, extension and waypoint fields are not displayed. Limits are 32 MB and
-250,000 trackpoints per file. Malformed XML, invalid coordinates or elevations,
-unsupported versions and document-type declarations are rejected.
+Files containing only route points or waypoints are rejected with an
+explanation because they do not supply a track geometry. Time, extension and
+waypoint fields are not used. Limits are 32 MB and 250,000 trackpoints per file.
+Malformed XML, invalid coordinates or elevations, unsupported versions and
+document-type declarations are rejected.
 
 `npm test` covers XML validation, versions and namespaces. Run
 `node tests/browser-gpx-import.mjs` against the frontend to check worker parsing,
-long tracks, partial elevation, segment boundaries, cancellation, unchanged
-editor data and opening as a route (exact geometry, sections, saved previous
-route, undo). It uses synthetic GPX data and does not need a routing engine;
-`ROUTE_TEST_ORIGIN` selects a different frontend port. Screenshots and a report
-go to `.cache/gpx-import/`.
+limits, cancellation, a 50,000-point track (exact geometry, sections), the route
+kept under **Zuletzt bearbeitet** and brought back, undo, dropping on the map,
+reload and the phone layout. It uses synthetic GPX data and does not need a
+routing engine; `ROUTE_TEST_ORIGIN` selects a different frontend port.
+Screenshots and a report go to `.cache/gpx-import/`.
 
-Run `node tests/browser-gpx-inspection.mjs` to check direction markers, colour
-modes, mouse, keyboard and touch inspection, missing elevations, style changes
-and a 50,000-point track. It also checks that moving across the profile does not
-resend full track geometry, and that profile markers, colours and direction
-arrows survive switching all three map modes. Screenshots and results go to
-`.cache/gpx-inspection/`. These overlay checks stub local road tiles; testing
-actual local map data requires the local map service.
-
-`node tests/browser-gpx-surfaces.mjs` checks lookup, cache reuse, unknown parts,
-failure/retry, cancellation and stale replies using controlled routing responses.
+`node tests/browser-gpx-surfaces.mjs` checks lookup for an opened track, its
+unchanged path, another road, an unavailable service and a file opened meanwhile,
+using controlled routing responses.
 `node tests/browser-map-style.mjs` checks real local vector tiles at double pixel
 density, map switching, mobile layout, attribution and service failures.
 Its imagery checks need internet for tiles that are not cached or saved.
@@ -1051,9 +1004,13 @@ stones), a lighter green for **Vermutlich befestigt**, amber for
 every other unpaved material) and a light grey for **Unbekannt**. Ways without
 a surface tag count by their type: roads and cycleways as likely paved, tracks
 of grade 2 to 5 as unpaved. Select a group to see its sections along the route,
-and select it again to close them. Select a section to frame it on the map,
-drawn in its colour above the route, which fades meanwhile; select it again to
-remove the highlight. **Weitere Abschnitte** shows ten more entries. Lengths
+and select it again to close them. A section runs on across stops and shaping
+points, and a piece of under 10 m (GPS jitter, a kerb) takes the surface around
+it, so a section ends only where the surface really changes; corrected stretches
+stay their own. Select a section to frame it on the map, drawn in its colour
+above the route, which fades meanwhile; select it again to remove the highlight.
+The arrows beside the group's name step to the previous or next section, round
+to the start again. **Weitere Abschnitte** shows ten more entries. Lengths
 follow the drawn coordinates and can differ slightly from the engine's total. Tags describe the map data, not the current condition of a
 road.
 

@@ -12,7 +12,7 @@ try {
     localStorage.setItem('richiroute.cycling-overlays', '[]');
   });
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
+  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
   const results = [];
   let requested = 0, cancelled = 0, degraded = 0;
   page.on('request', request => { if (/\/maps\/imagery(?:-fast)?\//.test(request.url())) requested++; });
@@ -25,11 +25,11 @@ try {
   ]) {
     requested = 0; cancelled = 0; degraded = 0;
     await chooseBasemap(page, 'street');
-    await page.evaluate(center => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.jumpTo({ center, zoom: 13 }), center);
+    await page.evaluate(center => document.querySelector('.route-layer').__vueParentComponent.props.map.jumpTo({ center, zoom: 13 }), center);
     const started = performance.now();
     await chooseBasemap(page, mode);
     const settleMs = await page.evaluate(async () => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       for (const zoom of [15, 17, 19]) {
         await new Promise(resolve => { map.once('moveend', resolve); map.easeTo({ zoom, duration: 300, essential: true }); });
       }

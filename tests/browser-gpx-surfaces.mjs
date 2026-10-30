@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { trackColor, trackColorValue } from './browser-ui.mjs';
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-surfaces';
 await mkdir(output, { recursive: true });
@@ -24,79 +23,55 @@ await page.route('**/routing/**', async route => {
   await route.fulfill({ json: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates },
     properties: { 'track-length': '500', messages: [['Longitude', 'Latitude', 'Distance', 'WayTags'], [Math.round(end[0] * 1e6), Math.round(end[1] * 1e6), 500, 'surface=asphalt']] } }] } }).catch(() => {});
 });
-const upload = async (name, count = 501) => {
-  const xml = '<gpx version="1.1"><trk><name>' + name + '</name><trkseg>' + Array.from({ length: count }, (_, i) => `<trkpt lon="${15.4 + i / 10000}" lat="47.1"><ele>${300 + i / 20}</ele></trkpt>`).join('') + '</trkseg></trk></gpx>';
-  await page.getByRole('tab', { name: 'GPX', exact: true }).click();
+const coordsOf = count => Array.from({ length: count }, (_, i) => [15.4 + i / 10000, 47.1]);
+const upload = async (name, count = 1001) => {
+  const xml = '<gpx version="1.1"><trk><name>' + name + '</name><trkseg>' + coordsOf(count).map(([lon, lat], i) => `<trkpt lon="${lon}" lat="${lat}"><ele>${300 + i / 20}</ele></trkpt>`).join('') + '</trkseg></trk></gpx>';
   await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name: name + '.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(xml) });
-  await page.getByRole('heading', { name, exact: true }).waitFor();
+  await page.waitForFunction(name => document.querySelector('.library input')?.value === name, name);
 };
+// The opened route's path and how much of it has a known surface.
 const state = () => page.evaluate(() => {
-  const p = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
-  const gpx = p._s.get('gpx-reference'), route = p._s.get('route');
-  return { loading: gpx.surfaceLoading, error: gpx.surfaceError, matched: gpx.surfaceInspection?.estimatedMeters,
-    distance: gpx.track?.distanceMeters, surfaces: gpx.surfaces, name: gpx.track?.name,
-    geometry: JSON.stringify(gpx.track?.geojson), draft: JSON.stringify({ points: route.points, legs: route.legs, undo: route.undoStack }) };
+  const route = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
+  const placed = route.points, legs = placed.slice(0, -1).map((point, i) => route.legs[`${point.id}:${placed[i + 1].id}`]);
+  const known = legs.reduce((sum, leg) => sum + leg.surfaces.filter(span => span.surface !== 'unknown')
+    .reduce((n, span) => n + (span.toIndex - span.fromIndex) / (leg.coordinates.length - 1) * leg.distanceMeters, 0), 0);
+  return { looking: route.surfaceEstimate !== null, known, distance: legs.reduce((sum, leg) => sum + leg.distanceMeters, 0),
+    coordinates: legs.flatMap((leg, i) => i ? leg.coordinates.slice(1) : leg.coordinates) };
 });
-const complete = () => page.waitForFunction(() => {
-  const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('gpx-reference');
-  return !s.surfaceLoading && s.surfaces !== null;
-});
+const complete = () => page.waitForFunction(() =>
+  document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').surfaceEstimate === null);
 try {
   await page.goto(origin);
+  await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
+
+  // An opened track gets the surfaces of the roads it follows, a few lookups at a time, without changing its path.
   await upload('Surface test');
-  const before = await state();
-  assert.equal(requests, 0, 'Import never starts surface lookup');
-  await trackColor(page, 'surface');
   await complete();
-  const after = await state();
-  assert.equal(after.error, '');
-  assert.ok(after.matched > after.distance * .99);
-  assert.equal(after.geometry, before.geometry); assert.equal(after.draft, before.draft);
+  const found = await state();
+  assert.ok(found.known > found.distance * .99, `${found.known} of ${found.distance}`);
+  assert.deepEqual(found.coordinates, coordsOf(1001));
   assert.ok(peak <= 4, 'The lookup leaves routing slots free for editing');
-  await page.getByRole('list', { name: 'Untergrund des GPX-Tracks', exact: true }).waitFor();
-  const count = requests;
-  await trackColor(page, 'plain');
-  await trackColor(page, 'surface');
-  assert.equal(requests, count, 'Reusing surface results sends no requests');
-  const chart = page.getByRole('slider', { name: 'Position im GPX-Track', exact: true });
-  await chart.focus(); await chart.press('PageUp');
-  assert.equal(requests, count);
+  await page.getByText('Befestigt', { exact: true }).first().waitFor();
 
-  mode = 'offset'; await upload('Other road');
-  await trackColor(page, 'surface'); await complete();
-  assert.equal((await state()).matched, 0);
-  mode = 'fail'; await upload('Unavailable');
-  await trackColor(page, 'surface'); await complete();
-  assert.match((await state()).error, /nicht erreichbar/);
-  mode = 'success'; await page.getByRole('button', { name: 'Untergrund ermitteln', exact: true }).click(); await complete();
-  assert.ok((await state()).matched > 0);
+  // A trace along another road lends no surfaces, nor does an unavailable service.
+  mode = 'offset'; await upload('Other road'); await complete();
+  assert.equal((await state()).known, 0);
+  mode = 'fail'; await upload('Unavailable'); await complete();
+  assert.equal((await state()).known, 0);
 
-  mode = 'hold'; await upload('Cancel');
-  await trackColor(page, 'surface');
-  await page.waitForFunction(() => document.querySelector('.gpx__surfaces')?.textContent.includes('Untergrund wird geprüft'));
+  // Opening another file ends the lookup still running; its late answers change nothing.
+  mode = 'hold'; await upload('Held');
   while (!release) await new Promise(resolve => setTimeout(resolve, 10));
-  await page.getByRole('button', { name: 'Prüfung abbrechen', exact: true }).click();
-  assert.equal((await state()).loading, false);
-  release(); release = undefined;
-  await page.waitForTimeout(50);
-  assert.equal((await state()).surfaces, null);
-
-  await page.getByRole('button', { name: 'Untergrund ermitteln', exact: true }).click();
-  while (!release) await new Promise(resolve => setTimeout(resolve, 10));
-  await upload('Replacement');
-  release(); release = undefined;
-  await page.waitForTimeout(50);
+  await page.getByText(/Untergrund wird ermittelt/).waitFor();
+  const held = release; release = undefined;
+  mode = 'fail'; await upload('Replacement', 501);
+  held();
+  await complete();
+  await page.waitForTimeout(100);
   const replaced = await state();
-  assert.equal(replaced.name, 'Replacement'); assert.equal(replaced.surfaces, null); assert.equal(replaced.loading, false);
-  assert.equal(await trackColorValue(page), 'plain');
-  mode = 'success'; await trackColor(page, 'surface'); await complete();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('list', { name: 'Untergrund des GPX-Tracks', exact: true }).scrollIntoViewIfNeeded();
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.getByRole('button', { name: 'Track entfernen', exact: true }).click();
-  assert.equal((await state()).surfaces, null);
+  assert.deepEqual(replaced.coordinates, coordsOf(501));
+  assert.equal(replaced.known, 0);
   assert.deepEqual(errors, []);
-  await writeFile(output + '/browser-report.json', JSON.stringify({ passed: true, requests, peak, initialLookupRequests: count,
-    unchangedGeometry: true, cancellationAndReplacement: true }, null, 2));
-  console.log('GPX surfaces: opt-in lookup, colours, totals, geometry, cache, failed service, rejected path, retry, cancellation, replacement and mobile passed.');
+  await writeFile(output + '/browser-report.json', JSON.stringify({ passed: true, requests, peak }, null, 2));
+  console.log('GPX surfaces: lookup for an opened track, exact path, other road, unavailable service and replacement passed.');
 } finally { release?.(); await browser.close(); }

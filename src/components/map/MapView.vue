@@ -3,8 +3,7 @@
     <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking || surfaceReporting, 'map-view__stage--overview': overview }">
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" :former="routeStore.formerRoute" />
-      <GpxReferenceLayer v-if="map" :map="map" :track="gpxTrack" :visible="gpxVisible" :fit-request="gpxFitRequest" />
-      <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? focusedSurface ?? profileRange" :frame="!surfacePreview" />
+      <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? framed" />
       <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected"
         @highlight="index => loopSuggestions.highlighted = index" />
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
@@ -56,10 +55,9 @@
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouteStore } from '@/stores/route.store';
-import { LngLatBounds } from 'maplibre-gl';
-import { fitAndSettle } from '@/utils/map-fit';
+import { showOnMap } from '@/utils/map-fit';
 import { formatLength } from '@/utils/format';
-import { pathMeters } from '@/domain/route-model';
+import { pathMeters, type Coord } from '@/domain/route-model';
 import { IconFocus2, IconMan, IconStack2 } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
@@ -71,8 +69,6 @@ import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
 import SurfaceReportCard from '@/components/map/SurfaceReportCard.vue';
 import LoopSuggestionsLayer from '@/components/map/LoopSuggestionsLayer.vue';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
-import GpxReferenceLayer from '@/components/map/GpxReferenceLayer.vue';
-import { useGpxReferenceStore } from '@/stores/gpx-reference.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
 import { routeStyle } from '@/config/mapStyle';
 import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
@@ -92,7 +88,7 @@ const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label
 ];
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
-const { focus: routeProfileFocus, rangeCoordinates } = storeToRefs(useRouteProfileStore());
+const { focus: routeProfileFocus, rangeCoordinates, range, track: profileTrack } = storeToRefs(useRouteProfileStore());
 // The stretch the profile zooms into, in the markers' ink.
 const profileRange = computed(() => rangeCoordinates.value && { coordinates: rangeCoordinates.value, color: routeStyle.waiting });
 const routeStore = useRouteStore();
@@ -100,7 +96,6 @@ const { route, waypoints, routingPending, focusedSurface, surfaceReporting, surf
   surfaceSelection, surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);
 const partLength = computed(() => formatLength(pathMeters(surfacePreview.value?.coordinates ?? [])));
 const loopSuggestions = useLoopSuggestionsStore();
-const { track: gpxTrack, visible: gpxVisible, fitRequest: gpxFitRequest } = storeToRefs(useGpxReferenceStore());
 const presentedStartId = ref<string>();
 const initialRouting = computed(() => Boolean(route.value?.features.length && routingPending.value &&
   presentedStartId.value !== route.value.features[0].properties.fromId));
@@ -130,8 +125,7 @@ const overview = ref(false);
 watch(map, instance => instance?.on('zoom', () => { overview.value = instance.getZoom() < 11; }));
 watch(map, instance => {
   if (instance) instance.once('load', () => {
-    if (gpxTrack.value && gpxVisible.value) instance.fitBounds(gpxTrack.value.bounds, { padding: 50, maxZoom: 16, duration: 0 });
-    else if (route.value) fitRoute();
+    if (route.value) fitRoute();
   });
 });
 // On phones the sheet makes way for an opened route, so the map grows before the fit holds. The route itself arrives
@@ -139,30 +133,31 @@ watch(map, instance => {
 let fitWhenRouted = false;
 watch(fitRequest, () => {
   fitWhenRouted = true;
-  if (map.value) fitAndSettle(map.value, fitRoute);
+  fitRoute();
 });
 watch([route, routingPending], ([value, pending]) => {
   if (!fitWhenRouted || pending || !value?.features.length || !map.value) return;
   fitWhenRouted = false;
-  fitAndSettle(map.value, fitRoute);
+  fitRoute();
 });
 watch(shownSection, shown => {
   const leg = shown && routeStore.legs[shown.legId];
-  if (!map.value || !leg) return;
-  const bounds = new LngLatBounds();
-  for (const coord of leg.coordinates) bounds.extend([coord[0], coord[1]]);
-  fitAndSettle(map.value, () => map.value?.fitBounds(bounds, { padding: 80, maxZoom: 15, maxDuration: 1500 }));
+  if (map.value && leg) showOnMap(map.value, leg.coordinates);
+});
+// A stretch chosen among the surfaces or in the profile is framed. Let go, the whole route shows again, unless the
+// route changed with it (the map then stays where the editing is). A stretch being reported stays where it was tapped.
+const framed = computed(() => focusedSurface.value ?? profileRange.value);
+// A recomputed focus (another leg routed meanwhile) is the same stretch.
+const framedKey = computed(() => focusedSurface.value?.id ?? (range.value && `${range.value.from}:${range.value.to}`));
+watch([framedKey, profileTrack], ([key, now], [before, then]) => {
+  if (!map.value || key === before) return;
+  if (framed.value) showOnMap(map.value, framed.value.coordinates);
+  else if (before && now && now === then && !surfaceReporting.value) fitRoute();
 });
 function fitRoute() {
-  const bounds = new LngLatBounds();
-  for (const stop of waypoints.value) if (stop.coord) bounds.extend(stop.coord);
-  for (const feature of route.value?.features ?? []) {
-    for (const coord of feature.geometry.coordinates) bounds.extend([coord[0], coord[1]]);
-  }
-  // Nearby it glides; a route far away (an opened one in another region) appears at once. The right side keeps clear
-  // of the map's buttons.
-  const padding = { top: 60, bottom: 60, left: 60, right: 120 };
-  if (!bounds.isEmpty()) map.value?.fitBounds(bounds, { padding, maxZoom: 16, maxDuration: 1500 });
+  if (!map.value) return;
+  const stops = waypoints.value.flatMap(stop => stop.coord ? [stop.coord] : []);
+  showOnMap(map.value, stops, ...(route.value?.features ?? []).map(feature => feature.geometry.coordinates as Coord[]));
 }
 </script>
 

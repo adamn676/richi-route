@@ -16,7 +16,7 @@ export const useRouteProfileStore = defineStore('route-profile', () => {
       if (!leg || leg.status !== 'routed') return null;
       segments.push({ name: '', coordinates: leg.coordinates, elevations: leg.elevations ?? leg.coordinates.map(() => null), distanceMeters: leg.distanceMeters });
     }
-    return markRaw(buildGpxTrack('', '', segments, { connected: true }));
+    return markRaw(buildGpxTrack('', segments, { connected: true }));
   });
   const gradients = computed(() => track.value ? gpxGradients(track.value) : []);
   const colorRuns = computed(() => track.value ? gradientRuns(track.value) : []);

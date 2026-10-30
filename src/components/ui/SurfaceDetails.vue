@@ -23,7 +23,13 @@
       </v-list-item>
     </v-list>
     <template v-if="selected">
-      <h4>{{ surfaceLabels[selected] }} · {{ matching.length }} {{ matching.length === 1 ? 'Abschnitt' : 'Abschnitte' }}</h4>
+      <div class="surfaces__step">
+        <h4>{{ surfaceLabels[selected] }} · {{ stepLabel }}</h4>
+        <template v-if="matching.length > 1">
+          <v-icon-button v-tooltip:bottom="'Voriger Abschnitt'" aria-label="Voriger Abschnitt" @click="step(-1)"><IconChevronLeft :size="18" aria-hidden="true" /></v-icon-button>
+          <v-icon-button v-tooltip:bottom="'Nächster Abschnitt'" aria-label="Nächster Abschnitt" @click="step(1)"><IconChevronRight :size="18" aria-hidden="true" /></v-icon-button>
+        </template>
+      </div>
       <v-list class="surfaces__sections">
         <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
           :aria-pressed="isFocused(section)" :active="isFocused(section)" color="primary" rounded="lg" @click="focus(section)">
@@ -53,7 +59,7 @@ import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
 import { formatKm, formatLength } from '@/utils/format';
-import { IconPencil } from '@/components/icons';
+import { IconChevronLeft, IconChevronRight, IconPencil } from '@/components/icons';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();
@@ -79,7 +85,7 @@ function share(meters: number) {
 // Choosing the highlighted section again removes the highlight, as choosing its surface again closes its sections.
 function focus(section: SurfaceSection) {
   if (isFocused(section)) store.surfaceFocus = null;
-  else store.inspectSurface(section.legId, section.fromIndex, section.toIndex, section.surface);
+  else store.inspectSurface(section);
 }
 // Selecting a surface again closes its sections and removes the highlight.
 function selectSurface(surface: Surface) {
@@ -93,9 +99,18 @@ function selectSurface(surface: Surface) {
   const first = matching.value[0];
   if (first) focus(first);
 }
+const position = computed(() => matching.value.findIndex(isFocused));
+const stepLabel = computed(() => position.value >= 0 && matching.value.length > 1 ? `${position.value + 1} von ${matching.value.length}`
+  : `${matching.value.length} ${matching.value.length === 1 ? 'Abschnitt' : 'Abschnitte'}`);
+// From the last section on to the first and back; the list grows to show the one chosen.
+function step(by: number) {
+  const count = matching.value.length;
+  const next = position.value < 0 ? (by > 0 ? 0 : count - 1) : (position.value + by + count) % count;
+  visibleCount.value = Math.max(visibleCount.value, Math.ceil((next + 1) / 10) * 10);
+  store.inspectSurface(matching.value[next]);
+}
 function isFocused(section: SurfaceSection) {
-  const focused = store.focusedSurface;
-  return focused?.legId === section.legId && focused.fromIndex === section.fromIndex && focused.toIndex === section.toIndex;
+  return store.focusedSurface?.id === section.id;
 }
 watch(inspection, value => {
   if (!value?.totals.some(total => total.surface === selected.value)) selected.value = null;
@@ -131,7 +146,10 @@ watch(inspection, value => {
 .surfaces__totals :deep(.v-list-item__prepend > *) { margin: 0; }
 .surfaces__totals :deep(.v-list-item__spacer) { display: none; }
 .surfaces__sections .v-list-item { padding-left: 44px; }
-h4 { margin: var(--space-3) 0 0 36px; color: var(--text-muted); font-size: .8rem; font-weight: 400; }
+.surfaces__step { display: flex; align-items: center; gap: var(--space-1); margin: var(--space-3) 0 0 36px; }
+/* The buttons reach past the line of text without moving it, so the sections follow 16 px under its baseline. */
+.surfaces__step button { margin-block: -10px; }
+h4 { flex: 1; margin: 0; color: var(--text-muted); font-size: .8rem; font-weight: 400; }
 strong { font-variant-numeric: tabular-nums; font-weight: 600; }
 strong small { color: var(--text-muted); font-size: .8em; font-weight: 500; }
 .surfaces__more { margin-left: 28px; }

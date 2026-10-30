@@ -23,12 +23,12 @@ try {
     localStorage.setItem('richiroute.cycling-overlays', '[]');
   });
   await page.goto(origin);
-  await page.waitForFunction(() => document.querySelector('.gpx-reference-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
+  await page.waitForFunction(() => document.querySelector('.route-layer')?.__vueParentComponent.props.map.getSource('basemap-vector-europe'));
   const results = [];
   for (const [place, center] of [['Graz', [15.398, 47.095]], ['Styria', [15.60, 47.13]]]) {
     await chooseBasemap(page, 'street');
     await page.evaluate(({ center, preview }) => {
-      const map = document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map;
+      const map = document.querySelector('.route-layer').__vueParentComponent.props.map;
       if (preview && !map.getSource('basemap-aerial-preview')) {
         map.addSource('basemap-aerial-preview', { type: 'raster', url: '/maps/imagery-fast.json', tileSize: 256 });
         map.addLayer({ id: 'aerial-preview', type: 'raster', source: 'basemap-aerial-preview', minzoom: 9,
@@ -50,7 +50,7 @@ try {
       if (preview) map.setLayoutProperty('aerial-preview', 'visibility', 'visible');
     }, { center, preview });
     await chooseBasemap(page, 'aerial');
-    await page.waitForFunction(() => document.querySelector('.gpx-reference-layer').__vueParentComponent.props.map.loaded() && window.previewTiming.complete['basemap-aerial'], null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector('.route-layer').__vueParentComponent.props.map.loaded() && window.previewTiming.complete['basemap-aerial'], null, { timeout: 60000 });
     const result = await page.evaluate(() => ({ ...window.previewTiming, total: Math.round(performance.now() - window.previewTiming.started) }));
     delete result.started;
     assert.ok(result.complete['basemap-aerial'] > 0);
