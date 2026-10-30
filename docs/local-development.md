@@ -729,6 +729,17 @@ area instead, a region for a phone: Styria with its borders (13.55–16.2° E,
 46.6–47.85° N) takes 16 MB (about 10 MB compressed), 53 MB of memory, loads in
 0.1 s and answers within a millisecond on a desktop.
 
+For a phone, the same search runs in the browser: `search/wasm` builds it as a
+WebAssembly module (`npm run search:wasm`, 0.19 MB; `setup-native` installs Rust's
+WebAssembly library for it), and `src/services/offline-search.ts` asks it with the
+same requests as the server and gets the same answers. The planner does not use it
+yet. `SEARCH_INDEX=<region index> node tests/browser-offline-search.mjs` measures it
+in Chromium with a phone's screen and its CPU slowed four times: with Styria it
+loads in 0.8 s, holds 103 MB and answers the fixed search cases in 1 ms (95 % within
+3 ms, the slowest in 16 ms). `SEARCH_INDEX=<region index> node
+tests/search-quality.mjs <name>` runs the search cases on it; it answers exactly as
+the server does with the same index.
+
 `npm run search:start` serves the index on `127.0.0.1:2322` (`SEARCH_PORT` chooses
 another port; Vite's `/geocoding` proxy follows it). It loads in about 3 s, uses
 about 1.1 GB of memory and answers most searches within 5 ms.

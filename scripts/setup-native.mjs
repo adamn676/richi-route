@@ -56,6 +56,26 @@ for (const name of ['node', 'java', 'rust']) {
     await rm(installed, { recursive: true, force: true });
   }
 }
+// Rust's standard library for WebAssembly, for the address search in a browser (search/wasm).
+if (!await exists(path.join(directory, 'rust/lib/rustlib/wasm32-unknown-unknown'))) {
+  const release = versions.rustWasm;
+  const archive = path.join(directory, path.basename(new URL(release.url).pathname));
+  if (!await exists(archive)) {
+    console.log(`Downloading Rust ${release.version} for WebAssembly...`);
+    const response = await fetch(release.url, { signal: AbortSignal.timeout(600_000) });
+    if (!response.ok || !response.body) throw new Error(`Download failed: HTTP ${response.status}`);
+    await pipeline(response.body, createWriteStream(archive + '.part'));
+    await rename(archive + '.part', archive);
+  }
+  if (await digest(archive) !== release.sha256) throw new Error(`Checksum mismatch: ${archive}`);
+  const staging = await mkdtemp(path.join(directory, 'rust-wasm-staging-'));
+  try {
+    execFileSync('tar', ['-xf', archive, '--strip-components=1', '-C', staging]);
+    execFileSync('sh', [path.join(staging, 'install.sh'), `--prefix=${path.join(directory, 'rust')}`, '--disable-ldconfig'], { stdio: 'ignore' });
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
 const node = path.join(directory, 'node/bin/node');
 const npm = path.join(directory, 'node/lib/node_modules/npm/bin/npm-cli.js');
 const env = { ...process.env, PATH: `${path.dirname(node)}${path.delimiter}${process.env.PATH ?? ''}` };

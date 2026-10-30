@@ -1,7 +1,8 @@
 // Search quality against fixed cases (tests/search-cases.json): where the correct place ranks among the suggestions, the
 // name given to points on the map and to loops. Each run is saved by name and compared with an earlier one:
 //   node tests/search-quality.mjs <name> [--compare <earlier name>] [--verify]
-// SEARCH_URL points to the search service (default: the local one on port 2322). --verify only checks that each expected place
+// SEARCH_URL points to the search service (default: the local one on port 2322); SEARCH_INDEX instead runs the search
+// built for browsers on an index file. --verify only checks that each expected place
 // exists in the data, by searching with more context, so no case asks for the impossible.
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -10,6 +11,13 @@ import { forwardGeocode, reverseGeocode, townAt } from '../src/services/geocodin
 const service = process.env.SEARCH_URL ?? 'http://127.0.0.1:2322';
 const realFetch = globalThis.fetch;
 globalThis.fetch = (url, options) => realFetch(String(url).replace(/^\/geocoding/, service), options);
+// SEARCH_INDEX instead asks the search built for browsers (search/wasm) with that index file, as a phone would.
+if (process.env.SEARCH_INDEX) {
+  const { startOfflineSearch } = await import('../src/services/offline-search.ts');
+  const wasm = new URL('../search/wasm/target/wasm32-unknown-unknown/release/richi_search_wasm.wasm', import.meta.url);
+  const offline = await startOfflineSearch(await readFile(wasm), new Uint8Array(await readFile(process.env.SEARCH_INDEX)));
+  globalThis.fetch = async url => Response.json(offline.ask(String(url).replace(/^\/geocoding/, '')));
+}
 
 const args = process.argv.slice(2);
 const name = args.find(arg => !arg.startsWith('--')) ?? 'current';

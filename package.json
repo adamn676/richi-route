@@ -16,6 +16,7 @@
     "native:setup": "node scripts/setup-native.mjs",
     "search:setup": "node scripts/setup-search.mjs",
     "search:start": "node scripts/start-search.mjs",
+    "search:wasm": "PATH=\"$PWD/.cache/runtime/rust/bin:$PATH\" CARGO_HOME=\"$PWD/.cache/cargo\" cargo build --release --target wasm32-unknown-unknown --manifest-path search/wasm/Cargo.toml",
     "maps:setup": "node scripts/setup-maps.mjs",
     "maps:start": "node scripts/start-maps.mjs",
     "terrain:setup": "node scripts/setup-terrain.mjs",

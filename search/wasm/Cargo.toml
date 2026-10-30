@@ -1,0 +1,21 @@
+# The address search in a browser: richi-search compiled to WebAssembly, for planning offline on a phone.
+[package]
+name = "richi-search-wasm"
+description = "RichiRoute's address search in a browser"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.99"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+richi-search = { path = "..", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
