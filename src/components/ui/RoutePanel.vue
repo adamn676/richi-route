@@ -6,8 +6,6 @@
         <span ref="tools" class="planner__tools">
           <v-icon-button :disabled="!routeStore.canUndo" v-tooltip:bottom="'Rückgängig (Strg+Z)'" aria-label="Rückgängig" @click="act(() => routeStore.undo())"><IconArrowBackUp :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="act(() => routeStore.redo())"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>
-          <v-icon-button :disabled="!routeStore.route" aria-label="Route neu berechnen"
-            v-tooltip:bottom="'Route neu berechnen'" @click="run(() => routeStore.optimizeEntireRoute())"><IconWand :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
             v-tooltip:bottom="'Formpunkte entfernen: die weißen Punkte, die die Route formen'" @click="act(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button v-tooltip:bottom="'GPX-Datei öffnen (oder auf die Karte ziehen)'" aria-label="GPX-Datei öffnen"
@@ -93,7 +91,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconFileImport, IconGripVertical, IconPlus, IconTrash, IconWand } from '@/components/icons';
+import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconFileImport, IconGripVertical, IconPlus, IconTrash } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import { stopBadge, stopLabel } from '@/domain/route-model';

@@ -181,7 +181,6 @@ export function isOutdated(leg: RouteLeg): boolean {
 export function reconcileLegs(
   points: RoutePoint[],
   previous: Record<string, RouteLeg>,
-  optimize = false,
 ): { legs: Record<string, RouteLeg>; requests: LegRequest[] } {
   const placed = points.filter(isPlaced);
   const legs: Record<string, RouteLeg> = {};
@@ -200,7 +199,7 @@ export function reconcileLegs(
     const existing = previous[request.id];
     if (existing && sameEndpoints(existing, request)) {
       legs[request.id] = existing;
-      if (optimize || isOutdated(existing)) {
+      if (isOutdated(existing)) {
         requests.push(request);
       }
     } else {
@@ -247,7 +246,7 @@ export class LegScheduler {
     this.onPending = onPending;
   }
 
-  update(legs: Record<string, RouteLeg>, requests: LegRequest[], optimize = false): void {
+  update(legs: Record<string, RouteLeg>, requests: LegRequest[]): void {
     for (const [id, operation] of this.active) {
       if (!legs[id] || !sameEndpoints(legs[id], operation.request)) {
         operation.controller.abort();
@@ -257,7 +256,7 @@ export class LegScheduler {
 
     for (const request of requests) {
       const previous = this.active.get(request.id);
-      if (previous && sameEndpoints(legs[request.id], previous.request) && !optimize) {
+      if (previous && sameEndpoints(legs[request.id], previous.request)) {
         continue;
       }
       previous?.controller.abort();

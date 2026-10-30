@@ -470,30 +470,28 @@ export const useRouteStore = defineStore('route', {
       if (this.formerLegs.length && !Object.values(this.legs).some(waitingTest(this.points))) this.formerLegs = [];
     },
 
-    _reconcile(optimize = false) {
+    _reconcile() {
       const operations = operationsFor(this);
-      const result = reconcileLegs(this.points, this.legs, optimize);
+      const result = reconcileLegs(this.points, this.legs);
       const kept = new Set(Object.values(result.legs));
       const replaced = Object.values(this.legs).filter(leg => leg.status === 'routed' && !kept.has(leg));
       this.formerLegs = [...this.formerLegs.filter(leg => !kept.has(leg)), ...replaced];
       this.legs = result.legs;
       this._settleFormerLegs();
-      const candidates: LegRequest[] = optimize
-        ? result.requests
-        : Object.values(result.legs)
-            .filter((leg) =>
-              (leg.status === 'air' || isOutdated(leg)) &&
-              !leg.error &&
-              !operations.snaps.has(leg.fromId) &&
-              !operations.snaps.has(leg.toId))
-            .map(({ id, fromId, toId, fromCoord, toCoord }) => ({
-              id, fromId, toId, fromCoord, toCoord,
-            }));
+      const candidates: LegRequest[] = Object.values(result.legs)
+        .filter((leg) =>
+          (leg.status === 'air' || isOutdated(leg)) &&
+          !leg.error &&
+          !operations.snaps.has(leg.fromId) &&
+          !operations.snaps.has(leg.toId))
+        .map(({ id, fromId, toId, fromCoord, toCoord }) => ({
+          id, fromId, toId, fromCoord, toCoord,
+        }));
       const requests = candidates.filter(leg => [leg.fromId, leg.toId].every(id => {
         const point = this.points.find(point => point.id === id);
         return point && !point.snapPending && !point.snapError;
       }));
-      operations.scheduler.update(this.legs, requests, optimize);
+      operations.scheduler.update(this.legs, requests);
     },
 
     // A stop placed on the map gets the street it lies on, without an undo step.
@@ -749,12 +747,6 @@ export const useRouteStore = defineStore('route', {
       }
       this.points = this.points.filter((point) => point.type === 'stop');
       this._reconcile();
-    },
-
-    optimizeEntireRoute() {
-      if (!Object.keys(this.legs).length) throw new Error('Bitte zuerst Start und Ziel setzen.');
-      this._remember();
-      this._reconcile(true);
     },
 
     retryRouting() {

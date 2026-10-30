@@ -127,21 +127,6 @@ test('unplaced stops do not hide the existing route; removing one only joins nei
   assert.deepEqual(removed.requests.map((request) => request.id), [legId('start', 'end')]);
 });
 
-test('a full optimization requests every leg without hiding the current geometry', () => {
-  const points = [
-    stop('start', [15.4, 47.05], 'start'),
-    shape('shape', [15.41, 47.06]),
-    stop('end', [15.42, 47.07], 'end'),
-  ];
-  const initial = reconcileLegs(points, {});
-  const existing = Object.fromEntries(initial.requests.map((request) => [request.id, routed(request)]));
-
-  const optimized = reconcileLegs(points, existing, true);
-  assert.equal(optimized.requests.length, 2);
-  assert.equal(optimized.legs[legId('start', 'shape')], existing[legId('start', 'shape')]);
-  assert.equal(optimized.legs[legId('shape', 'end')], existing[legId('shape', 'end')]);
-});
-
 test('outdated segment IDs cannot insert a shape into another leg', () => {
   const points = [stop('a', [15.4, 47.05], 'start'), stop('b', [15.5, 47.07], 'end')];
   assert.throws(() => insertBetween(points, 'a', 'missing', shape('shape', [15.45, 47.06])), /nicht mehr aktuell/);
