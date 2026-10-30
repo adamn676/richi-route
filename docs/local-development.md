@@ -418,9 +418,9 @@ snaps onto the route within 16 px, the route pauses its editing, and a click
 opens Street View at the nearest panorama; the figure turns grey where Google
 has none within 50 m. Escape or the button again cancels. The bottom of the
 sidebar lists the credits of the maps and imagery in view, OpenStreetMap once;
-like every link out of the planner, theirs open in a new tab. Phones show them in
-one line (OpenStreetMap, the address register and **Datenquellen**, which opens the
-full list). The sidebar, the elevation profile and the controls over the map keep
+like every link out of the planner, theirs open in a new tab. They show in one
+line (OpenStreetMap, the address register and **Datenquellen**, which opens the full
+list). The sidebar, the elevation profile and the controls over the map keep
 one margin from every edge, 20 px (16 px on phones); icons without a background
 end there with their glyph. The sidebar is a navigation drawer 352–416 px wide,
 depending on the screen; the narrow tab on its edge folds it away for a

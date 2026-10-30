@@ -14,9 +14,13 @@ export async function chooseBasemap(page, id) {
 }
 
 // A map menu reopened while still closing loses its content, so menus open only once the last one has gone.
-const menusGone = page => page.waitForFunction(() => [...document.querySelectorAll('.map-menu__panel')].every(panel => !panel.offsetParent));
+const menusGone = (page, timeout) => page.waitForFunction(() => [...document.querySelectorAll('.map-menu__panel')].every(panel => !panel.offsetParent), null, { timeout });
+// An Escape pressed while a menu is still opening can go unheard, so it is pressed again.
 export async function closeMenus(page) {
-  await page.keyboard.press('Escape');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.keyboard.press('Escape');
+    if (await menusGone(page, 2000).then(() => true, () => false)) return;
+  }
   await menusGone(page);
 }
 

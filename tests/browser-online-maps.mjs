@@ -121,6 +121,8 @@ try {
   assert.equal(await page.getByText('Radrouten konnten nicht geladen werden.').count(), 0);
   assert.ok(tiles.waymarkedtrails > 0, 'Radrouten loads its tiles');
   await closeMenus(page);
+  // The credits show in one line; the full list, with every provider, opens from it.
+  await page.getByRole('button', { name: 'Datenquellen', exact: true }).click();
   await page.locator('.maplibregl-ctrl-attrib a[href="https://cycling.waymarkedtrails.org"]').first().waitFor({ state: 'visible' });
   await page.locator('.cycling-controls .map-menu__trigger').click();
   await page.getByLabel('Radrouten').uncheck();

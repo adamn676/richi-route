@@ -39,16 +39,16 @@
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
-    <!-- The visible map's credits, always in view: MapView places them here (useMap's credits container). Phones show
-         the main ones in one line, the full list on demand. -->
+    <!-- The visible map's credits, always in view: the main ones in one line, the full list on demand (MapView places it
+         here, useMap's credits container). -->
     <div class="sidebar__credits">
-      <p v-if="mobile && !creditsOpen" class="sidebar__credits-short">
+      <p v-if="!creditsOpen" class="sidebar__credits-short">
         © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Österr. Adressregister ·
         <button type="button" class="sidebar__credits-more" aria-expanded="false" aria-controls="map-credits"
           @click="creditsOpen = true">Datenquellen</button>
       </p>
-      <div v-show="!mobile || creditsOpen" id="map-credits" />
-      <button v-if="mobile && creditsOpen" type="button" class="sidebar__credits-more" aria-expanded="true" aria-controls="map-credits"
+      <div v-show="creditsOpen" id="map-credits" />
+      <button v-if="creditsOpen" type="button" class="sidebar__credits-more" aria-expanded="true" aria-controls="map-credits"
         @click="creditsOpen = false">Weniger</button>
     </div>
   </aside>
