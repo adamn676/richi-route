@@ -22,6 +22,8 @@
       <v-tab v-for="item in tabs" :id="`tab-${item.id}`" :key="item.id" :value="item.id" :aria-controls="`panel-${item.id}`"
         @click="emit('tab-click')">{{ item.label }}</v-tab>
     </v-tabs>
+    <!-- Folded on a phone: where the route goes; a tap raises the sheet to its stops. -->
+    <button v-if="folded && summary" type="button" class="sidebar__summary" @click="emit('tab-click')">{{ summary }}</button>
     <!-- Saving a draft before a route switch can report from any tab. -->
     <div class="sidebar__messages">
       <v-alert v-if="routeStore.draftError" type="error">
@@ -37,13 +39,23 @@
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
       <GpxImport v-show="tab === 'gpx'" id="panel-gpx" role="tabpanel" aria-labelledby="tab-gpx" @open-route="openTrack" />
     </div>
-    <!-- The visible map's credits, always in view: MapView places them here (useMap's credits container). -->
-    <div id="map-credits" class="sidebar__credits" />
+    <!-- The visible map's credits, always in view: MapView places them here (useMap's credits container). Phones show
+         the main ones in one line, the full list on demand. -->
+    <div class="sidebar__credits">
+      <p v-if="mobile && !creditsOpen" class="sidebar__credits-short">
+        © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Österr. Adressregister ·
+        <button type="button" class="sidebar__credits-more" aria-expanded="false" aria-controls="map-credits"
+          @click="creditsOpen = true">Datenquellen</button>
+      </p>
+      <div v-show="!mobile || creditsOpen" id="map-credits" />
+      <button v-if="mobile && creditsOpen" type="button" class="sidebar__credits-more" aria-expanded="true" aria-controls="map-credits"
+        @click="creditsOpen = false">Weniger</button>
+    </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { IconPlus } from '@/components/icons';
 import { routeStyle } from '@/config/mapStyle';
@@ -57,7 +69,17 @@ import { saveDraftNow } from '@/services/draft.service';
 
 // A tab chosen on the folded phone sheet raises it (HomeView).
 const emit = defineEmits<{ 'tab-click': [] }>();
+const { folded = false } = defineProps<{ folded?: boolean }>();
 const routeStore = useRouteStore();
+// From the first stop to the last, by their streets ("Hahnhofweg 26 → Roseggerweg"); a loop by its start.
+const summary = computed(() => {
+  const stops = routeStore.waypoints.filter(point => point.coord);
+  if (stops.length < 2) return '';
+  const name = (point: typeof stops[number]) => (point.address ?? point.userInput).split(',')[0] || 'Punkt auf der Karte';
+  const [from, to] = [name(stops[0]), name(stops[stops.length - 1])];
+  return from === to ? `Runde ab ${from}` : `${from} → ${to}`;
+});
+const creditsOpen = ref(false);
 const library = useRouteLibrary();
 const { hasDraft, error, message } = library;
 const tabs = [{ id: 'route', label: 'Route' }, { id: 'library', label: 'Meine Routen' }, { id: 'gpx', label: 'GPX' }] as const;
@@ -147,6 +169,10 @@ async function showRoute(focus = 'tab-route') {
 .sidebar__body:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent; }
 .sidebar__credits { padding: .35rem var(--gutter); background: linear-gradient(var(--border), var(--border)) no-repeat var(--gutter) 0 / calc(100% - 2 * var(--gutter)) 1px;
   color: var(--text-muted); font-size: .68rem; line-height: 1.4; }
+.sidebar__credits-short { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__credits-more { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.sidebar__summary { flex: none; margin: var(--space-2) var(--gutter) 0; padding: var(--space-2) 0; border: 0; background: none; color: var(--text);
+  font: inherit; font-size: .95rem; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .sidebar__credits :deep(.maplibregl-ctrl-attrib) { margin: 0; padding: 0; background: none; }
 .sidebar__credits :deep(a) { color: inherit; }
 </style>

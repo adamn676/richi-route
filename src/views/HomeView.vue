@@ -9,7 +9,8 @@
           @pointerdown="startDrag" @pointermove="drag" @pointerup="endDrag" @pointercancel="endDrag"
           @click="tapped" @keydown.up.prevent="step(1)" @keydown.down.prevent="step(-1)" />
       </template>
-      <AppSidebar ref="sidebar" class="editor-layout__sidebar" @tab-click="sheet === 'peek' && (sheet = 'half')" />
+      <AppSidebar ref="sidebar" class="editor-layout__sidebar" :folded="phone && sheet === 'peek'"
+        @tab-click="sheet === 'peek' && (sheet = 'half')" />
     </v-navigation-drawer>
     <v-main class="editor-layout__main">
       <MapView />
@@ -24,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useDisplay } from 'vuetify';
 import AppSidebar from "@/components/layout/AppSidebar.vue";
@@ -52,10 +53,12 @@ const sheetHeight = computed(() => dragHeight.value ?? { peek: peek.value, half:
 // The sheet starts at its handle and reaches the bottom of the screen.
 const sheetTop = () => handle.value!.getBoundingClientRect().top;
 function heights() {
-  const tabs = sidebar.value!.$el.querySelector('[role=tablist]')!;
-  return [tabs.getBoundingClientRect().bottom - sheetTop(), innerHeight / 2, innerHeight];
+  const el = sidebar.value!.$el;
+  const last = el.querySelector('.sidebar__summary') ?? el.querySelector('[role=tablist]')!;
+  const credits = el.querySelector<HTMLElement>('.sidebar__credits')?.offsetHeight ?? 0;
+  return [last.getBoundingClientRect().bottom - sheetTop() + 8 + credits, innerHeight / 2, innerHeight];
 }
-// Peek fits the header and tabs, whatever the font size.
+// Peek fits the header, the tabs, where the route goes and the credits, whatever the font size.
 function measure() { if (phone.value) peek.value = heights()[0]; }
 function step(direction: 1 | -1) {
   sheet.value = sheets[Math.max(0, Math.min(2, sheets.indexOf(sheet.value) + direction))];
@@ -92,12 +95,18 @@ function tapped() {
 
 // A route opened or completed by address shows on the map, so the sheet makes way; a single stop shows above it.
 const { fitRequest, route, shownSection, routeProblem, surfaceReporting } = storeToRefs(useRouteStore());
-watch([fitRequest, shownSection], () => { if (phone.value && route.value) sheet.value = 'peek'; });
+watch([fitRequest, shownSection], () => {
+  if (!phone.value || !route.value) return;
+  sheet.value = 'peek';
+  nextTick(measure);
+});
 // Correcting a surface is done on the route on the map.
 watch(surfaceReporting, on => { if (on && phone.value) sheet.value = 'peek'; });
 // An error of the route is reported in the sheet, which opens for it.
 watch(() => Boolean(routeProblem.value), shown => { if (shown && phone.value && sheet.value === 'peek') sheet.value = 'half'; });
 onMounted(measure);
+// Folded, the sheet shows where the route goes, so its height is measured again.
+watch(sheet, value => { if (value === 'peek') nextTick(measure); });
 watch(width, measure, { flush: 'post' });
 </script>
 

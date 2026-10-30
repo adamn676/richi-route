@@ -134,8 +134,18 @@ watch(map, instance => {
     else if (route.value) fitRoute();
   });
 });
-// On phones the sheet makes way for an opened route, so the map grows before the fit holds.
-watch(fitRequest, () => { if (map.value) fitAndSettle(map.value, fitRoute); });
+// On phones the sheet makes way for an opened route, so the map grows before the fit holds. The route itself arrives
+// later and can reach beyond its stops, and the profile appears with it: once calculated, it is fitted again.
+let fitWhenRouted = false;
+watch(fitRequest, () => {
+  fitWhenRouted = true;
+  if (map.value) fitAndSettle(map.value, fitRoute);
+});
+watch([route, routingPending], ([value, pending]) => {
+  if (!fitWhenRouted || pending || !value?.features.length || !map.value) return;
+  fitWhenRouted = false;
+  fitAndSettle(map.value, fitRoute);
+});
 watch(shownSection, shown => {
   const leg = shown && routeStore.legs[shown.legId];
   if (!map.value || !leg) return;
@@ -149,8 +159,10 @@ function fitRoute() {
   for (const feature of route.value?.features ?? []) {
     for (const coord of feature.geometry.coordinates) bounds.extend([coord[0], coord[1]]);
   }
-  // Nearby it glides; a route far away (an opened one in another region) appears at once.
-  if (!bounds.isEmpty()) map.value?.fitBounds(bounds, { padding: 60, maxZoom: 16, maxDuration: 1500 });
+  // Nearby it glides; a route far away (an opened one in another region) appears at once. The right side keeps clear
+  // of the map's buttons.
+  const padding = { top: 60, bottom: 60, left: 60, right: 120 };
+  if (!bounds.isEmpty()) map.value?.fitBounds(bounds, { padding, maxZoom: 16, maxDuration: 1500 });
 }
 </script>
 

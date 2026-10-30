@@ -418,16 +418,20 @@ snaps onto the route within 16 px, the route pauses its editing, and a click
 opens Street View at the nearest panorama; the figure turns grey where Google
 has none within 50 m. Escape or the button again cancels. The bottom of the
 sidebar lists the credits of the maps and imagery in view, OpenStreetMap once;
-like every link out of the planner, theirs open in a new tab. The sidebar, the elevation profile and the controls over the map keep
+like every link out of the planner, theirs open in a new tab. Phones show them in
+one line (OpenStreetMap, the address register and **Datenquellen**, which opens the
+full list). The sidebar, the elevation profile and the controls over the map keep
 one margin from every edge, 20 px (16 px on phones); icons without a background
 end there with their glyph. The sidebar is a navigation drawer 352–416 px wide,
 depending on the screen; the narrow tab on its edge folds it away for a
 full-width map, and the app remembers that choice. The map keeps its content in
 place while the drawer moves. Below 760 px the drawer becomes a sheet under the
 map: drag or tap its handle (or use the arrow keys on it) to show only its
-header and tabs, half the screen, or all of it. The map and elevation profile
-fill the rest. Opening a route, or completing one by address, lowers the sheet
-so the route shows. Typing an address opens it fully; choosing one closes the
+header and tabs, half the screen, or all of it. Folded, it also shows where the
+route goes ("Hahnhofweg 26 → Roseggerweg"; a tap raises it). The map and elevation
+profile fill the rest. Opening a route, or completing one by address, lowers the
+sheet so the route shows, and once the route is calculated the map fits it again,
+clear of the buttons over the map, since the route can reach beyond its stops. Typing an address opens it fully; choosing one closes the
 keyboard again. A tab tapped while only the header shows raises the sheet to
 half the screen. On touch screens a finger on the route pans the map; holding it
 still for a moment picks the route up to drag it.
@@ -804,7 +808,8 @@ the north climb far more than those to the south. Of all loops, it prefers those
 within 15% of the distance, then the closest climbing, and avoids roads ridden
 both ways; the three it shows head at least 60° apart. Each card is named after
 the town the loop passes most (sampled at eight points, not the start's town or
-another card's), otherwise by its compass direction. Climbing uses the planner's
+another card's), otherwise by its compass direction; its small outline shows where
+it goes. Climbing uses the planner's
 filter for router heights, so it matches the route once taken.
 
 `node tests/browser-loops.mjs` checks the flow with mocked routing and address

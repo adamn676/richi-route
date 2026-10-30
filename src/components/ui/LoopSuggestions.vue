@@ -38,7 +38,6 @@
           <span class="loop-card__text">
             <span class="loop-card__name">{{ loop.place ? `Über ${loop.place}` : `Nach ${loop.heading}` }}</span>
             <span class="loop-card__figures">{{ formatKm(loop.leg.distanceMeters, 1, true) }}&nbsp;<small>km</small> · {{ formatWhole(loop.leg.ascentMeters ?? 0) }}&nbsp;<small>m</small></span>
-            <span v-if="loop.place" class="loop-card__heading">{{ loop.heading }}</span>
           </span>
         </button>
         <v-btn v-if="loops.selected === index" variant="flat" block @click="loops.keep()">Runde übernehmen</v-btn>
@@ -158,5 +157,4 @@ onBeforeUnmount(() => { if (!loops.suggestions) loops.clear(); });
 /* As the figures in the profile's header: bold numbers, small grey units. */
 .loop-card__figures { color: var(--text); font-size: 1.05rem; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .loop-card__figures small { color: var(--text-muted); font-size: .7em; font-weight: 500; letter-spacing: 0; }
-.loop-card__heading { color: var(--text-muted); font-size: .75rem; }
 </style>
