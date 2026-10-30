@@ -1,6 +1,7 @@
-//! `richi-search build <index> <registerDir> <osm.pbf>=<country> …`: builds the index from the BEV address register
-//! ("Adresse Relationale Tabellen", its CSV files unpacked in `<registerDir>`) and OpenStreetMap extracts, each named
-//! with the country it covers ("austria-latest.osm.pbf=Österreich").
+//! `richi-search build [--bounds west,south,east,north] <index> <registerDir> <osm.pbf>=<country> …`: builds the index
+//! from the BEV address register ("Adresse Relationale Tabellen", its CSV files unpacked in `<registerDir>`) and
+//! OpenStreetMap extracts, each named with the country it covers ("austria-latest.osm.pbf=Österreich"), for the routing
+//! area or the area of `--bounds` (a region for a phone).
 //!
 //! `richi-search serve <index> <port> [bindAddress]`: answers the planner as Photon does (`/api/`, `/reverse`), on
 //! 127.0.0.1 unless `<bindAddress>` says otherwise.
@@ -9,20 +10,16 @@
 
 #![forbid(unsafe_code)]
 
-mod build;
-mod geo;
-mod index;
-mod search;
 mod server;
-mod text;
 
 use std::fs::File;
 use std::net::TcpListener;
 use std::path::Path;
 use std::time::Instant;
 
-use index::Index;
-use search::{Hit, Query, TypoIndex};
+use richi_search::build;
+use richi_search::index::Index;
+use richi_search::search::{self, Hit, Query, TypoIndex};
 
 fn fail(message: &str) -> ! {
     eprintln!("{message}");
@@ -34,21 +31,32 @@ fn load(path: &str) -> Index {
     let file = File::open(path).unwrap_or_else(|e| fail(&format!("{path}: {e}")));
     let index = Index::read(file).unwrap_or_else(|e| fail(&format!("{path}: {e}")));
     eprintln!(
-        "{path}: {} places, {} houses, {} road pieces, read in {:.1} s",
+        "{path}: {} places, {} houses, {} road points, read in {:.1} s",
         index.docs.len(),
         index.houses.len(),
-        index.segments.len(),
+        index.road_points.len(),
         started.elapsed().as_secs_f64()
     );
     index
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    let mut bounds = build::ROUTING_AREA;
+    if args.get(1).is_some_and(|a| a == "build") && args.get(2).is_some_and(|a| a == "--bounds") && args.len() > 3 {
+        let values: Option<Vec<f64>> = args[3].split(',').map(|v| v.parse().ok()).collect();
+        bounds = values
+            .and_then(|v| <[f64; 4]>::try_from(v).ok())
+            .filter(|[west, south, east, north]| west < east && south < north)
+            .unwrap_or_else(|| {
+                fail("--bounds takes west,south,east,north in degrees, west of east and south of north")
+            });
+        args.drain(2..4);
+    }
     match args.get(1).map(String::as_str) {
         Some("build") if args.len() >= 4 => {
             let started = Instant::now();
-            let mut builder = build::Builder::new();
+            let mut builder = build::Builder::new(bounds);
             builder.add_register(Path::new(&args[3])).unwrap_or_else(|e| fail(&e.to_string()));
             let files: Vec<(&Path, &str)> = args[4..]
                 .iter()
@@ -57,17 +65,20 @@ fn main() {
                 })
                 .map(|(file, country)| (Path::new(file), country))
                 .collect();
-            let segments = builder.add_osm(&files).unwrap_or_else(|e| fail(&e.to_string()));
-            let index = builder.finish(segments);
+            let roads = builder.add_osm(&files).unwrap_or_else(|e| fail(&e.to_string()));
+            let index = builder.finish(roads);
             let out = File::create(&args[2]).unwrap_or_else(|e| fail(&format!("{}: {e}", args[2])));
-            index.write(out).unwrap_or_else(|e| fail(&format!("{}: {e}", args[2])));
+            let parts = index.write(out).unwrap_or_else(|e| fail(&format!("{}: {e}", args[2])));
+            let sizes: Vec<String> =
+                parts.iter().map(|(name, bytes)| format!("{name} {:.0} MB", *bytes as f64 / 1e6)).collect();
+            eprintln!("{}", sizes.join(", "));
             eprintln!(
-                "{}: {} places, {} houses, {} terms, {} road pieces in {:.0} s",
+                "{}: {} places, {} houses, {} terms, {} road points in {:.0} s",
                 args[2],
                 index.docs.len(),
                 index.houses.len(),
                 index.terms.len(),
-                index.segments.len(),
+                index.road_points.len(),
                 started.elapsed().as_secs_f64()
             );
         }
@@ -110,7 +121,7 @@ fn main() {
             }
         }
         _ => fail(
-            "usage: richi-search build <index> <registerDir> <osm.pbf>=<country> … | serve <index> <port> [bindAddress] | query <index> <text> [lon lat]",
+            "usage: richi-search build [--bounds w,s,e,n] <index> <registerDir> <osm.pbf>=<country> … | serve <index> <port> [bindAddress] | query <index> <text> [lon lat]",
         ),
     }
 }

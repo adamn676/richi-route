@@ -7,9 +7,9 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::geo::Point;
-use crate::index::{Doc, House, Index};
-use crate::search::{DEFAULT_BIAS_SCALE, Hit, Query, Spot, TypoIndex, reverse, search, town_at};
+use richi_search::geo::Point;
+use richi_search::index::{Doc, House, Index};
+use richi_search::search::{DEFAULT_BIAS_SCALE, Hit, Query, Spot, TypoIndex, reverse, search, town_at};
 
 pub struct Service {
     pub index: Index,

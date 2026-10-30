@@ -52,7 +52,7 @@ wrong, you can correct it in the local planner, and routing uses the correction 
 ## Getting started
 
 You need Linux on x64 with 16 GB of memory, about 50 GB of free disk space (the European map is about 25 GB, the
-address search about 11 GB), and the verified routing bundle `richiroute-ubuntu-benchmark/` placed next to this
+address search about 10 GB), and the verified routing bundle `richiroute-ubuntu-benchmark/` placed next to this
 checkout. The bundle is not part of this repository, and there is no download command for it yet.
 
 ```sh

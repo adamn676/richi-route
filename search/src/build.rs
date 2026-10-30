@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 use osmpbf::{Element, ElementReader, RelMemberType};
 
-use crate::geo::{Grid, Point, distance_km, gauss_krueger_to_wgs84, in_bbox, mean};
-use crate::index::{Doc, House, Index, Kind, NONE, Region, Segment};
+use crate::geo::{Grid, Point, distance_km, distance_to_segment_km, gauss_krueger_to_wgs84, in_bbox, mean};
+use crate::index::{Doc, House, Index, Kind, NONE, Region, Road};
 use crate::text::{fold, words};
 
 /// What a place of OpenStreetMap is to the search.
@@ -477,8 +477,7 @@ impl Interner {
         if let Some(&id) = self.strings.get(text) {
             return id;
         }
-        let id = self.index.strings.len() as u32;
-        self.index.strings.push(text.to_string());
+        let id = self.index.strings.push(text);
         self.strings.insert(text.to_string(), id);
         id
     }
@@ -543,11 +542,44 @@ fn core(words: &[String]) -> usize {
     words.iter().skip(1).position(|w| WHERE.contains(&w.as_str())).map_or(words.len(), |i| i + 1)
 }
 
-/// The area routing covers (west, south, east, north; the planner's `ROUTING_BOUNDS`): only places there are found.
-const BOUNDS: [f64; 4] = [5.0, 45.0, 20.0, 50.0];
+/// The area routing covers (west, south, east, north; the planner's `ROUTING_BOUNDS`), which an index covers unless
+/// built for a smaller one.
+pub const ROUTING_AREA: [f64; 4] = [5.0, 45.0, 20.0, 50.0];
 
-fn inside(p: Point) -> bool {
-    in_bbox(p, BOUNDS)
+/// How far a road's line may be from the road: enough to name the road a point lies on.
+const ROAD_TOLERANCE_KM: f64 = 0.005;
+
+/// The points of a line that keep it within `tolerance_km` of all its points (Douglas and Peucker).
+fn simplify(points: &[Point], tolerance_km: f64) -> Vec<Point> {
+    let mut keep = vec![false; points.len()];
+    (keep[0], keep[points.len() - 1]) = (true, true);
+    let mut spans = vec![(0, points.len() - 1)];
+    while let Some((first, last)) = spans.pop() {
+        let farthest = (first + 1..last)
+            .map(|i| (i, distance_to_segment_km(points[i], points[first], points[last])))
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((i, _)) = farthest.filter(|&(_, d)| d > tolerance_km) {
+            keep[i] = true;
+            spans.extend([(first, i), (i, last)]);
+        }
+    }
+    points.iter().zip(keep).filter(|(_, k)| *k).map(|(p, _)| *p).collect()
+}
+
+/// The longest piece of road: longer ones are divided, so that a piece lies in a few cells of the grid.
+const ROAD_PIECE_KM: f64 = 2.0;
+
+/// A line with each piece longer than `ROAD_PIECE_KM` divided evenly.
+fn divide(points: &[Point]) -> Vec<Point> {
+    let mut divided = vec![points[0]];
+    for pair in points.windows(2) {
+        let parts = (distance_km(pair[0], pair[1]) / ROAD_PIECE_KM).ceil().max(1.0) as usize;
+        for k in 1..=parts {
+            let t = k as f64 / parts as f64;
+            divided.push((pair[0].0 + (pair[1].0 - pair[0].0) * t, pair[0].1 + (pair[1].1 - pair[0].1) * t));
+        }
+    }
+    divided
 }
 
 /// The country whose addresses the register has.
@@ -578,6 +610,8 @@ fn locality_words(name: &str) -> Vec<String> {
 }
 
 pub struct Builder {
+    /// West, south, east, north: only places there are found.
+    bounds: [f64; 4],
     interner: Interner,
     drafts: Vec<Draft>,
     houses: Vec<House>,
@@ -587,8 +621,9 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new() -> Builder {
+    pub fn new(bounds: [f64; 4]) -> Builder {
         Builder {
+            bounds,
             interner: Interner::default(),
             drafts: Vec::new(),
             houses: Vec::new(),
@@ -633,6 +668,9 @@ impl Builder {
                 unplaced += 1;
                 return;
             };
+            if !in_bbox(point, self.bounds) {
+                return;
+            }
             if let Some(street) = streets.get_mut(&f[c["SKZ"]]) {
                 street.houses.push((f[c["HNR_ADR_ZUSAMMEN"]].clone(), f[c["PLZ"]].clone(), f[c["OKZ"]].clone(), point));
             }
@@ -730,7 +768,8 @@ impl Builder {
     }
 
     /// The objects of OpenStreetMap extracts, each file with the country it covers (in German).
-    pub fn add_osm(&mut self, files: &[(&Path, &str)]) -> io::Result<Vec<Segment>> {
+    /// Gives the named roads, each a line of points, for naming points on the map.
+    pub fn add_osm(&mut self, files: &[(&Path, &str)]) -> io::Result<Vec<(u32, Vec<Point>)>> {
         let register = Grid::points(self.houses.iter().enumerate().map(|(i, h)| (i as u32, h.point())));
         let paths: Vec<&Path> = files.iter().map(|f| f.0).collect();
         let austria: u32 = files.iter().enumerate().filter(|(_, f)| f.1 == AUSTRIA).map(|(i, _)| 1 << i).sum();
@@ -765,7 +804,7 @@ impl Builder {
             if o.class.key == "highway" && NAMED_ROADS.contains(&o.class.value.as_str()) {
                 segments_wanted.push(i);
             }
-            if let Some(point) = point.filter(|&p| inside(p)) {
+            if let Some(point) = point.filter(|&p| in_bbox(p, self.bounds)) {
                 placed.push(Placed { object: i, point, abroad: abroad(o.files, point) });
             }
         }
@@ -790,7 +829,7 @@ impl Builder {
         let mut abroad_streets: HashMap<(String, Result<usize, &str>), Houses> = HashMap::new();
         for a in &addresses {
             let point = a.point.map(|(x, y)| (f64::from(x), f64::from(y))).or_else(|| nodes.get(a.first_node));
-            let Some(point) = point.filter(|&p| inside(p)) else { continue };
+            let Some(point) = point.filter(|&p| in_bbox(p, self.bounds)) else { continue };
             let Some(country) = abroad(a.files, point) else { continue };
             let mut fields = a.fields.split(ADDRESS_SEPARATOR);
             let (street, number, postcode, city) =
@@ -850,7 +889,8 @@ impl Builder {
                 let street_doc = near.map(|(house, _)| &self.drafts[house.street as usize].doc);
                 let street = o.tag("addr:street").map(str::to_string).or_else(|| {
                     let ((_, d), doc) = (near?, street_doc?);
-                    (o.class.at_street() && d < 0.1).then(|| self.interner.index.strings[doc.name as usize].clone())
+                    (o.class.at_street() && d < 0.1)
+                        .then(|| self.interner.index.strings.get(doc.name as usize).to_string())
                 });
                 let postcode = near.filter(|(_, d)| *d < 3.0).map_or(NONE, |(house, _)| house.postcode);
                 (street_doc.map_or(NONE, |d| d.city), postcode, street_doc.map_or(austria_region, |d| d.region), street)
@@ -951,21 +991,30 @@ impl Builder {
         }
         eprintln!("OpenStreetMap: {added} places added, {joined} streets of the register placed on their line");
 
-        let mut segments = Vec::new();
+        let mut roads = Vec::new();
         for i in segments_wanted {
             let o = &objects[i];
-            let name = self.interner.string(o.display_name());
             let points: Vec<Point> = o.refs.iter().filter_map(|&id| nodes.get(id)).collect();
-            for pair in points.windows(2).filter(|pair| inside(pair[0]) || inside(pair[1])) {
-                let (a, b) = (pair[0], pair[1]);
-                segments.push(Segment { name, a: (a.0 as f32, a.1 as f32), b: (b.0 as f32, b.1 as f32) });
+            // the stretches with a piece touching the area
+            let mut stretch: Vec<Point> = Vec::new();
+            for (i, pair) in points.windows(2).enumerate() {
+                if in_bbox(pair[0], self.bounds) || in_bbox(pair[1], self.bounds) {
+                    if stretch.is_empty() {
+                        stretch.push(pair[0]);
+                    }
+                    stretch.push(pair[1]);
+                }
+                if !stretch.is_empty() && (i + 2 == points.len() || stretch.last() != Some(&pair[1])) {
+                    let name = self.interner.string(o.display_name());
+                    roads.push((name, divide(&simplify(&std::mem::take(&mut stretch), ROAD_TOLERANCE_KM))));
+                }
             }
         }
-        Ok(segments)
+        Ok(roads)
     }
 
     /// The finished index.
-    pub fn finish(self, segments: Vec<Segment>) -> Index {
+    pub fn finish(self, roads: Vec<(u32, Vec<Point>)>) -> Index {
         // postings of a term: name, other names, context
         let mut terms: HashMap<String, [Vec<u32>; 3]> = HashMap::new();
         let mut docs = Vec::with_capacity(self.drafts.len());
@@ -1006,19 +1055,28 @@ impl Builder {
             // a name that is also another name counts as the name
             others.dedup();
             others.retain(|d| names.binary_search(d).is_err());
-            index.push_term(term, [&names, &others, &context]);
+            index.push_term(&term, [&names, &others, &context]);
         }
         index.docs = docs;
         index.houses = self.houses;
-        index.house_grid = Grid::points(index.houses.iter().enumerate().map(|(i, h)| (i as u32, h.point())));
-        index.segment_grid = Grid::new(segments.iter().enumerate().map(|(i, s)| {
-            let (a, b) = s.ends();
-            (i as u32, [a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)])
-        }));
-        index.segments = segments;
-        let towns = (0..index.docs.len() as u32)
-            .filter(|&i| index.kinds[index.docs[i as usize].kind as usize].kind_type == "city");
-        index.town_grid = Grid::points(towns.map(|i| (i, index.docs[i as usize].point())));
+        for (name, points) in roads {
+            index.road_points.extend(points.iter().map(|&(lon, lat)| (lon as f32, lat as f32)));
+            index.roads.push(Road { name, end: index.road_points.len() as u32 });
+        }
+        index.build_grids();
         index
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simplifies_lines() {
+        // a straight road with a bend of 3 m and one of 30 m
+        let line = [(15.0, 47.0), (15.001, 47.00003), (15.002, 47.0), (15.003, 47.0003), (15.004, 47.0)];
+        assert_eq!(simplify(&line, 0.005), [(15.0, 47.0), (15.002, 47.0), (15.003, 47.0003), (15.004, 47.0)]);
+        assert_eq!(simplify(&line[..2], 0.005).len(), 2);
     }
 }

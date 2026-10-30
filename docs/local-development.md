@@ -716,15 +716,22 @@ names are stored with the next save.
 `unzip`) and the OpenStreetMap extracts listed in `scripts/search-data.json` (Austria, Slovenia and the
 neighbouring regions from Geofabrik, about 9 GB; each checked against Geofabrik's
 MD5), builds `richi-search` with the bundled Rust and then its index of the routing
-area, `.cache/services/search/routing-area.search` (about 1.4 GB). Building takes
+area, `.cache/services/search/routing-area.search` (about 0.46 GB: road lines are kept
+to within 5 m, positions are stored as small steps, and the grids that find what lies
+near a point are built when it is read). Building takes
 about two minutes and up to 11 GB of memory, so setup needs a computer with 16 GB
 and about 15 GiB free. Downloads are kept in `.cache/services/search/downloads/`
 and reused; `npm run search:setup -- --update` fetches current data and builds the
 index again. Two builds from the same data give the same index.
 
+`richi-search build --bounds west,south,east,north …` builds an index of a smaller
+area instead, a region for a phone: Styria with its borders (13.55–16.2° E,
+46.6–47.85° N) takes 16 MB (about 10 MB compressed), 53 MB of memory, loads in
+0.1 s and answers within a millisecond on a desktop.
+
 `npm run search:start` serves the index on `127.0.0.1:2322` (`SEARCH_PORT` chooses
-another port; Vite's `/geocoding` proxy follows it), using about 2 GB of memory and
-answering most searches within 10 ms.
+another port; Vite's `/geocoding` proxy follows it). It loads in about 3 s, uses
+about 1.1 GB of memory and answers most searches within 5 ms.
 
 Another Photon-compatible service can be selected with `VITE_GEOCODING_URL`.
 Export it in the shell before running Vite or building; `.env` loading is

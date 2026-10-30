@@ -52,8 +52,8 @@ fn bucket(length: usize, letter: u8) -> usize {
 impl TypoIndex {
     pub fn new(index: &Index) -> TypoIndex {
         let mut typos = TypoIndex { first: vec![Vec::new(); 64 * 256], second: HashMap::new() };
-        for (i, term) in index.terms.iter().enumerate() {
-            let bytes = term.as_bytes();
+        for i in 0..index.terms.len() {
+            let bytes = index.terms.get(i).as_bytes();
             typos.first[bucket(bytes.len(), bytes[0])].push(i as u32);
             if let [_, second, third, ..] = *bytes {
                 typos.second.entry((bytes.len().min(MAX_WORD), second, third)).or_default().push(i as u32);
@@ -80,7 +80,7 @@ fn term_matches(index: &Index, typos: &TypoIndex, word: &str, last: bool) -> Vec
             let range = index.terms_with_prefix(&form);
             if range.len() <= 20_000 {
                 for term in range {
-                    let share = form.len() as f32 / index.terms[term].len() as f32;
+                    let share = form.len() as f32 / index.terms.get(term).len() as f32;
                     add(term, 0.6 + 0.35 * share);
                 }
             }
@@ -92,9 +92,9 @@ fn term_matches(index: &Index, typos: &TypoIndex, word: &str, last: bool) -> Vec
                 let same_first = &typos.first[bucket(length, typed[0])];
                 // the first letter mistyped: the same second and third (a typed word has four letters or more)
                 let same_next = typos.second.get(&(length, typed[1], typed[2])).map_or(&[][..], Vec::as_slice);
-                let same_next = same_next.iter().filter(|&&t| index.terms[t as usize].as_bytes()[0] != typed[0]);
+                let same_next = same_next.iter().filter(|&&t| index.terms.get(t as usize).as_bytes()[0] != typed[0]);
                 for &term in same_first.iter().chain(same_next) {
-                    let text = index.terms[term as usize].as_bytes();
+                    let text = index.terms.get(term as usize).as_bytes();
                     if let Some(edits @ 1..) = distance_within(typed, text, limit) {
                         add(term as usize, if edits == 1 { 0.75 } else { 0.6 });
                     }
@@ -354,8 +354,8 @@ pub enum Spot<'a> {
 
 pub fn reverse(index: &Index, p: Point, radius_km: f64) -> Option<Spot<'_>> {
     let house = index.nearest_house(p, radius_km);
-    let road = index.segment_grid.nearest(p, radius_km, |i| {
-        let (a, b) = index.segments[i as usize].ends();
+    let road = index.road_grid.nearest(p, radius_km, |i| {
+        let (a, b) = index.road_piece(i);
         distance_to_segment_km(p, a, b)
     });
     match (house, road) {
@@ -363,7 +363,7 @@ pub fn reverse(index: &Index, p: Point, radius_km: f64) -> Option<Spot<'_>> {
         (_, Some((s, _))) => {
             let near = index.nearest_house(p, 2.0);
             Some(Spot::Road {
-                name: index.text(index.segments[s as usize].name).unwrap_or_default(),
+                name: index.text(index.road_name(s)).unwrap_or_default(),
                 near: near.map(|(h, _)| &index.houses[h as usize]),
                 at: p,
             })
@@ -385,10 +385,11 @@ pub fn town_at(index: &Index, p: Point, radius_km: f64) -> Option<&str> {
         .and_then(|(i, _)| index.text(index.docs[i as usize].name))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "build"))]
 mod tests {
     use super::*;
     use crate::build::Builder;
+    use crate::index::NONE;
 
     /// A register of two municipalities: Graz with Herrengasse and Annenstraße, and Gleisdorf with its Hauptplatz.
     fn index(test: &str) -> Index {
@@ -417,10 +418,11 @@ mod tests {
              \"5\";\"60101\";\"1\";\"8020\";\"2\";\"3-5\";-68400.00;215000.00;31256\n\
              \"4\";\"61708\";\"2\";\"8200\";\"3\";\"1\";-46100.00;218600.00;31256\n",
         );
-        let mut builder = Builder::new();
+        let mut builder = Builder::new(crate::build::ROUTING_AREA);
         builder.add_register(&dir).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
-        builder.finish(Vec::new())
+        // a road running north past Herrengasse 5, 100 m to its west
+        builder.finish(vec![(NONE, vec![(15.4380, 47.0690), (15.4380, 47.0705), (15.4381, 47.0720)])])
     }
 
     fn first(index: &Index, text: &str) -> Option<String> {
@@ -451,11 +453,37 @@ mod tests {
     }
 
     #[test]
+    fn reads_what_it_wrote() {
+        let index = index("file");
+        let mut file = Vec::new();
+        index.write(&mut file).unwrap();
+        let read = Index::read(file.as_slice()).unwrap();
+        assert_eq!(read.docs.len(), index.docs.len());
+        for (a, b) in read.docs.iter().zip(&index.docs) {
+            assert_eq!((a.name, a.postcode, a.city, a.houses), (b.name, b.postcode, b.city, b.houses));
+            assert!(distance_km(a.point(), b.point()) < 0.001);
+        }
+        for (a, b) in read.houses.iter().zip(&index.houses) {
+            assert_eq!((a.street, a.number, a.postcode), (b.street, b.number, b.postcode));
+            assert!(distance_km(a.point(), b.point()) < 0.001);
+        }
+        assert_eq!(read.road_points.len(), 3);
+        assert_eq!((&read.postings, &read.posting_ends), (&index.postings, &index.posting_ends));
+        assert_eq!(
+            (&read.house_grid.cells, &read.house_grid.items),
+            (&index.house_grid.cells, &index.house_grid.items)
+        );
+        assert_eq!(first(&read, "Herrengasse 5").as_deref(), Some("Herrengasse 5, 8010"));
+    }
+
+    #[test]
     fn names_points_on_the_map() {
         let index = index("map");
         let Some(Spot::House(house)) = reverse(&index, (15.4394, 47.0706), 0.3) else { panic!("no house") };
         assert_eq!(index.text(house.number), Some("5"));
         assert!(reverse(&index, (15.0, 47.5), 0.3).is_none());
+        // 30 m from the road, 100 m from the house
+        assert!(matches!(reverse(&index, (15.4384, 47.0706), 0.3), Some(Spot::Road { .. })));
         assert_eq!(town_at(&index, (15.4394, 47.0706), 3.0), Some("Graz"));
     }
 }
