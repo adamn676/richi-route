@@ -80,7 +80,7 @@ await page.getByText('Ein Gebiet auf der Karte wählen.').waitFor();
 // Wien loads whole into the file system.
 await choose('at-9');
 await page.getByText(`Österreich · ${Math.round(sizeOf('at-9') / 1e6) || 1} MB`).waitFor();
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 await ready('at-9');
 let files = await stored();
 for (const path of ['areas/at-9/map.pmtiles', 'areas/at-9/search.index', 'routing/E16_N48.square']) assert.equal(files[path], fileBytes.get(path).length, path);
@@ -89,11 +89,11 @@ await page.getByText('Geladen am').waitFor();
 // A download cut short reports it; loading again goes on after the last whole piece.
 cut = 'areas/at-6/map.pmtiles';
 await choose('at-6');
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 await alert.filter({ hasText: 'ließ sich nicht laden' }).waitFor();
 assert.equal(await status('at-6'), null);
 requests.length = 0;
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 await ready('at-6');
 assert.equal(requests.find(r => r.path === 'areas/at-6/map.pmtiles')?.range, `bytes=${pieceBytes * 2}-`, 'Resumes after the two good pieces');
 assert.equal((await stored())['areas/at-6/map.pmtiles'], 300_000);
@@ -101,14 +101,14 @@ assert.equal((await stored())['areas/at-6/map.pmtiles'], 300_000);
 // A damaged piece is refused and nothing of it kept as good.
 damage = 'areas/at-2/map.pmtiles';
 await choose('at-2');
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 await alert.filter({ hasText: 'beschädigt' }).waitFor();
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 await ready('at-2');
 
 // Deleting Kärnten keeps the routing square Steiermark shares.
-await page.getByRole('button', { name: 'Löschen' }).click();
-await page.getByRole('dialog').getByRole('button', { name: 'Löschen' }).click();
+await page.getByRole('button', { name: 'Löschen', exact: true }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Löschen', exact: true }).click();
 await page.waitForFunction(() => !document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('offline-areas').states['at-2']);
 files = await stored();
 assert.equal(files['areas/at-2/map.pmtiles'], undefined);
@@ -116,12 +116,12 @@ assert.equal(files['routing/E14_N46.square'], 150_000, 'Shared square stays');
 
 // Stopping a download leaves nothing behind.
 hold = 'areas/at-2/map.pmtiles';
-await page.getByRole('button', { name: 'Laden' }).click();
+await page.getByRole('button', { name: 'Laden', exact: true }).click();
 // The held request has arrived.
 while (typeof hold !== 'function') await new Promise(resolve => setTimeout(resolve, 20));
-await page.getByRole('button', { name: 'Abbrechen' }).click();
+await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
 hold();
-await page.getByRole('button', { name: 'Laden' }).waitFor();
+await page.getByRole('button', { name: 'Laden', exact: true }).waitFor();
 assert.equal(await status('at-2'), null);
 assert.equal((await stored())['areas/at-2/map.pmtiles'], undefined);
 assert.equal((await stored())['routing/E14_N46.square'], 150_000, 'Shared square stays after stopping');
@@ -145,7 +145,7 @@ await page.getByRole('button', { name: 'Offline-Gebiete' }).click();
 await page.locator('.row-list').getByText('neuere Daten verfügbar').waitFor();
 await choose('at-6');
 requests.length = 0;
-await page.getByRole('button', { name: 'Aktualisieren' }).click();
+await page.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
 await page.waitForFunction(() => { const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('offline-areas').states['at-6'];
   return s?.status === 'ready' && !s.outdated; });
 assert.deepEqual(requests.map(r => r.path), ['areas/at-6/terrain.pmtiles']);
