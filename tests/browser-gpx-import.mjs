@@ -16,6 +16,12 @@ await context.addInitScript(origin => {
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
 // Surfaces of an opened track are looked up by routing; that lookup failing leaves them unknown.
 await context.route('**/routing/**', route => { routingRequests++; return route.abort(); });
+// Stops get a street, also where no address service runs, as in CI.
+await context.route('**/geocoding/reverse**', route => {
+  const params = new URL(route.request().url()).searchParams;
+  return route.fulfill({ json: { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [+params.get('lon'), +params.get('lat')] },
+    properties: { type: 'street', name: 'Teststraße', postcode: '8010', city: 'Graz' } }] } });
+});
 const page = await context.newPage();
 page.on('pageerror', error => errors.push(error.message));
 const gpx = body => `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">${body}</gpx>`;
