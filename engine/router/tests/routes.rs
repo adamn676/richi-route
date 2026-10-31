@@ -51,7 +51,8 @@ fn answers_match_java() {
             "profile=richi-surface-v4&lonlats=15.4395%2C47.0707%7C15.4395%2C47.0707&format=geojson".to_string(),
             0x892c_3fea_5efa_2391,
         ),
-        ("profile=richi-local-v1&lonlats=5.0%2C45.5%7C5.1%2C45.6".to_string(), 0x3848_35a4_6053_f89d),
+        // Java's "datafile E0_N45.rd5 not found", as it answered for E5_N45 before that tile was installed
+        ("profile=richi-local-v1&lonlats=4.0%2C45.5%7C4.1%2C45.6".to_string(), 0x0ebb_141b_a50a_5906),
     ];
     let mut router = Router::new(&segments, &profiles);
     for (query, digest) in cases {
