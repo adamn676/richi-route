@@ -47,6 +47,7 @@ npm ci
 npm run search:setup
 npm run maps:setup
 npm run terrain:setup
+npm run imagery:setup
 npm run dev:local
 ```
 
