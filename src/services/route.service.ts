@@ -4,6 +4,8 @@ import { routingProfile, routingParameters, routingPolicyVersion } from '../conf
 
 const maxSnapDistance = 250;
 const unavailableMessage = 'Der lokale Routing-Dienst ist nicht erreichbar. Bitte den Routing-Dienst starten und erneut versuchen.';
+// In the browser, routes need the routing service; offline areas bring the map and the address search.
+const offlineMessage = 'Ohne Netz berechnet der Planer im Browser keine Route. Karte und Adresssuche der Offline-Gebiete gehen weiter.';
 const timeoutMessage = 'Die Routenberechnung hat das Zeitlimit erreicht. Bitte einen Zwischenstopp dazwischen setzen.';
 const waiting: (() => void)[] = [];
 const backgroundWaiting: (() => void)[] = [];
@@ -50,7 +52,7 @@ async function request(points: Coord[], signal: AbortSignal, background = false,
     } catch (error) {
       if (signal.aborted) throw error;
       if (error instanceof Error && error.name === 'TimeoutError') throw new SectionError(timeoutMessage, { cause: error });
-      throw new Error(unavailableMessage, { cause: error });
+      throw new Error(navigator.onLine === false ? offlineMessage : unavailableMessage, { cause: error });
     }
     if (!response.ok) {
       const detail = (await response.text()).trim();

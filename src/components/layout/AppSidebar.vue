@@ -1,5 +1,5 @@
 <template>
-  <aside ref="sidebar" class="sidebar">
+  <aside ref="sidebar" class="sidebar" :class="{ 'sidebar--offline': offline.active }">
     <header class="sidebar__header">
       <!-- The R as a bicycle frame on two rings, the map's ring markers as wheels; Route in the colour of a paved road. -->
       <h1 class="brand">
@@ -23,7 +23,7 @@
         @click="emit('tab-click')">{{ item.label }}</v-tab>
     </v-tabs>
     <!-- Folded on a phone: where the route goes; a tap raises the sheet to its stops. -->
-    <button v-if="folded && summary" type="button" class="sidebar__summary" @click="emit('tab-click')">{{ summary }}</button>
+    <button v-if="folded && summary && !offline.active" type="button" class="sidebar__summary" @click="emit('tab-click')">{{ summary }}</button>
     <!-- Saving a draft before a route switch can report from any tab. -->
     <div class="sidebar__messages">
       <v-alert v-if="routeStore.draftError" type="error">
@@ -43,8 +43,9 @@
       <template v-if="restorable" #actions><v-btn variant="text" color="inverse-primary" @click="restore(restorable)">Wiederherstellen</v-btn></template>
     </v-snackbar>
     <div ref="body" class="sidebar__body" :style="{ '--scrollbar': `${scrollbar}px` }">
-      <RoutePanel v-show="tab === 'route'" id="panel-route" :library="library" role="tabpanel" aria-labelledby="tab-route" @open-file="openFile" />
-      <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
+      <OfflineAreasPanel v-if="offline.active" />
+      <RoutePanel v-show="tab === 'route' && !offline.active" id="panel-route" :library="library" role="tabpanel" aria-labelledby="tab-route" @open-file="openFile" />
+      <SavedRoutes v-show="tab === 'library' && !offline.active" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
     </div>
     <!-- The visible map's credits, always in view: the main ones in one line, the full list on demand (MapView places it
          here, useMap's credits container). -->
@@ -68,6 +69,8 @@ import { IconPlus } from '@/components/icons';
 import { routeStyle } from '@/config/mapStyle';
 import RoutePanel from '@/components/ui/RoutePanel.vue';
 import SavedRoutes from '@/components/ui/SavedRoutes.vue';
+import OfflineAreasPanel from '@/components/ui/OfflineAreasPanel.vue';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
 import { useRouteLibrary } from '@/composables/useRouteLibrary';
 import { useRouteStore } from '@/stores/route.store';
 import { saveDraftNow } from '@/services/draft.service';
@@ -77,6 +80,7 @@ import { routeTitle, type SavedRouteSummary } from '@/domain/saved-route';
 const emit = defineEmits<{ 'tab-click': [] }>();
 const { folded = false } = defineProps<{ folded?: boolean }>();
 const routeStore = useRouteStore();
+const offline = useOfflineAreasStore();
 // Where the route goes, by its stops' streets.
 const summary = computed(() => routeTitle(routeStore.waypoints));
 const creditsOpen = ref(false);
@@ -91,7 +95,7 @@ function placePill() {
   const selected = sidebar.value?.querySelector<HTMLElement>('.sidebar__tabs .v-tab--selected');
   if (selected) pill.value = { left: selected.offsetLeft, width: selected.offsetWidth };
 }
-watch(tab, () => nextTick(placePill));
+watch([tab, () => offline.active], () => nextTick(placePill));
 // The room kept for the scrollbar, which the content's right margin gives back (none where scrollbars overlay).
 const body = ref<HTMLElement | null>(null), scrollbar = ref(0);
 const measureScrollbar = () => { if (body.value) scrollbar.value = body.value.offsetWidth - body.value.clientWidth; };
@@ -175,6 +179,8 @@ async function showRoute(focus = 'tab-route') {
 .sidebar__tabs .v-tab:not(.v-tab--selected):hover { color: var(--text) !important; background: rgb(0 0 0 / .04); }
 .sidebar__tabs .v-tab :deep(.v-btn__content) { transition: opacity .1s; }
 .sidebar__tabs .v-tab:active :deep(.v-btn__content) { opacity: .55; }
+/* Choosing offline areas, the sidebar is its panel alone. */
+.sidebar--offline .sidebar__tabs { display: none; }
 .sidebar__pill { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; background: var(--surface); pointer-events: none;
   box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 1px 1px rgb(0 0 0 / .04); }
 .sidebar__pill--moves { transition: transform .22s cubic-bezier(.3, .7, .2, 1), width .22s cubic-bezier(.3, .7, .2, 1); }

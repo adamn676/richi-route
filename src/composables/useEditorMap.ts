@@ -4,6 +4,7 @@ import { aerialVectorLayers, imagerySource, imageryOverviewSource, initialBasema
 import { MAP_BOUNDS, MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 import { setSearchFocus } from '@/services/geocoding.service';
+import { offlineTiles, setNetworkTiles, terrainTiles } from '@/services/offline-tiles';
 
 const hillshadeKey = 'richiroute.hillshade';
 
@@ -45,9 +46,10 @@ export function useMap(container: string, creditsContainer: string) {
       request.signal.throwIfAborted();
       if (style.glyphs) instance.setGlyphs(absoluteUrl(style.glyphs));
       if (typeof style.sprite === 'string') instance.setSprite(absoluteUrl(style.sprite));
+      // The street map's tiles come from the offline areas on the device where they cover them.
       for (const [id, source] of Object.entries(style.sources)) {
-        instance.addSource(`basemap-vector-${id}`, source.type === 'vector'
-          ? { ...source, tiles: source.tiles?.map(absoluteUrl) } : source);
+        if (source.type === 'vector' && source.tiles?.length) setNetworkTiles('map', absoluteUrl(source.tiles[0]));
+        instance.addSource(`basemap-vector-${id}`, source.type === 'vector' ? { ...source, tiles: [offlineTiles('map')] } : source);
       }
       for (const layer of style.layers) {
         const id = `basemap-vector-${layer.id}`;
@@ -78,7 +80,8 @@ export function useMap(container: string, creditsContainer: string) {
     for (const layer of vectorLayers) instance.setLayoutProperty(layer.id, 'visibility', vectorMap() && vectorReady ? layer.visibility : 'none');
     for (const id of aerialLayers) instance.setLayoutProperty(id, 'visibility', aerialMap() && vectorReady ? 'visible' : 'none');
     if (hillshade.value && !instance.getSource('basemap-terrain')) {
-      instance.addSource('basemap-terrain', { type: 'raster-dem', url: '/maps/terrain.json', tileSize: 512, encoding: 'terrarium' });
+      instance.addSource('basemap-terrain', { type: 'raster-dem', tiles: [offlineTiles('terrain')], maxzoom: terrainTiles.maxzoom, tileSize: 512,
+        encoding: 'terrarium' });
       instance.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain',
         // Soft, and softer still in town, where the coarse terrain data would only smudge streets and buildings.
         paint: { 'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 12, .25, 16, .08], 'hillshade-shadow-color': '#5d6a63',
@@ -104,7 +107,7 @@ export function useMap(container: string, creditsContainer: string) {
         if (source.url) map.value?.getSource<RasterTileSource>(id)?.setUrl(source.url);
       }
     }
-    if (hillshade.value) map.value?.getSource<RasterTileSource>('basemap-terrain')?.setUrl('/maps/terrain.json');
+    if (hillshade.value) map.value?.refreshTiles('basemap-terrain');
     const online = onlineBasemap(basemap.value);
     if (online) map.value?.refreshTiles(`online-${online.id}`);
   }
@@ -170,8 +173,9 @@ export function useMap(container: string, creditsContainer: string) {
       const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : '';
       // Rad-Infos reports problems with its own sources.
       if (sourceId.startsWith('cycling-')) return;
+      // Offline, the relief shows where an offline area has it, and is simply missing elsewhere.
       if (sourceId === 'basemap-terrain') {
-        mapError.value = 'Geländedaten nicht erreichbar. Geländedaten installieren und Kartendienst neu starten.';
+        if (navigator.onLine) mapError.value = 'Geländedaten nicht erreichbar. Geländedaten installieren und Kartendienst neu starten.';
         return;
       }
       const online = onlineBasemap(basemap.value);

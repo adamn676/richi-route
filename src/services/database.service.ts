@@ -4,7 +4,7 @@ let connection: Promise<IDBDatabase> | undefined;
 
 function openDatabase(): Promise<IDBDatabase> {
   connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 4);
+    const request = indexedDB.open(databaseName, 5);
     let blocked = false;
     request.onupgradeneeded = event => {
       const db = request.result;
@@ -19,6 +19,7 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore('recentSummaries', { keyPath: 'id' });
         db.createObjectStore('recentPayloads');
       }
+      if (event.oldVersion < 5) db.createObjectStore('offlineAreas', { keyPath: 'id' });
     };
     request.onerror = () => reject(request.error);
     request.onblocked = () => {

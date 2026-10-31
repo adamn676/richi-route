@@ -1,12 +1,14 @@
 <template>
   <div class="map-view">
-    <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking || surfaceReporting, 'map-view__stage--overview': overview }">
+    <div class="map-view__stage" :class="{ 'map-view__stage--picking': streetView.picking || surfaceReporting, 'map-view__stage--overview': overview,
+      'map-view__stage--offline': offline.active }">
       <div id="map" class="map-view__canvas" aria-label="Interaktive Karte" />
       <SegmentedRouteLayer v-if="map" :map="map" :route="initialRouting ? null : route" :former="routeStore.formerRoute" />
       <SurfaceFocusLayer v-if="map" :map="map" :focus="surfacePreview ?? framed" />
       <LoopSuggestionsLayer v-if="map" :map="map" :loops="loopSuggestions.suggestions" :highlighted="loopSuggestions.highlighted" :selected="loopSuggestions.selected"
         @highlight="index => loopSuggestions.highlighted = index" />
       <RouteProfileLayer v-if="map" :map="map" :focus="routeProfileFocus" />
+      <OfflineAreasLayer v-if="map && offline.active" :map="map" />
       <div class="map-view__status">
         <span v-if="initialRouting" class="map-view__progress" role="status">Route wird berechnet …</span>
         <span v-if="surfaceEstimate" class="map-view__progress" role="status">
@@ -34,21 +36,23 @@
               <span class="map-menu__group">Darstellung</span>
               <v-checkbox v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
             </div>
+            <button type="button" class="map-view__offline" @click="close(); offline.open()">
+              <IconMapDown :size="18" aria-hidden="true" />Offline-Gebiete</button>
           </template>
         </MapMenu>
         <CyclingOverlays :map="map" />
-        <v-map-button v-tooltip:start="'Street View: Punkt auf der Karte wählen'" :active="streetView.picking"
+        <v-map-button v-if="!offline.active" v-tooltip:start="'Street View: Punkt auf der Karte wählen'" :active="streetView.picking"
           :aria-pressed="streetView.picking" aria-label="Street View" @click="streetView.picking = !streetView.picking">
           <IconMan :size="20" aria-hidden="true" />
         </v-map-button>
-        <v-map-button v-if="route" v-tooltip:start="'Auf Route zoomen'" aria-label="Auf Route zoomen" @click="fitRoute">
+        <v-map-button v-if="route && !offline.active" v-tooltip:start="'Auf Route zoomen'" aria-label="Auf Route zoomen" @click="fitRoute">
           <IconZoomScan :size="20" aria-hidden="true" />
         </v-map-button>
       </div>
       <MapNavigation class="map-view__navigation" :map="map" />
       <StreetViewPanel v-if="streetView.location" />
     </div>
-    <ElevationProfile v-show="route" class="map-view__profile" />
+    <ElevationProfile v-show="route && !offline.active" class="map-view__profile" />
   </div>
 </template>
 
@@ -59,7 +63,7 @@ import { useRouteStore } from '@/stores/route.store';
 import { showOnMap } from '@/utils/map-fit';
 import { formatLength } from '@/utils/format';
 import { pathMeters, type Coord } from '@/domain/route-model';
-import { IconMan, IconStack2, IconZoomScan } from '@/components/icons';
+import { IconMan, IconMapDown, IconStack2, IconZoomScan } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
 import { useStreetViewMap } from '@/composables/useStreetViewMap';
@@ -73,6 +77,9 @@ import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
 import { routeStyle } from '@/config/mapStyle';
 import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
+import OfflineAreasLayer from '@/components/map/OfflineAreasLayer.vue';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
+import '@/services/offline-geocoding';
 import CyclingOverlays from '@/components/map/CyclingOverlays.vue';
 import ElevationProfile from '@/components/ui/ElevationProfile.vue';
 import MapMenu from '@/components/map/MapMenu.vue';
@@ -121,6 +128,19 @@ watch(() => streetView.picking || surfaceReporting.value, picking => {
   else window.removeEventListener('keydown', cancelPicking);
 });
 useMarkerWatches(map);
+// Choosing offline areas shows all of them; leaving returns to the view before. Street View ends meanwhile.
+const offline = useOfflineAreasStore();
+void offline.init().catch(() => {});
+let viewBefore: { center: [number, number]; zoom: number } | null = null;
+watch(() => offline.active, on => {
+  const instance = map.value;
+  if (!instance) return;
+  if (on) {
+    streetView.picking = false;
+    viewBefore = { center: instance.getCenter().toArray() as [number, number], zoom: instance.getZoom() };
+    instance.fitBounds([[5, 45], [20, 50]], { padding: 24, duration: 600 });
+  } else if (viewBefore) instance.easeTo({ ...viewBefore, duration: 600 });
+});
 // Zoomed far out, shaping points (every 5 km on an imported track) would merge into a chain; they show from zoom 11.
 const overview = ref(false);
 watch(map, instance => instance?.on('zoom', () => { overview.value = instance.getZoom() < 11; }));
@@ -180,6 +200,14 @@ function fitRoute() {
 @media (hover: none) { .map-view__escape { display: none; } }
 .map-view__tools { position: absolute; top: var(--gutter); right: var(--gutter); display: grid; gap: var(--space-2); }
 .map-view__navigation { position: absolute; right: var(--gutter); bottom: var(--gutter); }
+/* While choosing offline areas the route stays in view, but its stops do not take clicks. */
+.map-view__stage--offline :deep(.maplibregl-marker) { display: none; }
+/* An entry as the menu's choices: its glyph on the margin, its label 36 px in, a 40 px row whose hover reaches 8 px past. */
+.map-view__offline { display: flex; align-items: center; gap: var(--space-3); width: calc(100% + 2 * var(--space-2)); height: 40px;
+  margin: var(--space-2) calc(-1 * var(--space-2)) 0; padding: 0 var(--space-2); border: 0; border-radius: var(--radius); background: none;
+  color: var(--text); font: inherit; font-size: .875rem; cursor: pointer; }
+.map-view__offline svg { flex: none; margin-inline: 3px; color: var(--text-muted); }
+.map-view__offline:hover { background: rgba(var(--v-theme-on-surface), var(--v-hover-opacity)); }
 /* The relief applies to every map, so it stands apart from the online group above it. */
 .map-view__relief { margin-top: var(--space-2); }
 /* The scale as a thin ink bracket with its distance above, a white halo keeping both readable on any map. */

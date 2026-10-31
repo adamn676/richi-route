@@ -111,8 +111,19 @@ function parsePlace(value: unknown): Place {
   };
 }
 
+// Offline, or without the search server, the offline areas on the device answer, where there are any
+// (services/offline-geocoding.ts registers them).
+type DeviceSearch = (request: string, point: Coord | null, reverse: boolean) => Promise<unknown[] | null>;
+let askOffline: DeviceSearch = async () => null;
+export const useDeviceSearch = (search: DeviceSearch) => { askOffline = search; };
 async function search(path: string, params: URLSearchParams, signal: AbortSignal): Promise<unknown[]> {
   signal.throwIfAborted();
+  const lat = params.get('lat'), lon = params.get('lon');
+  const offline = () => askOffline(`${path}?${params}`, lat && lon ? [Number(lon), Number(lat)] : null, path === '/reverse').catch(() => null);
+  if (navigator.onLine === false) {
+    const found = await offline();
+    if (found) return found;
+  }
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}?${params}`, {
@@ -122,6 +133,8 @@ async function search(path: string, params: URLSearchParams, signal: AbortSignal
     });
   } catch (error) {
     signal.throwIfAborted();
+    const found = await offline();
+    if (found) return found;
     throw new Error(error instanceof Error && error.name === 'TimeoutError'
       ? 'Die Adresssuche dauert zu lange. Bitte erneut versuchen.' : unavailableMessage, { cause: error });
   }

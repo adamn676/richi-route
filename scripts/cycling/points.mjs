@@ -22,8 +22,13 @@ export function openCyclingPoints(file) {
   const metadata = JSON.parse(db.prepare('SELECT value FROM metadata').get().value);
   const query = db.prepare(`SELECT p.feature FROM positions b JOIN points p ON p.id = b.id
     WHERE b.maxlon >= ? AND b.minlon <= ? AND b.maxlat >= ? AND b.minlat <= ? LIMIT 2001`);
+  const within = db.prepare(`SELECT p.feature FROM positions b JOIN points p ON p.id = b.id
+    WHERE b.maxlon >= ? AND b.minlon <= ? AND b.maxlat >= ? AND b.minlat <= ?`);
   return {
     close: () => db.close(),
+    // Every point in the bounds, for an offline area.
+    all: ([west, south, east, north]) => ({ type: 'FeatureCollection', features: within.all(west, east, south, north).map(row => JSON.parse(row.feature)),
+      updated: metadata.updated, coverage: metadata.coverage }),
     get(bbox) {
       const values = bbox?.split(',').map(Number);
       if (!values || values.length !== 4 || !values.every(Number.isFinite)) throw new RangeError('Invalid cycling bounds');

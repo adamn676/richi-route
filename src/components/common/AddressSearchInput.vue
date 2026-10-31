@@ -40,7 +40,7 @@
     </template>
     <template #no-data>
       <v-list-item v-if="errorMessage" role="alert" base-color="error" :title="errorMessage" />
-      <v-list-item v-else title="Keine Adresse gefunden. Du kannst den Punkt auch auf der Karte setzen." />
+      <v-list-item v-else title="Keine Adresse gefunden. Der Punkt lässt sich auch auf der Karte setzen." />
     </template>
   </v-combobox>
 </template>

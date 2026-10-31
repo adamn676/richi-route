@@ -32,6 +32,7 @@ import AppSidebar from "@/components/layout/AppSidebar.vue";
 import MapView from "@/components/map/MapView.vue";
 import { IconChevronLeft, IconChevronRight } from '@/components/icons';
 import { useRouteStore } from '@/stores/route.store';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
 
 const { width, mobile: phone } = useDisplay();
 // Narrower on small laptops, wider on large screens: 22 to 26 rem.
@@ -104,6 +105,9 @@ watch([fitRequest, shownSection], () => {
 watch(surfaceReporting, on => { if (on && phone.value) sheet.value = 'peek'; });
 // An error of the route is reported in the sheet, which opens for it.
 watch(() => Boolean(routeProblem.value), shown => { if (shown && phone.value && sheet.value === 'peek') sheet.value = 'half'; });
+// Offline areas are chosen on the map with the sheet's panel beside it: half of each.
+const offline = useOfflineAreasStore();
+watch(() => offline.active, on => { if (on && phone.value) sheet.value = 'half'; });
 onMounted(measure);
 // Folded, the sheet shows where the route goes, so its height is measured again.
 watch(sheet, value => { if (value === 'peek') nextTick(measure); });

@@ -11,6 +11,7 @@ import { SEGMENTS_BASE_LAYER } from '@/config/map.config';
 import { createPreviewMarker } from '@/composables/useMapMarkers';
 import { useRouteStore } from '@/stores/route.store';
 import { useStreetViewStore } from '@/stores/street-view.store';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
 
 interface DragState {
   fromId: string;
@@ -37,6 +38,7 @@ export function consumeRouteDragClick(map: MaplibreMap, point: { x: number; y: n
 export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): void {
   const routeStore = useRouteStore();
   const streetView = useStreetViewStore();
+  const offline = useOfflineAreasStore();
   let drag: DragState | null = null;
 
   function onMouseMove(event: MapMouseEvent): void {
@@ -91,9 +93,9 @@ export function useRouteDragging(options: { map: Ref<MaplibreMap | null> }): voi
   }
 
   // The route section under the pointer, unless a marker lies on top or a point is being picked (Street View, a stretch
-  // to report), which takes clicks.
+  // to report, an offline area), which takes clicks.
   function sectionAt(event: MapLayerMouseEvent | MapLayerTouchEvent) {
-    if (drag || !routeStore.route || streetView.picking || routeStore.surfaceReporting) return null;
+    if (drag || !routeStore.route || streetView.picking || routeStore.surfaceReporting || offline.active) return null;
     if (event.originalEvent.target instanceof HTMLElement && event.originalEvent.target.closest('.maplibregl-marker')) return null;
     const { fromId, toId } = event.features?.[0]?.properties ?? {};
     return typeof fromId === 'string' && typeof toId === 'string' ? { fromId, toId, point: event.point, lngLat: event.lngLat } : null;

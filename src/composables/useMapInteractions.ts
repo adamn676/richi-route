@@ -7,6 +7,7 @@ import { useRouteStore } from '@/stores/route.store';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { cyclingPoiLayers, poiHitBox } from '@/config/cycling-overlays';
 import { useStreetViewStore } from '@/stores/street-view.store';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
 import { routePointNear } from '@/composables/useStreetViewMap';
 
 // The legs' vertex nearest to a point on the screen, within reach of a fingertip. Only vertices in the reach's
@@ -31,10 +32,12 @@ export function useMapInteractions(mapRef: Ref<MaplibreMap | null>): void {
   const routeStore = useRouteStore();
   const streetView = useStreetViewStore();
   const loops = useLoopSuggestionsStore();
+  const offline = useOfflineAreasStore();
 
   function onClick(event: MapMouseEvent): void {
     const map = mapRef.value;
-    if (!map) return;
+    // Choosing offline areas takes the map's clicks (OfflineAreasLayer).
+    if (!map || offline.active) return;
     if (streetView.picking) { streetView.show(routePointNear(map, event.point) ?? [event.lngLat.lng, event.lngLat.lat]); return; }
     if (routeStore.surfaceReporting) {
       // A started stretch ends on its own leg; otherwise any planned leg can start one.

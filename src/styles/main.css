@@ -48,6 +48,30 @@
 .section-heading { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin-bottom: calc(-1 * var(--space-3)); }
 .section-heading > :is(h2, h3) { margin: 0; }
 .section-heading > .v-btn:last-child { margin: 0 -9px 0 auto; }
+/* A panel of sections, as the Route tab's, measured to what shows: 24 px from a line to the first letters and from the last
+   item to the next line, a line from margin to margin between them. A heading row brings 12 px of its own; a paragraph is
+   trimmed to its letters where the browser can, and sits 16 px under the heading's baseline. */
+.panel-sections { display: grid; padding: 0 var(--gutter-end) 0 var(--gutter); }
+.panel-sections > * { padding-block: var(--space-3) var(--space-6); }
+.panel-sections > * + * { border-top: 1px solid var(--border); }
+.panel-section { display: grid; gap: var(--space-3); }
+.panel-section p { margin: 0; text-box: trim-end cap alphabetic; }
+.panel-section > .section-heading + p { margin-top: 1px; }
+/* A list ends with its rows' own room under the last line of text: 24 px to the next line, as everywhere. */
+.panel-section:has(> .row-list:last-child) { padding-bottom: var(--space-3); }
+/* Rows as the Untergrund rows: the text on the margin, the highlight 8 px past it, fine lines between them, the last
+   button's glyph at the margin as the tools' is. */
+.row-list { padding: 0; overflow: visible; }
+.row-list .v-list-item { width: calc(100% + 2 * var(--space-2)); max-width: none; margin-inline: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2); border-radius: var(--radius); }
+.row-list .v-list-item__overlay { display: none; }
+.row-list .v-list-item + .v-list-item { background-image: linear-gradient(var(--border), var(--border));
+  background-position: center top; background-size: calc(100% - 2 * var(--space-2)) 1px; background-repeat: no-repeat; }
+.row-list .v-list-item:hover { background-color: color-mix(in srgb, var(--border) 45%, transparent); }
+.row-list .v-list-item--active { background-color: color-mix(in srgb, var(--border) 80%, transparent); color: var(--text); }
+.row-list :is(.v-list-item:hover, .v-list-item--active) + .v-list-item { background-image: none; }
+.row-list .v-list-item__append { margin-inline-end: -9px; }
+.row-list .v-list-item-title { white-space: normal; overflow-wrap: anywhere; }
 /* Icon buttons alike everywhere: a 36 px circle under the pointer, whatever their glyph's size. */
 .v-btn.v-btn--icon.icon-button { flex: none; width: 36px; max-width: none; height: 36px; }
 /* Menus alike everywhere: their entries one step below the content (14 px), second lines (in any list) 12 px, glyphs

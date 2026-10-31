@@ -26,6 +26,7 @@ import { IconBike } from '@/components/icons';
 import MapMenu from '@/components/map/MapMenu.vue';
 import { useStreetViewStore } from '@/stores/street-view.store';
 import { cyclingOverlays, cyclingPoiLayers, poiHitBox, type CyclingOverlay } from '@/config/cycling-overlays';
+import { deviceCyclingPoints } from '@/services/offline-cycling';
 
 const props = defineProps<{ map: Map | null }>();
 const storageKey = 'richiroute.cycling-overlays';
@@ -98,7 +99,15 @@ async function loadPoints() {
   const west = bounds.getWest(), east = bounds.getEast(), south = bounds.getSouth(), north = bounds.getNorth();
   if (west < -180 || east > 180 || (east - west) * (north - south) > 4) { source?.setData(empty); return; }
   const controller = new AbortController(); request = controller;
+  // Offline, or with the map service out of reach, the offline areas on the device have the points.
+  const fromDevice = async () => {
+    const data = await deviceCyclingPoints([west, south, east, north]);
+    if (!data || controller.signal.aborted) return false;
+    source?.setData(data);
+    return true;
+  };
   try {
+    if (navigator.onLine === false && await fromDevice()) return;
     const response = await fetch(`/maps/cycling.json?bbox=${[west, south, east, north].map(v => v.toFixed(6)).join(',')}`,
       { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -106,7 +115,7 @@ async function loadPoints() {
     if (controller.signal.aborted) return;
     source?.setData(data);
   } catch {
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || await fromDevice()) return;
     source?.setData(empty);
     error.value = 'Rad-Infos konnten nicht geladen werden.';
   } finally { if (request === controller) request = undefined; }

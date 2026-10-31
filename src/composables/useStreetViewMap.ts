@@ -5,6 +5,7 @@ import { isDraggingRoute } from '@/composables/useRouteDragging';
 import type { Coord } from '@/domain/route-model';
 import { IconMan } from '@/components/icons';
 import { useStreetViewStore } from '@/stores/street-view.store';
+import { useOfflineAreasStore } from '@/stores/offline-areas.store';
 import { streetViewUrl } from '@/utils/street-view';
 
 // The point on the route closest to a screen point, within `radius` pixels, so Street View picks land on the track.
@@ -35,6 +36,7 @@ function figure<T extends HTMLElement>(element: T, size: number): T {
 // The click itself is handled by useMapInteractions.
 export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
   const streetView = useStreetViewStore();
+  const offline = useOfflineAreasStore();
   let popup: Popup | undefined;
   // A pin whose tip marks the spot, so the pointer's crosshair never covers the figure.
   const marker = new Marker({ element: figure(Object.assign(document.createElement('div'), { className: 'street-view-marker' }), 18),
@@ -43,7 +45,7 @@ export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
 
   function offer(event: MapMouseEvent): void {
     event.originalEvent.preventDefault();
-    if (isDraggingRoute(event.target)) return;
+    if (isDraggingRoute(event.target) || offline.active) return;
     const coord: Coord = [event.lngLat.lng, event.lngLat.lat];
     // A menu with one entry, as the planner's other menus look.
     const link = figure(Object.assign(document.createElement('a'), {

@@ -1,6 +1,7 @@
 // Each icon comes from its own module; the package entry makes the dev server bundle all 6,000 icons.
 export { default as IconAlertCircle } from '@tabler/icons-vue/dist/esm/icons/IconAlertCircle.mjs';
 export { default as IconAlertTriangle } from '@tabler/icons-vue/dist/esm/icons/IconAlertTriangle.mjs';
+export { default as IconArrowLeft } from '@tabler/icons-vue/dist/esm/icons/IconArrowLeft.mjs';
 export { default as IconArrowBackUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowBackUp.mjs';
 export { default as IconArrowForwardUp } from '@tabler/icons-vue/dist/esm/icons/IconArrowForwardUp.mjs';
 export { default as IconBike } from '@tabler/icons-vue/dist/esm/icons/IconBike.mjs';
@@ -15,6 +16,7 @@ export { default as IconCopy } from '@tabler/icons-vue/dist/esm/icons/IconCopy.m
 export { default as IconDeviceFloppy } from '@tabler/icons-vue/dist/esm/icons/IconDeviceFloppy.mjs';
 export { default as IconDotsVertical } from '@tabler/icons-vue/dist/esm/icons/IconDotsVertical.mjs';
 export { default as IconDroplet } from '@tabler/icons-vue/dist/esm/icons/IconDroplet.mjs';
+export { default as IconDownload } from '@tabler/icons-vue/dist/esm/icons/IconDownload.mjs';
 export { default as IconEraser } from '@tabler/icons-vue/dist/esm/icons/IconEraser.mjs';
 export { default as IconFileDownload } from '@tabler/icons-vue/dist/esm/icons/IconFileDownload.mjs';
 export { default as IconFileImport } from '@tabler/icons-vue/dist/esm/icons/IconFileImport.mjs';
@@ -22,6 +24,7 @@ export { default as IconFolderOpen } from '@tabler/icons-vue/dist/esm/icons/Icon
 export { default as IconGripVertical } from '@tabler/icons-vue/dist/esm/icons/IconGripVertical.mjs';
 export { default as IconHome } from '@tabler/icons-vue/dist/esm/icons/IconHome.mjs';
 export { default as IconMan } from '@tabler/icons-vue/dist/esm/icons/IconMan.mjs';
+export { default as IconMapDown } from '@tabler/icons-vue/dist/esm/icons/IconMapDown.mjs';
 export { default as IconMapPin } from '@tabler/icons-vue/dist/esm/icons/IconMapPin.mjs';
 export { default as IconMinus } from '@tabler/icons-vue/dist/esm/icons/IconMinus.mjs';
 export { default as IconMountain } from '@tabler/icons-vue/dist/esm/icons/IconMountain.mjs';
