@@ -56,7 +56,7 @@ export function startDraftPersistence(store: RouteStore) {
       }
     } catch {
       blocked = true;
-      fail('Gespeicherte Route konnte nicht geladen werden. Der bisherige Entwurf wurde nicht überschrieben.');
+      fail('Gespeicherte Route konnte nicht geladen werden. Die bisher gespeicherte wurde nicht überschrieben.');
     } finally {
       if (!stopped) store.draftLoaded = true;
     }
@@ -74,7 +74,7 @@ export function startDraftPersistence(store: RouteStore) {
       }
     } catch {
       dirty = true;
-      fail('Speichern im Browser fehlgeschlagen. Deine Änderungen sind noch nicht gesichert. Eine fertige Route kannst du als GPX herunterladen.');
+      fail('Speichern im Browser fehlgeschlagen. Die Änderungen sind noch nicht gesichert; eine fertige Route lässt sich als GPX herunterladen.');
     }
   }
 
@@ -96,7 +96,7 @@ export function startDraftPersistence(store: RouteStore) {
   const onHide = () => { if (document.visibilityState === 'hidden') save(); };
   channel.onmessage = () => {
     blocked = true;
-    fail('Der Entwurf wurde in einer anderen Registerkarte geändert. Automatisches Speichern ist hier pausiert. „Aktuelle Route hier speichern“ ersetzt den anderen Entwurf.');
+    fail('Die Route wurde in einer anderen Registerkarte geändert. Automatisches Speichern ist hier pausiert. „Aktuelle Route hier speichern“ ersetzt die Route dort.');
   };
   window.addEventListener('pagehide', save);
   document.addEventListener('visibilitychange', onHide);

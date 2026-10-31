@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { same } from './browser-ui.mjs';
+import { closeSaveMenu, saveEntry, same } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/saved-routes';
@@ -70,12 +70,29 @@ try {
     store.restoreDraft({ version: 1, points, legs });
   });
   const original = await state();
-  await page.getByLabel('Routenname', { exact: true }).fill('Lange Runde');
-  await page.getByRole('button', { name: 'Route speichern', exact: true }).click();
+  // Saving sits in the Route tab's tools; a new route asks for its name, suggesting where the route goes.
+  await page.getByRole('tab', { name: 'Route', exact: true }).click();
+  // What the menu says about keeping the route in this browser; the menu closes again.
+  const keeping = async () => {
+    const text = await (await saveEntry(page, 'In „Meine Routen“')).locator('.v-list-item-subtitle').textContent();
+    await closeSaveMenu(page);
+    return text;
+  };
+  assert.equal(await keeping(), 'In diesem Browser');
+  await (await saveEntry(page, 'In „Meine Routen“')).click();
+  const naming = page.getByRole('dialog');
+  assert.equal(await naming.getByLabel('Routenname', { exact: true }).inputValue(), 'Start → Ziel');
+  await naming.getByLabel('Routenname', { exact: true }).fill('Lange Runde');
+  await naming.getByRole('button', { name: 'Speichern', exact: true }).click();
   await waitRows(1);
+  // Saved, the dialog closes.
+  await page.waitForFunction(() => !document.querySelector('.v-dialog .v-overlay__content'));
+  assert.equal(await keeping(), 'Gespeichert', 'Nothing left to save');
+  // The route as a RichiRoute file, from the same menu.
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Aktuelle Route sichern', exact: true }).click();
+  await (await saveEntry(page, 'RichiRoute-Datei')).click();
   const download = await downloadEvent;
+  await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
   await download.saveAs(output + '/roundtrip.richiroute.json');
   const backup = JSON.parse(await readFile(output + '/roundtrip.richiroute.json', 'utf8'));
   assert.deepEqual(backup.draft, JSON.parse(original));
@@ -121,8 +138,12 @@ try {
   assert.equal(await page.getByRole('tab', { name: 'Route', exact: true }).getAttribute('aria-selected'), 'true', 'An opened route shows on the Route tab');
 
   await setQuery('Gesicherte Änderung');
+  assert.equal(await keeping(), 'Änderungen speichern');
+  // Strg+S saves an opened route at once, wherever the focus is.
+  await page.keyboard.press('Control+s');
+  await page.getByText('„Lange Runde“ gespeichert.').waitFor();
+  assert.equal(await keeping(), 'Gespeichert');
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  await page.getByRole('button', { name: 'Änderungen speichern', exact: true }).click();
   await idle();
   assert.equal(await list.getByRole('listitem').count(), 1, 'Saving an opened route updates it');
   const edited = await state();
@@ -130,7 +151,7 @@ try {
   await waitRows(2);
   await more(entry('Lange Runde (Kopie)'), 'Umbenennen');
   await page.getByLabel('Neuer Routenname', { exact: true }).fill('Zweite Runde');
-  await page.getByRole('button', { name: 'Namen speichern', exact: true }).click();
+  await page.getByRole('button', { name: 'Umbenennen', exact: true }).click();
   await entry('Zweite Runde').waitFor();
   await more(entry('Zweite Runde'), 'Löschen');
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
@@ -140,17 +161,19 @@ try {
   await waitRows(1);
   same(JSON.parse(await state()), JSON.parse(edited));
 
-  await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute.json');
-  await waitRows(2);
-  same(JSON.parse(await state()), JSON.parse(edited), 'Import adds a route without replacing the current draft');
-  await page.getByLabel('RichiRoute-Sicherung auswählen', { exact: true }).setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
+  // A RichiRoute file opens as the route, as a GPX file does; it adds no saved route.
+  await page.getByLabel('Datei auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute.json');
+  await page.getByText('„Lange Runde“ geöffnet.').waitFor();
+  same(JSON.parse(await state()), JSON.parse(original));
+  await waitRows(1);
+  await page.getByLabel('Datei auswählen', { exact: true }).setInputFiles({ name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{broken') });
   await page.getByRole('alert').filter({ hasText: 'Ungültige oder nicht unterstützte' }).waitFor();
-  assert.equal(await list.getByRole('listitem').count(), 2);
-  same(JSON.parse(await state()), JSON.parse(edited));
+  same(JSON.parse(await state()), JSON.parse(original));
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').draftStatus === 'saved');
   await page.reload();
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  await waitRows(2);
-  same(JSON.parse(await state()), JSON.parse(edited));
+  await waitRows(1);
+  same(JSON.parse(await state()), JSON.parse(original));
   assert.equal(requests, 0);
 
   // Real IndexedDB transactions must reject stale mutations and roll back both stores on failure.
@@ -226,7 +249,6 @@ try {
   await page.getByRole('alert').filter({ hasText: 'Browserspeicher ist voll' }).waitFor();
   same(JSON.parse(await state()), JSON.parse(beforeFailure));
   await page.evaluate(() => { IDBObjectStore.prototype.put = window.originalPut; });
-  await page.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
   await idle();
 
   // Edits made while a recovery transaction is pending must not be replaced on completion.
@@ -261,7 +283,7 @@ try {
   const secondEntry = second.locator('.library__list').getByRole('listitem', { name: 'Andere Registerkarte', exact: true });
   await more(secondEntry, 'Umbenennen');
   await second.getByLabel('Neuer Routenname', { exact: true }).fill('In anderem Tab umbenannt');
-  await second.getByRole('button', { name: 'Namen speichern', exact: true }).click();
+  await second.getByRole('button', { name: 'Umbenennen', exact: true }).click();
   await entry('In anderem Tab umbenannt').waitFor();
   await second.close();
 
@@ -276,7 +298,8 @@ try {
     await routeLibrary.save('Ohne Straßennamen', JSON.stringify(data));
     return JSON.stringify(data);
   });
-  await page.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
+  // The list follows the store when the window gets the focus back.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await entry('Ohne Straßennamen').getByRole('button', { name: 'Öffnen', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
     .waypoints.every(point => point.address === 'Testweg, 8010 Graz' && point.userInput === point.address));

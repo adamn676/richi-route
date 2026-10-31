@@ -12,7 +12,7 @@
         <span v-if="surfaceEstimate" class="map-view__progress" role="status">
           Untergrund wird ermittelt … {{ surfaceEstimate.total ? Math.round(surfaceEstimate.completed / surfaceEstimate.total * 100) : 0 }} %</span>
         <span v-if="streetView.picking" class="map-view__progress" role="status">
-          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte wählen' }}<span class="map-view__escape"> · Esc bricht ab</span></span>
+          {{ streetView.missing ? 'Kein Street View hier' : 'Punkt auf der Karte wählen' }}<span class="map-view__escape"> · Esc beendet</span></span>
         <SurfaceReportCard v-if="surfaceSelection" />
         <span v-else-if="surfaceReporting" class="map-view__progress" role="status">
           {{ surfacePicking ? `Ende wählen · ${partLength}` : 'Anfang auf der Route wählen' }}<span class="map-view__escape"> · Esc beendet</span></span>
@@ -31,6 +31,7 @@
                 @click="(event: MouseEvent) => event.detail && close()" />
             </v-radio-group>
             <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }" class="map-view__relief">
+              <span class="map-menu__group">Darstellung</span>
               <v-checkbox v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
             </div>
           </template>
@@ -41,7 +42,7 @@
           <IconMan :size="20" aria-hidden="true" />
         </v-map-button>
         <v-map-button v-if="route" v-tooltip:start="'Auf Route zoomen'" aria-label="Auf Route zoomen" @click="fitRoute">
-          <IconFocus2 :size="20" aria-hidden="true" />
+          <IconZoomScan :size="20" aria-hidden="true" />
         </v-map-button>
       </div>
       <MapNavigation class="map-view__navigation" :map="map" />
@@ -58,7 +59,7 @@ import { useRouteStore } from '@/stores/route.store';
 import { showOnMap } from '@/utils/map-fit';
 import { formatLength } from '@/utils/format';
 import { pathMeters, type Coord } from '@/domain/route-model';
-import { IconFocus2, IconMan, IconStack2 } from '@/components/icons';
+import { IconMan, IconStack2, IconZoomScan } from '@/components/icons';
 import { useMap } from '@/composables/useEditorMap';
 import { useMapInteractions } from '@/composables/useMapInteractions';
 import { useStreetViewMap } from '@/composables/useStreetViewMap';
@@ -174,7 +175,7 @@ function fitRoute() {
 .map-view__profile { --profile-height: clamp(11rem, 28vh, 18rem); padding: var(--space-3) var(--gutter); border-top: 1px solid var(--border); background: var(--surface); }
 .map-view__status { position: absolute; top: var(--gutter); left: var(--gutter); right: calc(2 * var(--gutter) + 40px); display: grid; justify-items: start; gap: var(--space-2); pointer-events: none; }
 .map-view__status > * { max-width: 30rem; border-radius: var(--radius); box-shadow: var(--shadow); pointer-events: auto; }
-.map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .82rem; }
+.map-view__progress { padding: .45rem .75rem; background: var(--surface); font-size: .875rem; }
 /* Touch screens have no Escape key; the pressed button ends the mode there. */
 @media (hover: none) { .map-view__escape { display: none; } }
 .map-view__tools { position: absolute; top: var(--gutter); right: var(--gutter); display: grid; gap: var(--space-2); }
@@ -183,7 +184,7 @@ function fitRoute() {
 .map-view__relief { margin-top: var(--space-2); }
 /* The scale as a thin ink bracket with its distance above, a white halo keeping both readable on any map. */
 .map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale) { position: relative; margin: 0 0 var(--gutter) var(--gutter);
-  padding: 0 0 8px 2px; border: 0; background: none; color: var(--text); font-size: .7rem; font-weight: 500; line-height: 1;
+  padding: 0 0 8px 2px; border: 0; background: none; color: var(--text); font: 500 .6875rem/1 var(--font);
   text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff; }
 .map-view__canvas :deep(.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale)::after { content: ''; position: absolute; inset: auto 0 0; height: 5px;
   border: 1.5px solid var(--text); border-top: 0; filter: drop-shadow(0 0 1px #fff); }

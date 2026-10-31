@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { saveEntry } from './browser-ui.mjs';
 
 const cases = [
   { name: 'Graz-Virgen across map tiles', minimum: 330000, maximum: 350000, coords: [[15.393249918226957,47.076550949654376],[12.456876612333161,47.00334492589846]] },
@@ -58,7 +59,7 @@ try {
     const originalProfile = await page.locator('.profile .elevation-chart__line').getAttribute('d');
 
     const downloading = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'GPX herunterladen', exact: true }).click();
+    await (await saveEntry(page, 'GPX')).click();
     const gpx = await readFile(await (await downloading).path(), 'utf8');
     const exported = [...gpx.matchAll(/<trkpt lat="([^"]+)" lon="([^"]+)">\s*<ele>([^<]+)<\/ele>/g)]
       .map(([,lat,lon,elevation]) => [Number(lon),Number(lat),Number(elevation)]);

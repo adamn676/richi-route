@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { openRoute } from './browser-ui.mjs';
+import { saveEntry, openRoute } from './browser-ui.mjs';
 import { hahnhofweg } from './route-examples.ts';
 
 // Run npm run build, then npm run preview -- --host 127.0.0.1 --port 5175.
@@ -40,7 +40,7 @@ try {
   });
   await page.screenshot({ path: 'experiments/routing/.local/production-editor.png' });
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'GPX herunterladen', exact: true }).click();
+  await (await saveEntry(page, 'GPX')).click();
   const gpx = await readFile(await (await downloadEvent).path(), 'utf8');
   assert.match(gpx, /<trkpt lat="/);
   assert.match(gpx, /<ele>/);

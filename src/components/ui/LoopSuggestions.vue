@@ -1,8 +1,8 @@
 <template>
   <section class="planner__section loops" aria-labelledby="loops-title">
     <div class="section-heading">
-      <h2 id="loops-title" class="text-title-medium">Runde vorschlagen</h2>
-      <v-icon-button v-if="loops.suggestions" v-tooltip:bottom="'Zurück zum Start ohne Runde'" aria-label="Vorschläge verwerfen"
+      <h2 id="loops-title" class="text-title-medium">Runden vorschlagen</h2>
+      <v-icon-button v-if="loops.suggestions" v-tooltip:bottom="'Vorschläge verwerfen'" aria-label="Vorschläge verwerfen"
         @click="loops.discard()"><IconX :size="18" aria-hidden="true" /></v-icon-button>
     </div>
     <form class="loops__form" @submit.prevent="suggest">
@@ -114,12 +114,14 @@ onBeforeUnmount(() => { if (!loops.suggestions) loops.clear(); });
 </script>
 
 <style scoped>
-.loops__form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-6); }
+/* The labels' tight line height puts their letters 2 px higher than a field's label: 2 px more keep them 16 px under the
+   heading's baseline. */
+.loops__form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-6); margin-top: 2px; }
 .loops__form > .v-btn { grid-column: 1 / -1; }
 .loops__setting { display: grid; gap: 1px; min-width: 0; }
-.loops__label { color: var(--text-muted); font-size: .72rem; line-height: 1.2; }
-.loops__value { color: var(--text); font-size: 1.25rem; font-weight: 650; line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.loops__value small { color: var(--text-muted); font-size: .64em; font-weight: 500; letter-spacing: 0; }
+.loops__label { color: var(--text-muted); font-size: .75rem; line-height: 1.2; }
+.loops__value { color: var(--text); font-size: 1.25rem; font-weight: 600; line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loops__value small { color: var(--text-muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; }
 /* The figure itself is the field (its line from .field-line), as wide as its digits. */
 .loops__number { padding: 0 0 7px; border: 0; border-radius: 0; color: inherit; font: inherit; letter-spacing: inherit; appearance: textfield;
   -moz-appearance: textfield; }
@@ -139,9 +141,11 @@ onBeforeUnmount(() => { if (!loops.suggestions) loops.clear(); });
 .loops__range:active { --halo: 0 0 0 8px color-mix(in srgb, var(--accent) 14%, transparent); --grow: 1.1; }
 .loops__range:focus-visible { outline: none; }
 .loops__cards { display: grid; gap: var(--space-2); }
+/* The cards are boxes: 24 px from the last one's edge to the next section's line. */
+.loops:has(.loops__cards) { padding-bottom: var(--space-6); }
 /* A card per loop: its shape in its map colour, its name and figures; the chosen one is ringed in that colour and offers
    to keep it. */
-.loop-card { display: grid; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--border);
+.loop-card { display: grid; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--border);
   transition: background-color .15s, box-shadow .15s; }
 .loop-card--pointed { background: var(--accent-soft); }
 @media (hover: hover) { .loop-card:hover { background: var(--accent-soft); } }
@@ -153,8 +157,8 @@ onBeforeUnmount(() => { if (!loops.suggestions) loops.clear(); });
 .loop-card__shape polyline { fill: none; stroke: var(--loop); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .loop-card__shape circle { fill: var(--accent); stroke: #fff; stroke-width: 1.5; }
 .loop-card__text { display: grid; gap: 1px; min-width: 0; }
-.loop-card__name { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.loop-card__name { overflow: hidden; color: var(--text); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 /* As the figures in the profile's header: bold numbers, small grey units. */
-.loop-card__figures { color: var(--text); font-size: 1.05rem; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.loop-card__figures small { color: var(--text-muted); font-size: .7em; font-weight: 500; letter-spacing: 0; }
+.loop-card__figures { color: var(--text); font-size: .875rem; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loop-card__figures small { color: var(--text-muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; }
 </style>

@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { hasDraftPoints, parseDraft, serializeDraft } from '../domain/route-draft.ts';
 import type { RoutePoint } from '../domain/route-model.ts';
 import { gpxMaxBytes, gpxTooLarge } from '../domain/gpx-import.ts';
@@ -23,6 +23,8 @@ export function useRouteLibrary() {
   const error = ref('');
   const message = ref('');
   const hasDraft = computed(() => hasDraftPoints(store.points));
+  // The name the route is kept under: the one typed, otherwise where it goes.
+  const title = computed(() => (name.value.trim() || routeTitle(store.waypoints) || 'Neue Route').slice(0, 120));
   let activePayload = '';
   let channel: BroadcastChannel | undefined;
   let refreshId = 0;
@@ -43,6 +45,20 @@ export function useRouteLibrary() {
     });
     return serializeDraft(points, store.legs) === activePayload;
   }
+  // Whether the route differs from its saved entry: a change shows at once, a way back to the saved state shortly after.
+  const edited = ref(false);
+  let savedState = { points: store.points, legs: store.legs };
+  function mark(points = store.points, legs = store.legs) {
+    savedState = { points, legs };
+    edited.value = points !== store.points || legs !== store.legs;
+  }
+  let check: ReturnType<typeof setTimeout> | undefined;
+  watch([() => store.points, () => store.legs], ([points, legs]) => {
+    if (points === savedState.points && legs === savedState.legs) return;
+    edited.value = true;
+    clearTimeout(check);
+    if (active.value) check = setTimeout(() => { edited.value = !unchanged(payload()); }, 300);
+  });
   // One list failing leaves the other.
   async function refresh() {
     const id = ++refreshId;
@@ -55,7 +71,7 @@ export function useRouteLibrary() {
   }
   function describe(cause: unknown) {
     return cause instanceof DOMException && cause.name === 'QuotaExceededError'
-      ? 'Der Browserspeicher ist voll. Bitte eine Sicherungsdatei herunterladen; die aktuelle Route bleibt geöffnet.'
+      ? 'Der Browserspeicher ist voll. Bitte die Route als RichiRoute-Datei herunterladen; die aktuelle Route bleibt geöffnet.'
       : cause instanceof Error ? cause.message : 'Der Routenspeicher ist nicht verfügbar.';
   }
   async function run(action: () => Promise<void>): Promise<boolean> {
@@ -65,7 +81,11 @@ export function useRouteLibrary() {
     message.value = '';
     restorable.value = undefined;
     try { await action(); }
-    catch (cause) { error.value = describe(cause); }
+    catch (cause) {
+      error.value = describe(cause);
+      // A failure can come from another tab's change; the lists show what is stored now.
+      void refresh().catch(() => {});
+    }
     finally { busy.value = false; }
     return !error.value;
   }
@@ -74,12 +94,13 @@ export function useRouteLibrary() {
     await refresh();
   }
 
-  async function save(asCopy = false) {
+  async function save() {
     await run(async () => {
       const points = store.points, legs = store.legs;
       const snapshot = payload();
-      active.value = await routeLibrary.save(name.value, snapshot, asCopy ? undefined : active.value);
+      active.value = await routeLibrary.save(title.value, snapshot, active.value);
       activePayload = snapshot;
+      mark(points, legs);
       name.value = active.value.name;
       message.value = points === store.points && legs === store.legs
         ? `„${name.value}“ gespeichert.`
@@ -96,8 +117,7 @@ export function useRouteLibrary() {
     const points = store.points, legs = store.legs;
     const snapshot = payload();
     if (unchanged(snapshot) && active.value && await routeLibrary.isCurrent(active.value)) return false;
-    const title = (name.value.trim() || routeTitle(store.waypoints) || 'Route').slice(0, 120);
-    const kept = await recentRoutes.add(routeSummary(title, { version: 1, points, legs }), snapshot, leaving);
+    const kept = await recentRoutes.add(routeSummary(title.value, { version: 1, points, legs }), snapshot, leaving);
     if (points !== store.points || legs !== store.legs) {
       throw new Error('Die aktuelle Route hat sich während des Wechsels geändert. Bitte den Wechsel erneut ausführen.');
     }
@@ -111,6 +131,7 @@ export function useRouteLibrary() {
     active.value = saved;
     activePayload = savedPayload;
     name.value = title;
+    mark();
   }
 
   // A stored route in place of the current one, which goes to the recently edited ones.
@@ -123,7 +144,8 @@ export function useRouteLibrary() {
     // Restoring the draft on start keeps the view; an opened route is shown.
     store.fitRequest++;
     current(title, saved, saved && serializeDraft(draft.points, draft.legs));
-    message.value = `„${title}“ geöffnet. ${message.value}`;
+    // The route shows at once; where the one before went is the news, with the offer to bring it back.
+    message.value ||= `„${title}“ geöffnet.`;
   }
 
   function open(entry: SavedRouteSummary) {
@@ -215,21 +237,21 @@ export function useRouteLibrary() {
     });
   }
 
-  async function importFile(file: File) {
-    await run(async () => {
-      if (file.size > 64 * 1024 * 1024) throw new Error('Die Sicherungsdatei darf höchstens 64 MB groß sein.');
+  // A RichiRoute file opens as the route, as a GPX file does; saving it keeps it in this browser.
+  function openFile(file: File) {
+    return run(async () => {
+      if (file.size > 64 * 1024 * 1024) throw new Error('Die RichiRoute-Datei darf höchstens 64 MB groß sein.');
       let backup;
       try { backup = importRouteBackup(await file.text()); }
-      catch { throw new Error('Ungültige oder nicht unterstützte RichiRoute-Sicherung. Es wurde keine Route verändert.'); }
-      await routeLibrary.save(backup.name, backup.payload);
-      message.value = `„${backup.name}“ importiert. Zum Bearbeiten in der Liste öffnen.`;
+      catch { throw new Error('Ungültige oder nicht unterstützte RichiRoute-Datei. Die aktuelle Route bleibt geöffnet.'); }
+      await show(backup.payload, backup.name);
       await changed();
     });
   }
 
   async function download() {
     await run(async () => {
-      const contents = exportRouteBackup(name.value.trim() || 'Meine Route', payload());
+      const contents = exportRouteBackup(title.value, payload());
       const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
@@ -238,7 +260,7 @@ export function useRouteLibrary() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      message.value = 'Sicherung der aktuellen Route heruntergeladen.';
+      message.value = 'RichiRoute-Datei heruntergeladen.';
     });
   }
 
@@ -258,8 +280,8 @@ export function useRouteLibrary() {
       channel.onmessage = refreshList;
     }
   });
-  onBeforeUnmount(() => { window.removeEventListener('focus', refreshList); channel?.close(); });
+  onBeforeUnmount(() => { window.removeEventListener('focus', refreshList); channel?.close(); clearTimeout(check); });
 
-  return { entries, recent, active, name, busy, refreshing, error, message, restorable, reading, hasDraft, save, open, openRecent, saveRecent,
-    openGpx, cancelGpx, newRoute, rename, duplicate, remove, importFile, download, refreshList };
+  return { entries, recent, active, name, title, edited, busy, refreshing, error, message, restorable, reading, hasDraft, save, open, openRecent, saveRecent,
+    openGpx, cancelGpx, newRoute, rename, duplicate, remove, openFile, download };
 }

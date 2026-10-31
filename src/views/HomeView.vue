@@ -1,5 +1,5 @@
 <template>
-  <div class="editor-layout" :class="[`editor-layout--${sheet}`, { 'editor-layout--dragging': dragHeight !== null }]">
+  <div class="editor-layout" :class="[`editor-layout--${sheet}`, { 'editor-layout--dragging': dragHeight !== null, 'editor-layout--folded': !phone && collapsed }]">
     <!-- Desktop: a drawer that folds away. Phones: a sheet under the map; drag, tap or use the arrow keys to resize it. -->
     <v-navigation-drawer id="sidebar" tag="div" class="editor-layout__sheet" permanent
       :model-value="phone || !collapsed" :location="phone ? 'bottom' : 'start'" :width="phone ? sheetHeight : sidebarWidth">
@@ -112,8 +112,11 @@ watch(width, measure, { flush: 'post' });
 
 <style scoped>
 .editor-layout__sidebar { height: 100%; }
-/* The map takes its new size at once rather than every frame, so it never jumps; the drawer slides over its own colour. */
+/* The map takes its new size at once rather than every frame, so it never jumps. Closing, it takes the room at once, under
+   the drawer sliding away; opening, the drawer slides in over the map with its content, and the map makes room once it
+   has arrived, so no empty panel shows ahead of it. */
 .editor-layout__main { height: 100dvh; background: rgb(var(--v-theme-surface)); transition: none; }
+.editor-layout:not(.editor-layout--folded) .editor-layout__main { transition: padding-left 0s .2s; }
 /* A narrow tab on the drawer's edge, halfway down the map, with a soft shadow as the map's own controls. */
 .editor-layout__toggle {
   position: absolute; top: 50%; left: var(--v-layout-left); z-index: 20; padding: 0; color: var(--text-muted);

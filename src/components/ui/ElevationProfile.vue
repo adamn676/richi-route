@@ -16,7 +16,7 @@
       <SlopeScale v-if="!collapsed && inspection.track && inspection.colorRuns.length" />
       <v-icon-button v-tooltip:top="toggleLabel" :aria-label="toggleLabel" :aria-expanded="!collapsed" aria-controls="elevation-profile"
         @click="collapsed = !collapsed">
-        <component :is="collapsed ? IconChevronUp : IconChevronDown" :size="16" aria-hidden="true" />
+        <component :is="collapsed ? IconChevronUp : IconChevronDown" :size="18" aria-hidden="true" />
       </v-icon-button>
     </div>
     <template v-if="!collapsed">
@@ -62,7 +62,7 @@ const message = computed(() => !routeStore.route ? 'Plane eine Route, um ihr Hö
 /* On phones the figures are smaller and stay on one line, and a zoomed stretch's figures take the scale's place. */
 @media (max-width: 760px) {
   .profile__header :deep(.stats) { flex-wrap: nowrap; column-gap: var(--space-4); }
-  .profile__header :deep(:is(.stats dd, .slope-scale__scale)) { font-size: 1.05rem; }
+  .profile__header :deep(:is(.stats dd, .slope-scale__scale)) { font-size: 1rem; }
   .profile__header:has(.elevation-range) .slope-scale { display: none; }
 }
 .profile > .elevation-chart { flex: 1; min-height: 0; --elevation-chart-height: minmax(0, 1fr); }

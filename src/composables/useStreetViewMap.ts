@@ -45,18 +45,30 @@ export function useStreetViewMap(mapRef: Ref<MaplibreMap | null>): void {
     event.originalEvent.preventDefault();
     if (isDraggingRoute(event.target)) return;
     const coord: Coord = [event.lngLat.lng, event.lngLat.lat];
+    // A menu with one entry, as the planner's other menus look.
     const link = figure(Object.assign(document.createElement('a'), {
-      href: streetViewUrl(coord), target: '_blank', rel: 'noopener noreferrer', className: 'street-view-link', title: 'Street View',
-    }), 22);
-    link.setAttribute('aria-label', 'Street View');
+      href: streetViewUrl(coord), target: '_blank', rel: 'noopener noreferrer', className: 'street-view-link',
+    }), 18);
+    const label = link.appendChild(Object.assign(document.createElement('span'), { textContent: 'Street View' }));
     link.addEventListener('click', click => { streetView.open(click, coord); if (!link.ariaDisabled) popup?.remove(); });
     streetView.imageryNear(coord).then(imagery => {
       if (imagery !== null) return;
-      link.title = link.ariaLabel = 'Kein Street View hier';
+      label.textContent = 'Kein Street View hier';
       link.ariaDisabled = 'true';
     });
     popup?.remove();
-    popup = new Popup({ closeButton: false, offset: 6 }).setLngLat(event.lngLat).setDOMContent(link).addTo(event.target);
+    popup = new Popup({ closeButton: false, offset: 6, className: 'map-menu-popup' }).setLngLat(event.lngLat).setDOMContent(link).addTo(event.target);
+    // It closes as a menu does: on Escape or a press anywhere else, not only on the map.
+    document.addEventListener('keydown', dismiss);
+    document.addEventListener('pointerdown', dismiss, true);
+    popup.on('close', () => {
+      document.removeEventListener('keydown', dismiss);
+      document.removeEventListener('pointerdown', dismiss, true);
+    });
+  }
+  function dismiss(event: Event): void {
+    const outside = event instanceof KeyboardEvent ? event.key === 'Escape' : !popup?.getElement().contains(event.target as Node);
+    if (outside) popup?.remove();
   }
   function follow(event: MapMouseEvent): void {
     if (streetView.picking) streetView.spot = routePointNear(event.target, event.point) ?? event.lngLat.toArray() as Coord;

@@ -1,20 +1,20 @@
 <template>
   <section class="surface-report" aria-label="Untergrund korrigieren">
-    <header>
-      <strong>{{ formatLength(selection.meters) }}</strong>
-      <v-icon-button variant="text" size="x-small" aria-label="Auswahl aufheben" @click="store.surfacePick = null">
-        <IconX :size="16" aria-hidden="true" />
-      </v-icon-button>
-    </header>
+    <!-- A panel as the map's menus: its heading row with the ×, the choices under it. -->
+    <div class="section-heading">
+      <h2 class="text-title-medium">Untergrund für {{ formatLength(selection.meters) }}</h2>
+      <v-icon-button aria-label="Auswahl aufheben" @click="store.surfacePick = null"><IconX :size="18" aria-hidden="true" /></v-icon-button>
+    </div>
     <div class="surface-report__choices">
-      <v-btn v-for="surface in choices" :key="surface" variant="outlined" size="small" :disabled="saving || current === surface"
-        :aria-pressed="current === surface" @click="report(surface)">
+      <!-- The surface it has now shows as chosen. -->
+      <v-btn v-for="surface in choices" :key="surface" :variant="current === surface ? 'tonal' : 'outlined'" :disabled="saving"
+        :aria-pressed="current === surface" @click="current !== surface && report(surface)">
         <template #prepend><i class="surface-report__dot" :style="{ background: routeStyle[surface] }" aria-hidden="true" /></template>
         {{ surfaceLabels[surface] }}
-        <template v-if="current === surface" #append><IconCheck :size="14" aria-hidden="true" /></template>
+        <template v-if="current === surface" #append><IconCheck :size="18" aria-hidden="true" /></template>
       </v-btn>
-      <v-btn v-if="selection.corrected" variant="text" size="small" :disabled="saving" @click="report(null)">
-        <template #prepend><IconArrowBackUp :size="16" aria-hidden="true" /></template>
+      <v-btn v-if="selection.corrected" variant="text" :disabled="saving" @click="report(null)">
+        <template #prepend><IconArrowBackUp :size="18" aria-hidden="true" /></template>
         Laut Karte
       </v-btn>
     </div>
@@ -50,8 +50,8 @@ async function report(surface: CorrectedSurface | null) {
 </script>
 
 <style scoped>
-.surface-report { display: grid; gap: .4rem; padding: .5rem .6rem .6rem; background: var(--surface); }
-header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .85rem; font-variant-numeric: tabular-nums; }
-.surface-report__choices { display: flex; flex-wrap: wrap; gap: .4rem; }
+.surface-report { display: grid; gap: var(--space-3); width: min(22rem, 100%); padding: var(--space-3) var(--gutter) var(--space-6);
+  background: var(--surface); box-shadow: var(--shadow-menu) !important; }
+.surface-report__choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .surface-report__dot { width: .625rem; height: .625rem; border-radius: 50%; }
 </style>

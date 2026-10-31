@@ -2,7 +2,7 @@ import { parseDraft } from '../domain/route-draft.ts';
 import { routeName, routeSummary, type SavedRouteSummary } from '../domain/saved-route.ts';
 import { transaction } from './database.service.ts';
 
-const conflictMessage = 'Diese Route wurde inzwischen geändert oder gelöscht. Bitte die Liste aktualisieren und erneut versuchen.';
+const conflictMessage = 'Diese Route wurde inzwischen geändert oder gelöscht. Die Liste zeigt den neuen Stand.';
 
 function requireRevision(actual: SavedRouteSummary | undefined, expected: SavedRouteSummary): SavedRouteSummary {
   if (!actual || actual.revision !== expected.revision) throw new Error(conflictMessage);
@@ -38,7 +38,7 @@ export const routeLibrary = {
       const payload = tx.objectStore('payloads').get(id);
       payload.onsuccess = () => {
         if (!summary.result || typeof payload.result !== 'string') {
-          fail(new Error('Diese Route ist nicht mehr verfügbar. Bitte die Liste aktualisieren.'));
+          fail(new Error('Diese Route ist nicht mehr verfügbar. Die Liste zeigt den neuen Stand.'));
         } else result({ summary: summary.result, payload: payload.result });
       };
     });

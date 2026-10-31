@@ -8,12 +8,24 @@
           <v-icon-button :disabled="!routeStore.canRedo" v-tooltip:bottom="'Wiederholen (Strg+Y)'" aria-label="Wiederholen" @click="act(() => routeStore.redo())"><IconArrowForwardUp :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button :disabled="!routeStore.shapingPoints.length" aria-label="Formpunkte entfernen"
             v-tooltip:bottom="'Formpunkte entfernen: die weißen Punkte, die die Route formen'" @click="act(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
-          <v-icon-button v-tooltip:bottom="'GPX-Datei öffnen (oder auf die Karte ziehen)'" aria-label="GPX-Datei öffnen"
-            @click="gpxInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
-          <input ref="gpxInput" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" aria-label="GPX-Datei auswählen" hidden @change="chooseGpx" />
-          <!-- On a wrapper, so the reason also shows while the button is disabled. -->
-          <span v-tooltip:bottom="exportReason ?? 'Route als GPX herunterladen'"><v-icon-button :disabled="Boolean(exportReason)"
-            aria-label="GPX herunterladen" @click="downloadGpx"><IconDownload :size="18" aria-hidden="true" /></v-icon-button></span>
+          <v-icon-button v-tooltip:bottom="'Datei öffnen: GPX oder RichiRoute-Datei (oder auf die Karte ziehen)'" aria-label="Datei öffnen"
+            @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
+          <input ref="fileInput" type="file" accept=".gpx,.json,application/gpx+xml,application/xml,text/xml,application/json" aria-label="Datei auswählen"
+            hidden @change="chooseFile" />
+          <!-- Every way to keep the route: in this browser, as GPX for a bike computer (once every section is calculated), and
+               as a RichiRoute file to go on editing it. -->
+          <v-menu location="bottom end">
+            <template #activator="{ props: menu, isActive }">
+              <v-icon-button ref="saveButton" v-bind="menu" v-tooltip:bottom="{ text: 'Speichern (Strg+S)', disabled: isActive }" :disabled="!hasDraft"
+                aria-label="Speichern"><IconDeviceFloppy :size="18" aria-hidden="true" /></v-icon-button>
+            </template>
+            <v-list lines="two">
+              <v-list-item :prepend-icon="IconBookmark" title="In „Meine Routen“" :subtitle="saved ? 'Gespeichert' : active ? 'Änderungen speichern' : 'In diesem Browser'"
+                :disabled="!canSave" @click="keep" />
+              <v-list-item :prepend-icon="IconRoute" title="GPX" :subtitle="exportReason ?? 'Für den Radcomputer'" :disabled="Boolean(exportReason)" @click="downloadGpx" />
+              <v-list-item :prepend-icon="IconFileDownload" title="RichiRoute-Datei" subtitle="Zum Weiterbearbeiten" :disabled="busy" @click="download" />
+            </v-list>
+          </v-menu>
         </span>
       </div>
       <!-- Until the saved route is loaded, its shape stands in for the empty start, which would flash before it. -->
@@ -54,7 +66,7 @@
             </div>
             <!-- The field's × empties a stop; an intermediate stop goes with its own button, filled or not. -->
             <v-icon-button v-if="point.kind === 'via'" class="planner__remove" size="x-small" :aria-label="`${stopLabel(point.kind, index)} entfernen`"
-              v-tooltip:bottom="'Zwischenstopp entfernen'" @click="removeStop(point.id)"><IconTrash :size="16" aria-hidden="true" /></v-icon-button>
+              v-tooltip:bottom="'Zwischenstopp entfernen'" @click="removeStop(point.id)"><IconTrash :size="18" aria-hidden="true" /></v-icon-button>
           </li>
         </TransitionGroup>
         <button v-if="hasEndpoints" type="button" class="planner__add" aria-label="Zwischenstopp hinzufügen"
@@ -81,6 +93,22 @@
     <LoopSuggestions v-if="routeStore.draftLoaded && (!hasEndpoints || loops.suggestions)" />
     <!-- Distance and climbing are in the elevation profile's header, which stays in view. -->
     <section v-if="hasEndpoints" class="planner__section"><SurfaceDetails /></section>
+    <!-- A route saved for the first time gets its name here, the suggestion ready to keep. -->
+    <v-dialog v-model="naming" max-width="400" @after-leave="saveButton?.$el.focus()">
+      <v-card title="Route speichern">
+        <form @submit.prevent="saveNamed">
+          <v-card-text>
+            <v-text-field v-model="newName" label="Routenname" maxlength="120" autofocus required @focus="($event.target as HTMLInputElement).select()" />
+            <v-alert v-if="error" type="error" class="mt-3">{{ error }}</v-alert>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="outlined" :disabled="busy" @click="naming = false">Abbrechen</v-btn>
+            <v-btn type="submit" variant="flat" :disabled="busy || !newName.trim()">Speichern</v-btn>
+          </v-card-actions>
+        </form>
+      </v-card>
+    </v-dialog>
     <!-- A removed stop can come back at once. -->
     <v-snackbar v-model="removed" :timeout="5000">
       Zwischenstopp entfernt
@@ -91,7 +119,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconDownload, IconEraser, IconFileImport, IconGripVertical, IconPlus, IconTrash } from '@/components/icons';
+import { IconArrowBackUp, IconArrowForwardUp, IconBookmark, IconDeviceFloppy, IconEraser, IconFileDownload, IconFileImport, IconGripVertical, IconPlus, IconRoute,
+  IconTrash } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
 import { stopBadge, stopLabel } from '@/domain/route-model';
@@ -102,9 +131,28 @@ import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
 import { useStopDragging } from '@/composables/useStopDragging';
+import type { useRouteLibrary } from '@/composables/useRouteLibrary';
 
-// A chosen GPX file opens as the route (AppSidebar).
-const emit = defineEmits<{ 'open-gpx': [file: File] }>();
+// A chosen file, GPX or RichiRoute, opens as the route (AppSidebar).
+const emit = defineEmits<{ 'open-file': [file: File] }>();
+const props = defineProps<{ library: ReturnType<typeof useRouteLibrary> }>();
+const { name, title, edited, active, busy, error, hasDraft, save, download } = props.library;
+const saved = computed(() => Boolean(active.value) && !edited.value && title.value === active.value!.name);
+const canSave = computed(() => hasDraft.value && !busy.value && !saved.value);
+// A saved route saves at once; a new one asks for its name first.
+const naming = ref(false), newName = ref('');
+const saveButton = ref<{ $el: HTMLElement }>();
+function keep() {
+  if (active.value) return void save();
+  newName.value = title.value;
+  error.value = '';
+  naming.value = true;
+}
+async function saveNamed() {
+  name.value = newName.value.trim();
+  await save();
+  if (!error.value) naming.value = false;
+}
 const routeStore = useRouteStore();
 const loops = useLoopSuggestionsStore();
 const routingNotices = computed(() => localRoutingNotices(Object.values(routeStore.legs)
@@ -120,12 +168,12 @@ routeStore.$onAction(({ name }) => {
   try { localStorage.setItem(shapedKey, '1'); } catch { /* Storage may be disabled. */ }
 });
 
-const gpxInput = ref<HTMLInputElement>();
-function chooseGpx(event: Event) {
+const fileInput = ref<HTMLInputElement>();
+function chooseFile(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
-  if (file) emit('open-gpx', file);
+  if (file) emit('open-file', file);
 }
 function downloadGpx() {
   const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));
@@ -194,6 +242,13 @@ async function addStop(): Promise<void> {
 
 function onShortcut(event: KeyboardEvent): void {
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+  // Strg+S saves from anywhere but an open dialog, instead of the browser saving the page.
+  if (event.key.toLowerCase() === 's' && !event.shiftKey) {
+    event.preventDefault();
+    const inDialog = event.target instanceof Element && event.target.closest('.v-overlay');
+    if (!inDialog && canSave.value) keep();
+    return;
+  }
   const target = event.target;
   if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName))) return;
   if (event.key.toLowerCase() === 'z' && !event.shiftKey && routeStore.canUndo) {
@@ -224,7 +279,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__tools { display: flex; align-items: center; margin-left: auto; margin-right: -9px; }
 .planner__tools > span { display: flex; }
 /* Six tools beside the heading fit the narrowest panel at 36 px each. */
-.planner__tools :deep(.v-btn) { width: 36px; height: 36px; }
 /* The first row's own padding is taken back, so the first label sits 12 px under the heading, as in every section. */
 .planner__stops { display: grid; margin: calc(-1 * var(--space-2)) 0 0; padding: 0; list-style: none; }
 /* Marker, field (its label above the address) and an intermediate stop's trash button; the button's column is kept in
@@ -235,7 +289,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop:not(:last-child)::after { content: ''; position: absolute; top: 55px; bottom: -19px; left: 10px; width: 4px;
   background: radial-gradient(circle, color-mix(in srgb, var(--text-muted) 70%, transparent) 1.3px, transparent 1.7px) center top / 4px 7px repeat-y; }
 .planner__badge { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 17px; border-radius: 50%; background: var(--accent);
-  color: #fff; font-size: .72rem; font-weight: 700; }
+  color: #fff; font-size: .75rem; font-weight: 700; }
 .planner__badge--empty { border: 2px dashed var(--border-input); background: none; color: var(--text-muted); }
 .planner__badge--error { background: var(--danger); }
 .planner__stop-input { grid-column: 2; grid-row: 1; display: grid; gap: .3rem; }
@@ -245,13 +299,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stop-input .field-line { padding-bottom: 4px; }
 .planner__stop-input :deep(.v-field-label--floating) { top: 0; transform: none; color: var(--text-muted); opacity: 1; }
 /* The × level with the address line (the input sits 8 px below the field's padding, the × half of that), its icon flush
-   with the right edge, as the Untergrund figures are. */
-.planner__stop-input :deep(.v-field__clearable) { align-items: center; padding-top: var(--v-field-padding-top); padding-bottom: var(--v-field-padding-bottom);
+   with the right edge, as the Untergrund figures are; its hover circle shown whole, past the edge Vuetify clips at. */
+.planner__stop-input :deep(.v-field__clearable) { overflow: visible; align-items: center; padding-top: var(--v-field-padding-top); padding-bottom: var(--v-field-padding-bottom);
   margin-inline-end: calc(-1 * var(--space-2)); color: var(--text-muted); }
-.planner__stop-input :deep(.v-field__clearable > *) { translate: 0 var(--space-1); }
+.planner__stop-input :deep(.v-field__clearable > *) { margin: -2px; translate: 0 var(--space-1); }
 .planner__stop small { color: var(--text-muted); font-size: .75rem; }
 .planner__stop .planner__stop-error { color: var(--danger); }
-.planner__remove { grid-column: 3; grid-row: 1; align-self: start; width: 32px; max-width: none; margin: 13px -8px 0 0; color: var(--text-muted); }
+/* The 36 px button takes the room of 32 around its glyph, so the row keeps its height and the glyph its place. */
+.planner__remove { grid-column: 3; grid-row: 1; align-self: start; margin: 11px -10px -2px -2px; color: var(--text-muted); }
 .planner__grip { position: absolute; top: 37px; left: -18px; display: flex; padding: var(--space-1) 0; border: 0; background: none;
   color: var(--text-muted); opacity: .75; transform: translateY(-50%); cursor: grab; touch-action: none; }
 .planner__grip:active { cursor: grabbing; }
@@ -263,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut));
 .planner__stops--settling .planner__stop, .planner__stop-move { transition: transform .26s cubic-bezier(.2, 1.1, .3, 1.15); }
 @media (prefers-reduced-motion: reduce) { .planner__stop, .planner__stops--settling .planner__stop, .planner__stop-move { transition: none; } }
 /* The next stop's empty marker in the marker column, inside a round 44 px target. */
-.planner__add { display: grid; place-items: center; width: 40px; height: 40px; margin-left: -8px; padding: 0; border: 0; border-radius: 50%;
+.planner__add { display: grid; place-items: center; width: 36px; height: 36px; margin-left: -6px; padding: 0; border: 0; border-radius: 50%;
   background: none; color: var(--text-muted); cursor: pointer; }
 .planner__add:hover { background: color-mix(in srgb, var(--border) 40%, transparent); color: var(--text); }
 .planner__add-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px dashed var(--border-input); border-radius: 50%; }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { saveEntry, gpxReady } from './browser-ui.mjs';
 
 const legacyDraftKey = 'richiroute.route-draft.v1';
 const origin = 'http://127.0.0.1:5173';
@@ -43,7 +44,7 @@ try {
   let page = await context.newPage();
   await page.goto(origin);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'GPX herunterladen' }).isDisabled(), true);
+  assert.equal(await gpxReady(page), false);
   await page.evaluate(() => {
     const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route');
     s.resetRoute([[15.392482, 47.099327], [15.3428, 47.0759]]);
@@ -82,10 +83,10 @@ try {
     return map && !map.isMoving() && source && (await source.getData()).features.length > 0 &&
       s.points.every(p => map.getBounds().contains(p.coord));
   });
-  assert.equal(await page.getByRole('button', { name: 'GPX herunterladen' }).isEnabled(), true);
+  assert.equal(await gpxReady(page), true);
 
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'GPX herunterladen' }).click();
+  await (await saveEntry(page, 'GPX')).click();
   const download = await downloadEvent;
   assert.match(download.suggestedFilename(), /^richiroute-\d{4}-\d{2}-\d{2}\.gpx$/);
   const exportPath = 'experiments/routing/.local/editor-restored.gpx';
@@ -117,8 +118,8 @@ try {
   assert.equal(parsed.elevations, expected.length);
   await page.screenshot({ path: 'experiments/routing/.local/editor-saved-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'GPX herunterladen' }).scrollIntoViewIfNeeded();
-  const box = await page.getByRole('button', { name: 'GPX herunterladen' }).boundingBox();
+  await page.getByRole('button', { name: 'Speichern', exact: true }).scrollIntoViewIfNeeded();
+  const box = await page.getByRole('button', { name: 'Speichern', exact: true }).boundingBox();
   assert.ok(box && box.x >= 0 && box.x + box.width <= 390);
   await page.screenshot({ path: 'experiments/routing/.local/editor-saved-mobile.png', fullPage: true });
 
@@ -139,7 +140,7 @@ try {
   const corrupt = await makeContext({ storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: legacyDraftKey, value: '{broken' }] }] } });
   const corruptPage = await corrupt.newPage();
   await corruptPage.goto(origin);
-  await corruptPage.getByText(/bisherige Entwurf wurde nicht überschrieben/).waitFor();
+  await corruptPage.getByText(/bisher gespeicherte wurde nicht überschrieben/).waitFor();
   assert.equal(await storedDraft(corruptPage), '{broken', 'An unreadable legacy draft moves to IndexedDB unchanged');
   await corrupt.close();
 
@@ -173,7 +174,7 @@ try {
   await quotaPage.reload();
   await quotaPage.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
   assert.ok((await state(quotaPage)).points.every(p => p.coord === null));
-  assert.equal(await quotaPage.getByRole('button', { name: 'GPX herunterladen' }).isDisabled(), true);
+  assert.equal(await gpxReady(quotaPage), false);
   await quota.close();
   assert.deepEqual(errors, []);
   console.log('Passed: browser reopening without routing, exact GPX geometry/elevation, mobile export, cross-tab protection, malformed draft, quota recovery, exit flush.');

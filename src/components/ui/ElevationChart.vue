@@ -280,8 +280,8 @@ function key(event: KeyboardEvent) {
 /* In the tooltips' ink, at most half the chart wide, so it always fits on the side it opens to. The gradient carries
    the dot of its colour on the line. */
 .elevation-chart__tooltip { position: absolute; top: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .5rem; width: max-content;
-  max-width: calc(50% - .5rem); margin-left: .5rem; padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--accent);
-  color: rgb(255 255 255 / .78); box-shadow: 0 2px 8px rgb(16 24 22 / .22); white-space: nowrap; font-size: .72rem; pointer-events: none; }
+  max-width: calc(50% - .5rem); margin-left: .5rem; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--accent);
+  color: rgb(255 255 255 / .78); box-shadow: 0 2px 8px rgb(16 24 22 / .22); white-space: nowrap; font-size: .75rem; pointer-events: none; }
 .elevation-chart .elevation-chart__tooltip strong { color: #fff; }
 .elevation-chart__slope { display: inline-block; width: 7px; height: 7px; margin-right: var(--space-1); border-radius: 50%; vertical-align: 1px; }
 .elevation-chart__tooltip--left { margin-left: -.5rem; transform: translateX(-100%); }
@@ -293,7 +293,7 @@ function key(event: KeyboardEvent) {
    on the last grid line. */
 .elevation-chart__plot { flex: 1; min-height: 0; display: grid; grid-template-columns: 3rem minmax(0, 1fr); grid-template-rows: var(--elevation-chart-height, 8.5rem) auto;
   padding-right: 1.25rem; }
-.elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .65rem; }
+.elevation-chart__altitudes { position: relative; grid-column: 1; grid-row: 1; font-size: .6875rem; }
 .elevation-chart__altitudes span { position: absolute; right: var(--space-2); transform: translateY(-50%); white-space: nowrap; }
 .elevation-chart__chart { grid-column: 2; grid-row: 1; position: relative; touch-action: none; cursor: crosshair; border-radius: var(--radius); }
 svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -302,7 +302,7 @@ svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .elevation-chart__cursor { stroke: var(--text-muted); }
 .elevation-chart__choice { fill: var(--accent); fill-opacity: .1; }
 .elevation-chart__position { position: absolute; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--text); box-shadow: 0 0 0 1px var(--text); transform: translate(-50%, -50%); pointer-events: none; }
-.elevation-chart__distances { position: relative; grid-column: 2; height: 1rem; font-size: .65rem; }
+.elevation-chart__distances { position: relative; grid-column: 2; height: 1rem; font-size: .6875rem; }
 .elevation-chart__distances span { position: absolute; top: .1rem; transform: translateX(-50%); white-space: nowrap; }
 .elevation-chart__empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 </style>

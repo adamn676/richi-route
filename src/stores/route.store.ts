@@ -166,8 +166,10 @@ function operationsFor(store: RouteStore): PendingOperations {
               { id: leg.toId, coord: leg.coordinates[leg.coordinates.length - 1], requested: leg.toCoord, key: 'toCoord' as const },
             ];
             const isOuter = (id: string) => id === placed[0].id || id === placed[placed.length - 1].id;
-            if (endpoints.some(end => !isOuter(end.id) && distanceMeters(end.requested, end.coord) > 2)) {
-              const message = 'Dieser Zwischenpunkt liegt zwischen zwei Straßen. Bitte ihn direkt auf die gewünschte Straße ziehen.';
+            const off = endpoints.find(end => !isOuter(end.id) && distanceMeters(end.requested, end.coord) > 2);
+            if (off) {
+              const kind = store.points.find(point => point.id === off.id)?.type === 'shape' ? 'Formpunkt' : 'Zwischenstopp';
+              const message = `Dieser ${kind} liegt zwischen zwei Straßen. Bitte ihn direkt auf die gewünschte Straße ziehen.`;
               store.legs = { ...store.legs, [request.id]: airLeg(request, message) };
               store.errorMessage = message;
               store.errorSection = { message, legId: request.id };

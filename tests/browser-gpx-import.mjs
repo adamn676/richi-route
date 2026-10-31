@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { same } from './browser-ui.mjs';
+import { same, saveEntry } from './browser-ui.mjs';
 
 const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const output = '.cache/gpx-import';
@@ -20,7 +20,7 @@ const page = await context.newPage();
 page.on('pageerror', error => errors.push(error.message));
 const gpx = body => `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">${body}</gpx>`;
 const point = (lon, lat, ele = '') => `<trkpt lon="${lon}" lat="${lat}">${ele === '' ? '' : `<ele>${ele}</ele>`}</trkpt>`;
-const upload = (name, contents) => page.getByLabel('GPX-Datei auswählen', { exact: true })
+const upload = (name, contents) => page.getByLabel('Datei auswählen', { exact: true })
   .setInputFiles({ name, mimeType: 'application/gpx+xml', buffer: Buffer.from(contents) });
 // The sidebar's messages; the map reports its own, such as missing terrain data in CI.
 const alerts = () => page.locator('.sidebar__messages').getByRole('alert');
@@ -38,7 +38,14 @@ const opened = () => page.evaluate(() => {
     coordinates: legs.flatMap((leg, i) => i ? leg.coordinates.slice(1) : leg.coordinates),
     elevations: legs.flatMap((leg, i) => i ? leg.elevations.slice(1) : leg.elevations), distances: legs.map(leg => leg.distanceMeters) };
 });
-const routeName = () => page.getByLabel('Routenname', { exact: true }).inputValue();
+// The name saving suggests, from the save menu's dialog, which closes again.
+async function routeName() {
+  await (await saveEntry(page, 'In „Meine Routen“')).click();
+  const value = await page.getByRole('dialog').getByLabel('Routenname', { exact: true }).inputValue();
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  return value;
+}
 try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
@@ -109,13 +116,19 @@ try {
   });
   assert.deepEqual(await recentNames(), ['Hahnhofweg 26 → Roseggerweg']);
   const imported = await state();
+  // Bringing a route back puts the current one aside in turn; the confirmation says where it went.
+  const shown = id => page.waitForFunction(id => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points[0]?.id === id, id);
+  const firstPoint = () => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points[0].id);
+  const importedStart = await firstPoint();
   await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).click();
-  await page.getByText('„Hahnhofweg 26 → Roseggerweg“ geöffnet.').waitFor();
+  await shown('stop-a');
+  await page.getByText('Vorige Route liegt in „Zuletzt bearbeitet“.').waitFor();
+  assert.equal(await page.getByText('geöffnet', { exact: false }).count(), 0, 'The route on screen needs no confirmation of its own');
   same(await state(), original);
   assert.deepEqual(await recentNames(), ['Große GPX-Runde'], 'The route brought back leaves the list as the other one joins it');
   // The track went to the recently edited ones in turn.
   await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).last().click();
-  await page.getByText('„Große GPX-Runde“ geöffnet.').waitFor();
+  await shown(importedStart);
   same(await state(), imported);
 
   // A file dropped anywhere on the map opens the same way.

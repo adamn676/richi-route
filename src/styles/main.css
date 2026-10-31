@@ -17,6 +17,8 @@
   --radius-lg: 12px;
   /* Material 3 elevation level 2, for menus and floating buttons. */
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
+  /* Menus and panels over the map, as Vuetify's menus. */
+  --shadow-menu: 0 1px 3px rgb(0 0 0 / .3), 0 4px 8px 3px rgb(0 0 0 / .15);
   --skeleton: color-mix(in srgb, var(--border) 85%, transparent);
   --skeleton-light: color-mix(in srgb, var(--border) 35%, transparent);
   --gutter: 1.25rem;
@@ -45,7 +47,15 @@
    margin. The row ends 12 px under its baseline, so its content follows without a further gap, 16 px under the baseline. */
 .section-heading { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin-bottom: calc(-1 * var(--space-3)); }
 .section-heading > :is(h2, h3) { margin: 0; }
-.section-heading > .v-btn:last-child { width: 36px; height: 36px; margin: 0 -9px 0 auto; }
+.section-heading > .v-btn:last-child { margin: 0 -9px 0 auto; }
+/* Icon buttons alike everywhere: a 36 px circle under the pointer, whatever their glyph's size. */
+.v-btn.v-btn--icon.icon-button { flex: none; width: 36px; max-width: none; height: 36px; }
+/* Menus alike everywhere: their entries one step below the content (14 px), second lines (in any list) 12 px, glyphs
+   18 px as the tools', corners as the map's panels. */
+.v-menu > .v-overlay__content > .v-list { border-radius: var(--radius); }
+.v-menu .v-list-item-title { font-size: .875rem; line-height: 1.25rem; }
+.v-list-item-subtitle { font-size: .75rem !important; line-height: 1rem !important; }
+.v-menu .v-list-item__prepend > .v-icon { width: 18px; height: 18px; font-size: 18px; }
 /* A text field is a line under its text, alike everywhere: light at rest, darker under the pointer, and while typing an
    ink line of 2 px that grows from the middle. Our own fields (.field-line) and Vuetify's underlined ones look the same:
    the value 10 px under its label's baseline and the line 10 px under the value's (each field sets its padding to that). */
@@ -53,7 +63,29 @@
   linear-gradient(var(--line), var(--line)) center bottom / 100% 1px no-repeat; transition: background-size .15s; }
 .field-line:hover { --line: var(--border-input); }
 .field-line:is(:focus, .v-input--focused) { --typing: 100%; }
-.v-field--variant-underlined { --v-field-padding-top: 1px; --v-field-padding-bottom: 5px; }
+.v-field--variant-underlined { --v-field-padding-top: 1px; --v-field-padding-bottom: 4px; }
+/* Messages one step below the content they are about (14 px against its 16), the hints' 12 px below them; corners as the
+   menus'. */
+.v-alert { border-radius: var(--radius); font-size: .875rem; line-height: 1.25rem; }
+/* Secondary text in one grey, the muted ink, wherever Vuetify would fade the text colour instead; letters at the font's own
+   spacing, without Material's tracking. */
+.text-medium-emphasis, .v-list-item-subtitle, .v-field-label { color: var(--text-muted) !important; opacity: 1 !important; }
+:is(.v-btn, .v-tab, .v-list-item-title, .v-list-item-subtitle, .v-label, .v-field__input, .v-card-title, .v-card-text, .v-alert,
+  .v-snackbar__content, .v-tooltip > .v-overlay__content, [class*="text-body"], [class*="text-title"]) { letter-spacing: normal !important; }
+/* Dialogs as the panels: a 16 px heading, its message in 14 px; title, text and buttons on one 24 px inset, measured to the
+   letters: 24 px from the edge to the title's capitals, 16 px from its baseline to what follows. */
+.v-dialog .v-card-item { padding: calc(var(--space-6) - 6px) var(--space-6) 0; }
+.v-dialog .v-card-title { padding: 0; font-size: 1rem; font-weight: 500; line-height: 1.5rem; }
+.v-dialog .v-card-text { padding: 5px var(--space-6) 0 !important; }
+/* A field's label sits inside the field's own padding, a message's letters right at its top; the last letters or field
+   line are 24 px above the buttons. */
+.v-dialog .v-card-text > .v-input:first-child { margin-top: 9px; }
+.v-dialog .v-card > .v-card-text + .v-card-actions { padding-top: 19px; }
+.v-dialog .v-card-actions { padding: var(--space-6); gap: var(--space-2); }
+.v-dialog .v-card-actions .v-btn { padding-inline: var(--space-4); }
+/* Its icon and a closing × level with the first line's letters, the × as far from the right edge as the icon from the left. */
+.v-alert__prepend { margin-top: -2px; }
+.alert-close { margin: -6px -9px 0 0; }
 /* A text longer than its field ends in an ellipsis while the field is not being edited, as an address does. */
 .v-field input:not(:focus) { text-overflow: ellipsis; }
 /* A suggestion's name wraps to a second line before it is cut; where it lies stays one line. */
@@ -67,10 +99,10 @@ svg.tabler-icon { stroke-width: 1.75; }
 /* Key figures: the value large in ink with its unit lighter, its name small above it. */
 .stats { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-6); margin: 0; }
 .stats > div { display: grid; gap: 2px; }
-.stats dt { color: var(--text-muted); font-size: .72rem; line-height: 1.2; white-space: nowrap; }
-.stats dd { margin: 0; color: var(--text); font-size: 1.25rem; font-weight: 650; line-height: 1.15; letter-spacing: -.01em;
+.stats dt { color: var(--text-muted); font-size: .75rem; line-height: 1.2; white-space: nowrap; }
+.stats dd { margin: 0; color: var(--text); font-size: 1.25rem; font-weight: 600; line-height: 1.15; letter-spacing: -.01em;
   font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stats dd small { color: var(--text-muted); font-size: .64em; font-weight: 500; letter-spacing: 0; }
+.stats dd small { color: var(--text-muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; }
 .swatch { width: 1rem; height: 4px; flex-shrink: 0; border-radius: 2px; }
 
 .route-marker {
@@ -83,7 +115,7 @@ svg.tabler-icon { stroke-width: 1.75; }
   background: var(--accent);
   box-shadow: 0 1px 6px rgb(23 38 42 / .45);
   color: #fff;
-  font: 700 .78rem var(--font);
+  font: 700 .75rem var(--font);
   cursor: grab;
 }
 .route-marker--shape, .route-marker--preview {
@@ -97,18 +129,25 @@ svg.tabler-icon { stroke-width: 1.75; }
 .route-marker--shape.route-marker--error { border-color: var(--danger); background: #fff; }
 .route-marker:active { cursor: grabbing; }
 /* MapLibre's popups as Material menus. */
-.maplibregl-popup-content { border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.maplibregl-popup-content { border-radius: var(--radius); box-shadow: var(--shadow-menu); font-family: var(--font); }
 .cycling-popup { font: .8rem/1.45 var(--font); padding: .25rem; }
-.street-view-link { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius); color: var(--accent); }
-.street-view-link:hover:not([aria-disabled=true]) { background: var(--accent-soft); }
-.street-view-link[aria-disabled=true] { color: var(--text-muted); opacity: .6; cursor: not-allowed; }
+/* The map's right-click menu as the planner's menus: 8 px corners, no tip, a 40 px entry with its 18 px glyph 16 px in and
+   its 14 px label 16 px after it. */
+.map-menu-popup .maplibregl-popup-content { padding: var(--space-2) 0; border-radius: var(--radius);
+  box-shadow: var(--shadow-menu); }
+.map-menu-popup .maplibregl-popup-tip { display: none; }
+.street-view-link { display: flex; align-items: center; gap: var(--space-4); min-height: 40px; padding: 0 var(--space-4) 0 var(--space-4);
+  color: var(--text); font-size: .875rem; line-height: 1.25rem; text-decoration: none; white-space: nowrap; }
+.street-view-link svg { color: var(--text-muted); }
+.street-view-link:hover:not([aria-disabled=true]) { background: rgba(var(--v-theme-on-surface), var(--v-hover-opacity)); }
+.street-view-link[aria-disabled=true] { color: var(--text-muted); cursor: not-allowed; }
 .street-view-marker { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border: 2px solid #fff; border-radius: 50%;
   background: var(--accent); color: #fff; box-shadow: var(--shadow); pointer-events: none; }
 /* The pin's tip, in the same colour and white outline. */
 .street-view-marker::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 10px; height: 10px;
   box-sizing: border-box; border: solid #fff; border-width: 0 2px 2px 0; background: inherit; transform: translateX(-50%) rotate(45deg); }
 .street-view-marker--missing { background: var(--text-muted); }
-.cycling-popup strong { display: block; padding-right: 1rem; font-size: .9rem; }
+.cycling-popup strong { display: block; padding-right: 1rem; font-size: .875rem; }
 .cycling-popup p { margin: .45rem 0; }
 .cycling-popup a { color: var(--accent); }
 
@@ -121,13 +160,13 @@ svg.tabler-icon { stroke-width: 1.75; }
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: skeleton-appear 0s .25s both; } }
 /* Tooltips in the markers' ink: legible on the white panel and on the map. */
-.v-tooltip > .v-overlay__content { padding: var(--space-1) var(--space-2); border-radius: 6px; background: var(--accent); color: #fff;
+.v-tooltip > .v-overlay__content { padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--accent); color: #fff;
   font-size: .75rem; line-height: 1.35; box-shadow: 0 2px 8px rgb(16 24 22 / .22); }
-/* The panel's snackbars: as wide as the panel's content and clear of its edges; the text reads at body size. Inside the
+/* The panel's snackbars: as wide as the panel's content, 16 px above its credits; the text reads at body size. Inside the
    panel, Vuetify's room for the panel itself (the layout's padding) is none. */
 .v-snackbar.v-overlay--contained { margin: 0; padding: 0; }
 .v-snackbar.v-overlay--contained .v-snackbar__wrapper { min-width: 0; width: calc(100% - 2 * var(--gutter)); max-width: none;
-  margin: 0 var(--gutter) var(--space-4); box-shadow: 0 4px 16px rgb(16 24 22 / .24), 0 1px 3px rgb(16 24 22 / .2); }
-.v-snackbar.v-overlay--contained .v-snackbar__content { padding: var(--space-3) var(--space-4); font-size: .875rem; line-height: 1.4; }
+  margin: 0 var(--gutter) calc(var(--credits-height, 0px) + var(--space-4)); box-shadow: 0 4px 16px rgb(16 24 22 / .24), 0 1px 3px rgb(16 24 22 / .2); }
+.v-snackbar.v-overlay--contained .v-snackbar__content { padding: var(--space-3) var(--space-4); font-size: .875rem; line-height: 1.25rem; }
 .v-snackbar.v-overlay--contained .v-snackbar__actions { margin-inline-end: var(--space-2); }
-.v-snackbar.v-overlay--contained .v-snackbar__actions .v-btn { font-weight: 600; letter-spacing: 0; }
+.v-snackbar.v-overlay--contained .v-snackbar__actions .v-btn { font-weight: 500; letter-spacing: 0; }

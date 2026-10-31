@@ -42,6 +42,29 @@ export async function closeMenus(page) {
 }
 
 // Opens a route from these points as a new route, as the planner's former example buttons did.
+// An entry of the route's save menu ('In „Meine Routen“', 'GPX' or 'RichiRoute-Datei'), with the menu open.
+export async function saveEntry(page, title) {
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  const entry = page.locator('.v-overlay--active .v-list-item').filter({ has: page.locator('.v-list-item-title', { hasText: title }) });
+  await entry.waitFor();
+  return entry;
+}
+
+// Whether the route can go to a bike computer as GPX; the menu closes again.
+export async function gpxReady(page) {
+  if (await page.getByRole('button', { name: 'Speichern', exact: true }).isDisabled()) return false;
+  const entry = await saveEntry(page, 'GPX');
+  const ready = !await entry.evaluate(item => item.classList.contains('v-list-item--disabled'));
+  await closeSaveMenu(page);
+  return ready;
+}
+
+// Escape closes the save menu; a click while it is still fading out would not open it again.
+export async function closeSaveMenu(page) {
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.v-menu .v-overlay__content'));
+}
+
 export async function openRoute(page, coords, shapeIndices = []) {
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia._s.get('route'));
   await page.evaluate(([coords, shapeIndices]) => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')

@@ -71,7 +71,7 @@ const zoom = () => page.evaluate(() => new Promise(resolve => {
 }));
 try {
   await page.goto(origin);
-  await page.getByRole('heading', { name: 'Runde vorschlagen', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Runden vorschlagen', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).isDisabled(), true, 'A loop needs a start');
   await page.evaluate(`${store('route')}.addWaypointByClick([${start}])`);
   await page.waitForFunction(`${store('route')}.waypoints[0].address === 'Teststraße, 8010 Graz'`);
@@ -144,10 +144,10 @@ try {
   shown = await routeState();
   assert.equal(shown.loops, null);
   assert.ok(shown.end);
-  assert.equal(await page.getByRole('heading', { name: 'Runde vorschlagen', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: 'Runden vorschlagen', exact: true }).count(), 0);
   assert.equal((await mapState()).loops, 0);
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
-  await page.getByRole('heading', { name: 'Runde vorschlagen', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Runden vorschlagen', exact: true }).waitFor();
   assert.equal((await routeState()).end, null, 'Undo returns to the start alone');
 
   routing = 'fail';

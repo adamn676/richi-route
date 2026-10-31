@@ -26,8 +26,11 @@ await page.route('**/routing/**', async route => {
 const coordsOf = count => Array.from({ length: count }, (_, i) => [15.4 + i / 10000, 47.1]);
 const upload = async (name, count = 1001) => {
   const xml = '<gpx version="1.1"><trk><name>' + name + '</name><trkseg>' + coordsOf(count).map(([lon, lat], i) => `<trkpt lon="${lon}" lat="${lat}"><ele>${300 + i / 20}</ele></trkpt>`).join('') + '</trkseg></trk></gpx>';
-  await page.getByLabel('GPX-Datei auswählen', { exact: true }).setInputFiles({ name: name + '.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(xml) });
-  await page.waitForFunction(name => document.querySelector('.library input')?.value === name, name);
+  await page.evaluate(() => { window.routeBefore = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points; });
+  await page.getByLabel('Datei auswählen', { exact: true }).setInputFiles({ name: name + '.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from(xml) });
+  // Opened once the track has replaced the route.
+  await page.waitForFunction(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').points !== window.routeBefore
+    && !document.querySelector('.sidebar__reading'));
 };
 // The opened route's path and how much of it has a known surface.
 const state = () => page.evaluate(() => {

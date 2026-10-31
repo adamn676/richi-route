@@ -38,7 +38,7 @@
         </v-list-item>
       </v-list>
       <div v-if="matching.length > visibleCount" class="surfaces__more">
-        <v-btn variant="outlined" size="small" @click="visibleCount += 10">Weitere Abschnitte</v-btn>
+        <v-btn variant="outlined" @click="visibleCount += 10">Weitere Abschnitte</v-btn>
       </div>
     </template>
   </section>
@@ -130,7 +130,7 @@ watch(inspection, value => {
 .surfaces__label { display: block; padding-block: var(--space-2); white-space: normal; line-height: 1.3; }
 .surfaces__amount { display: inline-flex; align-items: baseline; gap: .5rem; }
 .surfaces__amount span { min-width: 2.6rem; color: var(--text-muted); font-size: .75rem; text-align: right; font-variant-numeric: tabular-nums; }
-.surfaces__totals, .surfaces__sections { margin: 0; padding: 0; overflow: visible; font-size: .9rem; }
+.surfaces__totals, .surfaces__sections { margin: 0; padding: 0; overflow: visible; font-size: .875rem; }
 /* The first row's text 20 px under the bar, as from a stop's line to the next label. */
 .surfaces__totals { margin-top: -9px; }
 .v-list-item { width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: 44px; margin-inline: calc(-1 * var(--space-2));
@@ -149,9 +149,9 @@ watch(inspection, value => {
 .surfaces__step { display: flex; align-items: center; gap: var(--space-1); margin: var(--space-3) 0 0 36px; }
 /* The buttons reach past the line of text without moving it, so the sections follow 16 px under its baseline. */
 .surfaces__step button { margin-block: -10px; }
-h4 { flex: 1; margin: 0; color: var(--text-muted); font-size: .8rem; font-weight: 400; }
+h4 { flex: 1; margin: 0; color: var(--text-muted); font-size: .75rem; font-weight: 400; }
 strong { font-variant-numeric: tabular-nums; font-weight: 600; }
-strong small { color: var(--text-muted); font-size: .8em; font-weight: 500; }
+strong small { color: var(--text-muted); font-size: .75rem; font-weight: 500; }
 .surfaces__more { margin-left: 28px; }
 .surfaces__more .v-btn { padding-inline: var(--space-2); color: var(--text); }
 .surfaces__skeleton-bar { height: 10px; margin-top: var(--space-1); border-radius: 5px; }

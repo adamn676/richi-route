@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
+import { gpxReady } from './browser-ui.mjs';
 
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -50,7 +51,7 @@ try {
   });
   assert.deepEqual(await page.evaluate(() => Object.values(document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').legs).map(l => l.coordinates)), before);
   assert.equal(await notice.count(), 0, 'Outdated geometry does not claim current rule notices');
-  assert.ok(await page.getByRole('button', { name: 'GPX herunterladen' }).isDisabled());
+  assert.ok(!await gpxReady(page));
   release(); hold = undefined;
   await idle(); assert.ok(await notice.isVisible());
   const afterRefresh = requests;

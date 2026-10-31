@@ -28,23 +28,27 @@
     <div class="sidebar__messages">
       <v-alert v-if="routeStore.draftError" type="error">
         {{ routeStore.draftError }}
-        <template #append><v-btn variant="text" size="small" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</v-btn></template>
+        <div class="sidebar__alert-actions"><v-btn variant="outlined" @click="saveDraftNow(routeStore)">Aktuelle Route hier speichern</v-btn></div>
       </v-alert>
-      <v-alert v-if="error" type="error">{{ error }}</v-alert>
-      <p v-if="reading" class="sidebar__reading" role="status">GPX wird eingelesen … <v-btn variant="text" size="small" @click="library.cancelGpx()">Abbrechen</v-btn></p>
+      <!-- What went wrong in an action (a file, a save) can be closed; the next action clears it as well. -->
+      <v-alert v-if="error" type="error">
+        {{ error }}
+        <template #append><v-icon-button class="alert-close" icon="$clear" size="x-small" aria-label="Meldung schließen" @click="error = ''" /></template>
+      </v-alert>
+      <p v-if="reading" class="sidebar__reading" role="status"><span class="sidebar__reading-label"><v-progress-circular indeterminate size="16" width="2" />GPX wird eingelesen …</span><v-btn variant="outlined" @click="library.cancelGpx()">Abbrechen</v-btn></p>
     </div>
-    <!-- Confirmations pass by; errors stay above until resolved. A replaced route can be brought back from here. -->
+    <!-- Confirmations pass by; errors stay above until closed or resolved. A replaced route can be brought back from here. -->
     <v-snackbar :key="message" :model-value="Boolean(message) && !error" :timeout="restorable ? 8000 : 4000" @update:model-value="open => open || (message = '')">
       {{ message }}
       <template v-if="restorable" #actions><v-btn variant="text" color="inverse-primary" @click="restore(restorable)">Wiederherstellen</v-btn></template>
     </v-snackbar>
     <div ref="body" class="sidebar__body" :style="{ '--scrollbar': `${scrollbar}px` }">
-      <RoutePanel v-show="tab === 'route'" id="panel-route" role="tabpanel" aria-labelledby="tab-route" @open-gpx="openGpx" />
+      <RoutePanel v-show="tab === 'route'" id="panel-route" :library="library" role="tabpanel" aria-labelledby="tab-route" @open-file="openFile" />
       <SavedRoutes v-show="tab === 'library'" id="panel-library" :library="library" role="tabpanel" aria-labelledby="tab-library" @opened="showRoute()" />
     </div>
     <!-- The visible map's credits, always in view: the main ones in one line, the full list on demand (MapView places it
          here, useMap's credits container). -->
-    <div class="sidebar__credits">
+    <div ref="credits" class="sidebar__credits">
       <p v-if="!creditsOpen" class="sidebar__credits-short">
         © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Österr. Adressregister ·
         <button type="button" class="sidebar__credits-more" aria-expanded="false" aria-controls="map-credits"
@@ -91,22 +95,34 @@ watch(tab, () => nextTick(placePill));
 // The room kept for the scrollbar, which the content's right margin gives back (none where scrollbars overlay).
 const body = ref<HTMLElement | null>(null), scrollbar = ref(0);
 const measureScrollbar = () => { if (body.value) scrollbar.value = body.value.offsetWidth - body.value.clientWidth; };
+// Confirmations rise above the credits, however tall they are (main.css); they appear in the drawer, outside this panel.
+const credits = ref<HTMLElement | null>(null);
+function measureCredits() {
+  const drawer = sidebar.value?.closest<HTMLElement>('#sidebar');
+  if (drawer && credits.value) drawer.style.setProperty('--credits-height', `${credits.value.offsetHeight}px`);
+}
 let resizes: ResizeObserver | undefined;
 onMounted(() => {
   placePill();
   measureScrollbar();
+  measureCredits();
   // Placed first without sliding in; from then on it moves.
   requestAnimationFrame(() => { pillMoves.value = true; });
-  resizes = new ResizeObserver(() => { placePill(); measureScrollbar(); });
+  resizes = new ResizeObserver(() => { placePill(); measureScrollbar(); measureCredits(); });
   const tabs = sidebar.value?.querySelector('.sidebar__tabs');
   if (tabs) resizes.observe(tabs);
   if (body.value) resizes.observe(body.value);
+  if (credits.value) resizes.observe(credits.value);
 });
 onBeforeUnmount(() => resizes?.disconnect());
-// A GPX file opens as the route, chosen in the route's tools or dropped anywhere on the page; a dropped backup is read
-// into the saved routes.
-async function openGpx(file: File) {
-  if (await library.openGpx(file)) await showRoute();
+// A file opens as the route, chosen in the route's tools or dropped anywhere on the page: a GPX track or a RichiRoute file.
+async function openFile(file: File) {
+  const json = /\.json$/i.test(file.name);
+  if (!json && !/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
+    error.value = 'Hier lassen sich GPX-Dateien und RichiRoute-Dateien öffnen.';
+    return;
+  }
+  if (await (json ? library.openFile(file) : library.openGpx(file))) await showRoute();
 }
 async function restore(entry: SavedRouteSummary) {
   if (await library.openRecent(entry)) await showRoute();
@@ -116,9 +132,7 @@ function dropFile(event: DragEvent) {
   const file = event.dataTransfer?.files[0];
   if (!file) return;
   event.preventDefault();
-  if (/\.json$/i.test(file.name)) void library.importFile(file);
-  else if (/\.gpx$/i.test(file.name) || /xml/.test(file.type)) void openGpx(file);
-  else error.value = 'Hier lassen sich GPX-Dateien und RichiRoute-Sicherungen öffnen.';
+  void openFile(file);
 }
 onMounted(() => { window.addEventListener('dragover', dragFiles); window.addEventListener('drop', dropFile); });
 onBeforeUnmount(() => { window.removeEventListener('dragover', dragFiles); window.removeEventListener('drop', dropFile); });
@@ -150,32 +164,35 @@ async function showRoute(focus = 'tab-route') {
 .brand__route { color: v-bind('routeStyle.paved'); }
 /* The first step of every plan, so named in full; tonal, so the panels' ink buttons stay their main actions. */
 .sidebar__new { height: 36px; margin-left: auto; padding-inline: 12px 16px; font-weight: 500; letter-spacing: 0; }
-/* Segmented tabs: a white field slides to the chosen one; pressing a tab dims its label. */
-.sidebar__tabs { flex: none; height: auto !important; margin: 0 var(--gutter); padding: var(--space-1); border-radius: 12px;
+/* Segmented tabs as pills, as every button is: a white pill slides to the chosen one; pressing a tab dims its label. */
+.sidebar__tabs { flex: none; height: auto !important; margin: 0 var(--gutter); padding: var(--space-1); border-radius: 9999px;
   background: #eceeed; }
 .sidebar__tabs :deep(.v-slide-group__content) { position: relative; }
-.sidebar__tabs .v-tab { position: relative; z-index: 1; min-height: 32px; height: 32px !important; border-radius: 8px !important; text-transform: none;
+.sidebar__tabs .v-tab { position: relative; z-index: 1; min-height: 32px; height: 32px !important; border-radius: 9999px !important; text-transform: none;
   color: var(--text-muted) !important; transition: background-color .15s, color .15s; }
 .sidebar__tabs .v-tab :deep(:is(.v-btn__overlay, .v-btn__underlay, .v-tab__slider)) { display: none; }
 .sidebar__tabs .v-tab--selected { color: var(--text) !important; }
 .sidebar__tabs .v-tab:not(.v-tab--selected):hover { color: var(--text) !important; background: rgb(0 0 0 / .04); }
 .sidebar__tabs .v-tab :deep(.v-btn__content) { transition: opacity .1s; }
 .sidebar__tabs .v-tab:active :deep(.v-btn__content) { opacity: .55; }
-.sidebar__pill { position: absolute; inset: 0 auto 0 0; border-radius: 8px; background: var(--surface); pointer-events: none;
+.sidebar__pill { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; background: var(--surface); pointer-events: none;
   box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 1px 1px rgb(0 0 0 / .04); }
 .sidebar__pill--moves { transition: transform .22s cubic-bezier(.3, .7, .2, 1), width .22s cubic-bezier(.3, .7, .2, 1); }
 @media (prefers-reduced-motion: reduce) { .sidebar__pill--moves { transition: none; } }
-.sidebar__messages { display: grid; gap: .5rem; max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
-.sidebar__messages:not(:empty) { padding-top: var(--space-2); }
-.sidebar__messages:not(:empty) { padding-block: .75rem; }
-.sidebar__reading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .82rem; }
+/* An alert's action under its message, as the route panel's. */
+.sidebar__alert-actions { margin-top: var(--space-3); }
+.sidebar__messages { display: grid; gap: var(--space-2); max-height: 40%; overflow-y: auto; padding-inline: var(--gutter); }
+/* 24 px from the tabs to a message, as to the first letters; the section under it brings its own 24 px to its heading. */
+.sidebar__messages:not(:empty) { padding-top: var(--space-6); }
+.sidebar__reading { display: flex; align-items: center; justify-content: space-between; margin: 0; font-size: .875rem; }
+.sidebar__reading-label { display: flex; align-items: center; gap: var(--space-2); }
 /* A thin scrollbar, shown while the pointer is over the panel or the focus is in it; its room stays, so the content keeps
    its width when the scrollbar comes and goes or the panel's height changes. */
 .sidebar__body { --gutter-end: calc(var(--gutter) - var(--scrollbar, 0px)); flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin;
   scrollbar-color: transparent transparent; }
 .sidebar__body:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) transparent; }
 .sidebar__credits { padding: .35rem var(--gutter); background: linear-gradient(var(--border), var(--border)) no-repeat var(--gutter) 0 / calc(100% - 2 * var(--gutter)) 1px;
-  color: var(--text-muted); font-size: .68rem; line-height: 1.4; }
+  color: var(--text-muted); font-size: .6875rem; line-height: 1.4; }
 .sidebar__credits-short { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar__credits-more { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .sidebar__summary { flex: none; margin: var(--space-2) var(--gutter) 0; padding: var(--space-2) 0; border: 0; background: none; color: var(--text);

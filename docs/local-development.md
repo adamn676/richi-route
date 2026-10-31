@@ -827,8 +827,11 @@ A second tab pauses draft saving when another tab changes it.
 
 **Meine Routen** stores named routes in IndexedDB. The list loads only route
 metadata; geometry is read when opening, duplicating or exporting a route.
-**Speichern** next to the name adds an entry. After opening it, the same button
-updates that entry, while the copy icon saves a separate one. Each entry opens
+The save icon in the route's tools opens a menu with every way to keep the
+route. **In „Meine Routen“** asks a new route for its name, suggesting where the
+route goes (or the GPX track's name), and adds an entry; an opened entry is
+updated at once, and the menu shows **Gespeichert** once nothing is left to save.
+Strg+S does the same. Each entry opens
 with its folder icon, which shows the route on the **Route** tab; its menu
 duplicates, renames or deletes it. Reloading restores the draft; open
 its saved entry again before updating that entry.
@@ -844,20 +847,20 @@ deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
 
-**Aktuelle Route sichern** under the list exports the current editable route, including its
-points, geometry, elevation, surfaces and routing revision, as `.richiroute.json`.
-**Sicherung einlesen** validates that format and adds a new entry without
-replacing the current draft or existing entries. Imports are limited to 64 MB.
-This imports RichiRoute backups, not GPX files. Changed routing rules still cause
-recalculation when opening a saved route, keeping its old geometry visible.
+The same menu offers **GPX** for a bike computer and a **RichiRoute-Datei** (`.richiroute.json`) with the route's points, geometry,
+elevation, surfaces and routing revision, to go on editing it, also on another
+device. Opening such a file (the open icon, or dropping it on the map) makes it the
+current route, as a GPX track does; files are limited to 64 MB. Changed routing
+rules still cause recalculation when opening a saved route, keeping its old
+geometry visible.
 
 Clearing browser data removes both the draft and saved routes. Both use
 asynchronous IndexedDB storage, so large routes fit within the browser's quota.
 A draft saved in localStorage by an earlier version moves there on first load.
-Named saves and backup downloads remain usable when draft autosaving fails.
+Named saves and RichiRoute files remain usable when draft autosaving fails.
 Storage is specific to the browser and site origin.
 
-The download button beside undo and redo exports the calculated track and known elevation once all
+Its **GPX** entry exports the calculated track and known elevation once all
 points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
 turn instructions. Physical cycling-computer imports have not been tested.
@@ -927,7 +930,7 @@ screenshots go to `.cache/profile-hover/`.
 
 ## Open a GPX track
 
-**GPX-Datei öffnen**, or dropping a file anywhere on the map, reads GPX 1.0 and
+The open icon in the route's tools, or dropping a file anywhere on the map, reads GPX 1.0 and
 1.1 tracks locally and makes the track the editable route, with the usual map
 line, profile, distance, ascent and surfaces. An unsaved current route goes to
 **Zuletzt bearbeitet** first, and **Rückgängig** returns to it as well. A file

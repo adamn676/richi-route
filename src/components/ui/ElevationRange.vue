@@ -2,13 +2,13 @@
   <!-- The zoomed stretch's figures, in place of the whole profile's, and the way back to all of it. -->
   <span class="elevation-range" role="group" :aria-label="place">
     <dl class="stats elevation-range__figures" :title="place">
-      <div><dt>Abschnitt</dt><dd>{{ length[0] }}&nbsp;<small>{{ length[1] }}</small></dd></div>
+      <div><dt>Ausschnitt</dt><dd>{{ length[0] }}&nbsp;<small>{{ length[1] }}</small></dd></div>
       <div><dt>Höhenmeter</dt><dd>{{ formatWhole(stats.ascent) }}&nbsp;<small>m</small></dd></div>
       <div v-if="stats.gradient !== null" class="elevation-range__mean"><dt>Ø Steigung</dt><dd>{{ formatGradient(stats.gradient) }}&nbsp;<small>%</small></dd></div>
       <div v-if="stats.steepest !== null"><dt>Max. Steigung</dt><dd>{{ formatGradient(stats.steepest) }}&nbsp;<small>%</small></dd></div>
     </dl>
     <v-icon-button size="x-small" aria-label="Ganzes Profil zeigen" v-tooltip:top="'Ganzes Profil zeigen'" @click="emit('reset')">
-      <IconZoomOut :size="16" aria-hidden="true" />
+      <IconZoomOut :size="18" aria-hidden="true" />
     </v-icon-button>
   </span>
 </template>

@@ -48,8 +48,8 @@ const close = () => { open.value = false; };
 /* Material's radio ring is drawn 2 px into its icon, a checkbox's square 3 px. */
 .map-menu__panel :deep(.v-radio .v-selection-control__wrapper) { width: 38px; margin-left: -2px; }
 .map-menu__panel :deep(.v-selection-control__input:hover::before) { opacity: 0; }
-.map-menu__panel :deep(.v-selection-control .v-label) { flex: 1; align-self: stretch; }
+.map-menu__panel :deep(.v-selection-control .v-label) { flex: 1; align-self: stretch; font-size: .875rem; line-height: 1.25rem; }
 /* A group's name as the sidebar's small labels, on the margin. */
-.map-menu__panel :deep(.v-radio-group > .v-input__control > .v-label) { margin: 0; color: var(--text-muted); font-size: .75rem; opacity: 1; }
+.map-menu__panel :deep(:is(.v-radio-group > .v-input__control > .v-label, .map-menu__group)) { display: block; margin: 0; color: var(--text-muted); font-size: .75rem; opacity: 1; }
 .map-menu__panel :deep(.v-selection-control-group) { margin-top: 0; padding: 0; }
 </style>
