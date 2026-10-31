@@ -6,7 +6,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import catalogue from './offline-areas.json' with { type: 'json' };
-import { inside } from './offline/geometry.mjs';
+import { inside, routingArea } from './offline/geometry.mjs';
 
 const { areas } = catalogue;
 
@@ -17,9 +17,7 @@ const target = path.join(root, 'public/offline-areas.json');
 const toleranceMeters = 250;
 // Islands and enclaves smaller than this are left out.
 const smallestRing = 2e6;
-// What routing and the address search cover (search/src/build.rs ROUTING_AREA; the engine's segment tiles): areas are
-// cut to it, and one with less than a third of itself inside is left out.
-const routingArea = [5, 45, 20, 50];
+// Areas are cut to the routing area; one with less than a third of itself inside is left out.
 const smallestShare = 1 / 3;
 
 async function exists(file) {
