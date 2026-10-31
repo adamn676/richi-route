@@ -32,9 +32,12 @@
               <v-radio v-for="item in group.items" :key="item.id" :label="item.label" :value="item.id"
                 @click="(event: MouseEvent) => event.detail && close()" />
             </v-radio-group>
-            <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }" class="map-view__relief">
+            <div class="map-view__relief">
               <span class="map-menu__group">Darstellung</span>
-              <v-checkbox v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
+              <div v-tooltip:start="{ text: 'Das Satellitenbild zeigt das Gelände schon selbst', disabled: basemap !== 'aerial' }">
+                <v-checkbox v-model="hillshade" label="Geländerelief" :disabled="basemap === 'aerial'" />
+              </div>
+              <v-checkbox v-if="ridesAvailable" v-model="rides" label="Richi Fahrten" />
             </div>
             <button type="button" class="map-view__offline" @click="close(); offline.open()">
               <IconMapDown :size="18" aria-hidden="true" />Offline-Gebiete</button>
@@ -69,6 +72,7 @@ import { useMapInteractions } from '@/composables/useMapInteractions';
 import { useStreetViewMap } from '@/composables/useStreetViewMap';
 import { useMarkerWatches } from '@/composables/useMarkerWatches';
 import { useRouteDragging } from '@/composables/useRouteDragging';
+import { useRidesLayer } from '@/composables/useRidesLayer';
 import SegmentedRouteLayer from '@/components/map/SegmentedRouteLayer.vue';
 import SurfaceFocusLayer from '@/components/map/SurfaceFocusLayer.vue';
 import SurfaceReportCard from '@/components/map/SurfaceReportCard.vue';
@@ -90,6 +94,7 @@ import { onlineBasemaps } from '@/config/online-basemaps';
 import { localBasemaps, type EditorBasemap } from '@/config/basemaps';
 
 const { map, basemap, hillshade, mapError, retryBasemap } = useMap('map', 'map-credits');
+const { rides, ridesAvailable } = useRidesLayer(map);
 const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label: string }[] }[] = [
   { label: 'Eigene Karten · Europa', items: localBasemaps },
   { label: 'Online · Internet erforderlich', items: onlineBasemaps },

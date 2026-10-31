@@ -30,6 +30,46 @@ function encodeVarint(value, out) {
   out.push(value);
 }
 
+const encoded = (number, content) => {
+  const head = [];
+  encodeVarint(number << 3 | 2, head);
+  encodeVarint(content.length, head);
+  return Buffer.concat([Uint8Array.from(head), content]);
+};
+const packed = (number, values) => {
+  const out = [];
+  for (const value of values) encodeVarint(value, out);
+  return encoded(number, Uint8Array.from(out));
+};
+const zigzag = n => (n << 1) ^ (n >> 31);
+
+// A vector tile of one layer of lines, one feature per value of `property` (whole numbers from 0): `groups` maps
+// each value to its lines, each [[x, y], …] in tile units.
+export function lineTile(name, property, groups, extent = 4096) {
+  const values = [...groups.keys()];
+  const features = values.map((value, index) => {
+    const geometry = [];
+    let cx = 0, cy = 0;
+    for (const line of groups.get(value)) {
+      line.forEach(([x, y], i) => {
+        if (i === 0) geometry.push(1 | 1 << 3);
+        else if (i === 1) geometry.push(2 | (line.length - 1) << 3);
+        geometry.push(zigzag(x - cx), zigzag(y - cy));
+        [cx, cy] = [x, y];
+      });
+    }
+    // Tags (key 0, this value), type line, geometry.
+    return encoded(2, Buffer.concat([packed(2, [0, index]), Uint8Array.from([3 << 3, 2]), packed(4, geometry)]));
+  });
+  const version = [15 << 3, 2], extentField = [];
+  encodeVarint(5 << 3, extentField);
+  encodeVarint(extent, extentField);
+  const layer = Buffer.concat([Uint8Array.from(version), encoded(1, Buffer.from(name)), ...features, encoded(3, Buffer.from(property)),
+    ...values.map(value => { const out = [5 << 3]; encodeVarint(value, out); return encoded(4, Uint8Array.from(out)); }),
+    Uint8Array.from(extentField)]);
+  return encoded(3, layer);
+}
+
 // The kinds each source layer's style filters draw; a layer whose filters say more than "kind is one of" keeps all.
 export function drawnKinds(styleLayers, sourceLayer) {
   const kinds = new Set();
@@ -63,10 +103,7 @@ export function strip(tile, sourceLayer, kinds) {
       for (let i = 0; i < list.length; i += 2) if (keys[list[i]] === 'kind') return values[list[i + 1]];
     };
     const kept = layer.filter(f => f.number !== 2 || kinds.has(kindOf(f))).map(f => tile.subarray(f.start, f.end));
-    const length = kept.reduce((sum, part) => sum + part.length, 0), head = [];
-    encodeVarint(3 << 3 | 2, head);
-    encodeVarint(length, head);
-    out.push(Uint8Array.from(head), ...kept);
+    out.push(encoded(3, Buffer.concat(kept)));
   }
   return Buffer.concat(out);
 }

@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { legs, shareOn } from '../experiments/strava/compare.mjs';
+import { VectorTile } from '@mapbox/vector-tile';
+import { PbfReader } from 'pbf';
+import { familiarity, legs, sections, shareOn } from '../experiments/strava/compare.mjs';
 import { fitPositions } from '../experiments/strava/fit.mjs';
+import { countRide, roadLines, tileLines } from '../experiments/strava/heat.mjs';
 import { roadRides, simplify } from '../experiments/strava/rides.mjs';
+import { lineTile } from '../scripts/offline/tiles.mjs';
 
 // A FIT file from records: definitions as [local, message, fields [number, size], littleEndian, developer sizes], data
 // as [local, values by field], compressed-timestamp data as [local, values, true].
@@ -65,13 +69,15 @@ test('Damaged FIT files are refused', () => {
   assert.throws(() => fitPositions(orphan), /before its definition/);
 });
 
-test('Road rides are the outdoor rides on a bike that is not a mountain bike', () => {
+test('Road rides are the outdoor rides on a bike that is not a mountain bike, unless the name says otherwise', () => {
   const csv = 'Aktivitäts-ID,Aktivitätsdatum,Name der Aktivität,Aktivitätsart,Aktivitätsausrüstung,Dateiname\n'
     + '1,"1. Mai 2026, 08:00",Runde,Radfahrt,BMC,activities/1.fit.gz\n'
     + '2,x,"Zwift, ""Watopia""",Virtuelle Radfahrt,BMC,activities/2.fit.gz\n'
     + '3,x,Trail,Radfahrt,MTB Scott Fully 29er,activities/3.fit.gz\n'
     + '4,x,Lauf,Lauf,,activities/4.fit.gz\n'
-    + '5,x,"Ohne Rad\nzweite Zeile",Radfahrt,,activities/5.fit.gz\n';
+    + '5,x,"Ohne Rad\nzweite Zeile",Radfahrt,,activities/5.fit.gz\n'
+    + '6,x,Lässige MTB Runde,Radfahrt,Rennrad Alu,activities/6.fit.gz\n'
+    + '7,x,Langlaufen Virgen,Radfahrt,Rennrad Alu,activities/7.fit.gz\n';
   assert.deepEqual(roadRides(csv).map(ride => [ride.id, ride.date, ride.file]), [['1', '1. Mai 2026, 08:00', 'activities/1.fit.gz']]);
 });
 
@@ -99,11 +105,65 @@ test('Rides are cut into legs of about the given length, turnarounds left out', 
 
 test('The share of a route on the ridden track counts only what lies within the tolerance', () => {
   const track = north(47, 47.02);
-  assert.equal(shareOn(track, track).share, 1);
+  assert.equal(shareOn(track, [track]).share, 1);
   // Half the route 50 m beside the track.
   const route = [...north(47, 47.01), ...north(47.01, 47.02, 15.00066)];
-  const { share, meters } = shareOn(route, track);
+  const { share, meters } = shareOn(route, [track]);
   assert.ok(Math.abs(share - .5) < .02, String(share));
   assert.ok(Math.abs(meters - 2270) < 40, String(meters));
-  assert.equal(shareOn(north(47, 47.01, 15.0003), track, 20).share, 0);
+  assert.equal(shareOn(north(47, 47.01, 15.0003), [track], 20).share, 0);
+});
+
+test('Route sections are the map\'s: snapped points, their spurs and the partial ends left out', () => {
+  const road = [[15.100, 47.100], [15.110, 47.105], [15.120, 47.100], [15.130, 47.106], [15.140, 47.100], [15.150, 47.104]];
+  const [, p1, p2, p3, p4] = road;
+  // Through a via beside the road at p2 (reached by a spur), one in the middle of p3–p4, and one near p3, a map point.
+  const route = [road[0], p1, p2, [15.12001, 47.10001], p2, p3, [15.135, 47.103], p4, road[5]];
+  const vias = [[15.12003, 47.10003], [15.135, 47.10309], [15.13009, 47.106]];
+  const key = ([lon, lat]) => `${Math.round(lon * 1e6) + 180_000_000},${Math.round(lat * 1e6) + 90_000_000}`;
+  const section = (a, b) => `${key(a)},${key(b)}`;
+  assert.deepEqual(sections(route, vias), [section(p1, p2), section(p2, p3), section(p3, p4)]);
+  assert.deepEqual(sections(road.slice(0, 3)), [], 'Only partial ends');
+});
+
+test('A leg\'s familiarity counts the rides through its area', () => {
+  const familiar = familiarity([north(47, 47.01), north(47, 47.01), north(47.5, 47.51)]);
+  assert.equal(familiar(north(47, 47.01)), 2);
+  assert.equal(familiar(north(48, 48.01)), 0);
+});
+
+const position = ([lon, lat]) => `${Math.round(lon * 1e6) + 180_000_000},${Math.round(lat * 1e6) + 90_000_000}`;
+const ridden = (...points) => points.slice(1).map((point, i) => `${position(points[i])},${position(point)}`);
+
+test('Ridden roads join into lines between junctions and where the number of rides changes', () => {
+  const [a, b, c, d, e] = [[15, 47], [15.001, 47], [15.002, 47], [15.003, 47], [15.002, 47.001]];
+  // a–b–c–d there and back, b–c–e once: c is a junction, b–c has three rides.
+  const counted = rides => { const counts = new Map(); for (const sections of rides) countRide(counts, sections); return roadLines(counts); };
+  const lines = counted([ridden(a, b, c, d), ridden(d, c, b, a), ridden(b, c, e)]);
+  // Each line as its rides and its points, read from the end that sorts first.
+  const shape = line => {
+    const points = line.points.map(point => point.map(value => +value.toFixed(6)).join(' '));
+    return `${line.rides}: ${(points[0] < points.at(-1) ? points : points.reverse()).join(', ')}`;
+  };
+  assert.deepEqual(lines.map(shape).sort(), ['1: 15.002 47, 15.002 47.001', '2: 15 47, 15.001 47', '2: 15.002 47, 15.003 47', '3: 15.001 47, 15.002 47']);
+  // One road ridden twice the same way is one line.
+  assert.deepEqual(counted([ridden(a, b, c, d), ridden(a, b, c, d)]).map(shape), ['2: 15 47, 15.001 47, 15.002 47, 15.003 47']);
+});
+
+test('Lines are cut at tile edges with a buffer and encoded as vector tiles', () => {
+  // Across the edge between two zoom-14 tiles near Graz, in the middle of their row.
+  const [x, y] = [8895, 5800], n = 2 ** 14;
+  const edge = x / n * 360 - 180, middle = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + .5) / n))) * 180 / Math.PI;
+  const tiles = tileLines([{ rides: 4, points: [[edge - .003, middle], [edge + .003, middle]] }], 14);
+  assert.deepEqual([...tiles.keys()].sort(), [`${x - 1}/${y}`, `${x}/${y}`]);
+  for (const [, groups] of tiles) {
+    const [part] = groups.get(4);
+    assert.ok(part.every(([px]) => px >= -64 && px <= 4096 + 64), String(part));
+  }
+  const [key, groups] = [...tiles][0];
+  const layer = new VectorTile(new PbfReader(lineTile('rides', 'rides', groups))).layers.rides;
+  assert.equal(layer.length, 1);
+  const feature = layer.feature(0);
+  assert.deepEqual([feature.type, { ...feature.properties }], [2, { rides: 4 }]);
+  assert.deepEqual(feature.loadGeometry().map(line => line.map(({ x, y }) => [x, y])), groups.get(4), key);
 });

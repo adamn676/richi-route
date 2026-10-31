@@ -66,18 +66,18 @@ function localArchive(handle, filename) {
   });
 }
 const archive = localArchive(file, archivePath);
-let terrainFile, terrainArchive, terrainHeader, terrainEtag;
-try {
-  const filename = path.join(directory, 'terrain.pmtiles');
-  terrainFile = await open(filename);
-  terrainArchive = localArchive(terrainFile, filename);
-  terrainHeader = await terrainArchive.getHeader();
-  const info = await terrainFile.stat();
-  terrainEtag = `"${info.size}-${Math.trunc(info.mtimeMs)}"`;
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-  console.warn('Terrain is not installed. Run npm run terrain:setup.');
+// An archive that need not be installed: its file, reader, header and ETag, or nothing.
+async function optionalArchive(filename) {
+  let handle;
+  try { handle = await open(filename); }
+  catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
+  const reader = localArchive(handle, filename), info = await handle.stat();
+  return { file: handle, archive: reader, header: await reader.getHeader(), etag: `"${info.size}-${Math.trunc(info.mtimeMs)}"` };
 }
+const { file: terrainFile, archive: terrainArchive, header: terrainHeader, etag: terrainEtag } = await optionalArchive(path.join(directory, 'terrain.pmtiles'));
+if (!terrainArchive) console.warn('Terrain is not installed. Run npm run terrain:setup.');
+// The roads the rider took, from their own rides (npm run strava:learn), if there are any.
+const { file: ridesFile, archive: ridesArchive, header: ridesHeader, etag: ridesEtag } = await optionalArchive(path.join(root, '.cache/strava/rides.pmtiles'));
 const header = await archive.getHeader();
 const bounds = [header.minLon, header.minLat, header.maxLon, header.maxLat];
 // A calm light map, so the route, cycle paths and points stand out: off-white land, soft greens, white minor roads with
@@ -152,6 +152,13 @@ const server = createServer(async (request, response) => {
       }));
       type = 'application/json'; tileEtag = terrainEtag;
     }
+    else if (pathname === '/rides.json') {
+      if (!ridesHeader) { response.writeHead(404); response.end(); return; }
+      data = Buffer.from(JSON.stringify({ tilejson: '3.0.0', name: 'Richi Fahrten', tiles: ['/maps/rides/{z}/{x}/{y}.mvt'],
+        minzoom: ridesHeader.minZoom, maxzoom: ridesHeader.maxZoom,
+        bounds: [ridesHeader.minLon, ridesHeader.minLat, ridesHeader.maxLon, ridesHeader.maxLat] }));
+      type = 'application/json'; tileEtag = ridesEtag;
+    }
     else if (pathname === '/imagery.json') {
       data = imageryMetadata; type = 'application/json';
     }
@@ -162,7 +169,15 @@ const server = createServer(async (request, response) => {
       const imageTile = /^\/imagery(?:-fast)?\/(\d{1,2})\/(\d{1,8})\/(\d{1,8})\.jpg$/.exec(pathname);
       const tile = /^\/tiles\/(\d{1,2})\/(\d{1,8})\/(\d{1,8})\.mvt$/.exec(pathname);
       const terrainTile = /^\/terrain\/(\d{1,2})\/(\d{1,8})\/(\d{1,8})\.webp$/.exec(pathname);
-      if (terrainTile) {
+      const ridesTile = /^\/rides\/(\d{1,2})\/(\d{1,8})\/(\d{1,8})\.mvt$/.exec(pathname);
+      if (ridesTile) {
+        const [z, x, y] = ridesTile.slice(1).map(Number);
+        if (!ridesArchive) { response.writeHead(404); response.end(); return; }
+        if (!validTile(z, x, y) || z > ridesHeader.maxZoom) { response.writeHead(404); response.end(); return; }
+        const result = await ridesArchive.getZxy(z, x, y);
+        if (!result) { response.writeHead(204); response.end(); return; }
+        data = Buffer.from(result.data); type = 'application/vnd.mapbox-vector-tile'; tileEtag = ridesEtag;
+      } else if (terrainTile) {
         const [z, x, y] = terrainTile.slice(1).map(Number);
         if (!terrainArchive) { response.writeHead(503); response.end(); return; }
         if (!validTile(z, x, y) || z > terrainHeader.maxZoom) { response.writeHead(404); response.end(); return; }
@@ -201,7 +216,7 @@ const server = createServer(async (request, response) => {
         type = types[path.extname(pathname)];
       } else { response.writeHead(404); response.end(); return; }
     }
-    const responseEtag = pathname.startsWith('/imagery') || pathname.startsWith('/terrain') || pathname === '/cycling.json'
+    const responseEtag = pathname.startsWith('/imagery') || pathname.startsWith('/terrain') || pathname.startsWith('/rides') || pathname === '/cycling.json'
       ? tileEtag ?? `"${createHash('sha256').update(data).digest('hex')}"`
       : pathname === '/style.json' ? styleEtag : etag;
     if (request.headers['if-none-match'] === responseEtag) { response.writeHead(304); response.end(); return; }
@@ -219,6 +234,6 @@ const server = createServer(async (request, response) => {
 });
 const port = Number(process.env.MAPS_PORT ?? 8088);
 server.listen(port, '127.0.0.1', () => console.log(`Local maps: http://127.0.0.1:${port}, zoom ${header.minZoom}–${header.maxZoom}, bounds ${bounds.join(', ')}`));
-function shutdown() { imagery?.close(); cycling?.close(); server.close(() => { void file.close(); void terrainFile?.close(); }); }
+function shutdown() { imagery?.close(); cycling?.close(); server.close(() => { void file.close(); void terrainFile?.close(); void ridesFile?.close(); }); }
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);

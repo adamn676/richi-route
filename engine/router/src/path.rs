@@ -356,6 +356,7 @@ impl OsmPath {
         let mut costs = WayCosts::of(way, costfactor);
         rc.nogos.nogo_cost = 0.0;
         let mut nsection = 0;
+        let mut preference = 1.0;
         loop {
             self.origin_lon = lon1;
             self.origin_lat = lat1;
@@ -483,6 +484,15 @@ impl OsmPath {
                 Section { distance: f64::from(dist), delta_h, angle, cosangle, nsection, lastpriorityclassifier };
             let mut section_cost =
                 self.process_way_section(rc, way, node, source_node.node_description.as_deref(), &costs, &section);
+            // the rider's preference for the link, looked up by its first section: once per link keeps the search fast
+            if nsection == 0
+                && let Some(preferences) = &rc.preferences
+            {
+                let (from, to) = (Pos::new(lon1, lat1), Pos::new(lon2, lat2));
+                preference =
+                    if rc.inverse_direction { preferences.factor(to, from) } else { preferences.factor(from, to) };
+            }
+            section_cost *= preference;
             if (section_cost < 0.0 || f64::from(costfactor) > 9998.0 && !detail_mode)
                 || section_cost + f64::from(self.cost) >= 2_000_000_000.0
             {

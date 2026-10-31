@@ -59,14 +59,14 @@ function samples(coordinates: Coord[], [lon0, lat0]: Coord) {
 }
 
 // Matches a traced portion to the track, or returns null when they are not the same way: both are walked in
-// travel order and must stay within 8 m (a discrete Fréchet distance), so a parallel road, a detour, a reversed
-// path or a missing return leg cannot lend its tags. Small length differences and GPS jitter do not matter.
-export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate: LegGeometry): SurfaceSpan[] | null {
+// travel order and must stay within `tolerance` (a discrete Fréchet distance), so a parallel road, a detour, a
+// reversed path or a missing return leg cannot lend its tags. Small length differences and GPS jitter do not matter.
+export function matchGpxSurfaces(track: GpxTrack, portion: GpxPortion, candidate: LegGeometry, tolerance = 8): SurfaceSpan[] | null {
   const original = track.segments[portion.segment].coordinates.slice(portion.from, portion.to + 1);
   const A = samples(original, original[0]), B = samples(candidate.coordinates, original[0]);
   const n = A.points.length, m = B.points.length;
   if (n * m > 4e6) return null;
-  const near = (i: number, j: number) => Math.hypot(A.points[i].x - B.points[j].x, A.points[i].y - B.points[j].y) <= 8;
+  const near = (i: number, j: number) => Math.hypot(A.points[i].x - B.points[j].x, A.points[i].y - B.points[j].y) <= tolerance;
   const reach = new Uint8Array(n * m);
   for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
     // Reachability first: most cells far from the diagonal never need a distance.

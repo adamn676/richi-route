@@ -15,6 +15,7 @@ use brouter_util::{CheapAngleMeter, cheap_ruler, jmath};
 use crate::java::{JavaException, string_hash};
 use crate::local_rules::{ActiveAreas, LocalRules};
 use crate::param_collector::UrlParams;
+use crate::preferences::Preferences;
 use crate::surfaces::{SurfaceCorrections, SurfaceMemo};
 
 #[derive(Clone, Default)]
@@ -32,6 +33,8 @@ pub struct RoutingContext {
     /// The rider's surface corrections, if there are any.
     pub surfaces: Option<Arc<SurfaceCorrections>>,
     pub(crate) surface_memo: SurfaceMemo,
+    /// The rider's road preferences, if there are any.
+    pub preferences: Option<Arc<Preferences>>,
 
     pub car_mode: bool,
     pub bike_mode: bool,

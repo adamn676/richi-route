@@ -26,6 +26,7 @@
     "imagery:region": "node scripts/imagery-region.mjs",
     "bench:brouter:performance": "node experiments/routing/brouter-patch/build-performance.mjs",
     "bench:brouter:patch": "node experiments/routing/brouter-patch/build.mjs",
+    "strava:learn": "node experiments/strava/extract-rides.mjs && node experiments/strava/trace-rides.mjs && node experiments/strava/measure.mjs --name offered --routes && node experiments/strava/learn.mjs && node experiments/strava/build-heatmap.mjs",
     "dev": "vite",
     "dev:local": "sh scripts/start-local.sh",
     "build": "vue-tsc -b && vite build",

@@ -21,13 +21,15 @@ export function csvRows(text) {
   return rows;
 }
 
-// The activities ridden outdoors on a road bike: rides ("Radfahrt", not virtual ones) whose bike isn't a mountain bike.
+// The activities ridden outdoors on a road bike: rides ("Radfahrt", not virtual ones) whose bike isn't a mountain bike
+// and whose name doesn't say otherwise (some mountain-bike rides and a ski tour were logged with a road bike).
 export function roadRides(text) {
   const [header, ...rows] = csvRows(text);
   const column = name => header.indexOf(name);
   const [id, date, name, type, gear, file] = ['Aktivitäts-ID', 'Aktivitätsdatum', 'Name der Aktivität', 'Aktivitätsart',
     'Aktivitätsausrüstung', 'Dateiname'].map(column);
-  return rows.filter(row => row[type] === 'Radfahrt' && row[gear]?.trim() && !/\bMTB\b/i.test(row[gear]) && row[file])
+  return rows.filter(row => row[type] === 'Radfahrt' && row[gear]?.trim() && !/\bMTB\b/i.test(row[gear]) && row[file]
+    && !/\bMTB\b|mountainbike|langlauf/i.test(row[name]))
     .map(row => ({ id: row[id], date: row[date], name: row[name], gear: row[gear], file: row[file] }));
 }
 
@@ -46,14 +48,12 @@ export function filePositions(fileName, bytes) {
   throw new Error(`Unknown activity file ${fileName}`);
 }
 
-// Drops the points a track keeps within `tolerance` metres without (Douglas–Peucker), in metres on a local plane.
-export function simplify(points, tolerance = 5) {
-  if (points.length < 3) return points;
-  const scale = 111_320 * Math.cos(points[0][1] * Math.PI / 180);
-  const xy = points.map(([lon, lat]) => [lon * scale, lat * 110_574]);
-  const keep = new Uint8Array(points.length);
-  keep[0] = keep[points.length - 1] = 1;
-  for (const stack = [[0, points.length - 1]]; stack.length;) {
+// Which points of a line in plane coordinates to keep so that it stays within `tolerance` of the original
+// (Douglas–Peucker).
+export function kept(xy, tolerance) {
+  const keep = new Uint8Array(xy.length);
+  keep[0] = keep[xy.length - 1] = 1;
+  for (const stack = [[0, xy.length - 1]]; stack.length;) {
     const [first, last] = stack.pop();
     const [ax, ay] = xy[first], dx = xy[last][0] - ax, dy = xy[last][1] - ay, length = dx * dx + dy * dy;
     let farthest = -1, distance = tolerance;
@@ -66,5 +66,13 @@ export function simplify(points, tolerance = 5) {
     keep[farthest] = 1;
     stack.push([first, farthest], [farthest, last]);
   }
+  return keep;
+}
+
+// Drops the points a track keeps within `tolerance` metres without, in metres on a local plane.
+export function simplify(points, tolerance = 5) {
+  if (points.length < 3) return points;
+  const scale = 111_320 * Math.cos(points[0][1] * Math.PI / 180);
+  const keep = kept(points.map(([lon, lat]) => [lon * scale, lat * 110_574]), tolerance);
   return points.filter((_, i) => keep[i]);
 }

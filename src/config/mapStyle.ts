@@ -12,6 +12,10 @@ export const routeStyle = {
   waiting: '#4d5753',
 };
 
+// Richi Fahrten: the roads ridden, violet from once to a hundred times and more, apart from the route's and the loops'
+// colours.
+export const ridesStyle = { once: '#ad8ddc', often: '#8255c8', most: '#4f1f8f' };
+
 // Suggested loops, told apart on the map and in their cards by lightness as well as hue, so also with colour-blindness;
 // none is a surface colour, which the chosen loop then shows.
 export const loopColors = ['#2f5fd0', '#1c2421', '#38a3dd'] as const;

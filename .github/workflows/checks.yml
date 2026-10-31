@@ -53,3 +53,4 @@ jobs:
           node tests/browser-saved-routes.mjs
           node tests/browser-loops.mjs
           node tests/browser-offline-areas.mjs
+          node tests/browser-rides.mjs

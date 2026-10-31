@@ -302,6 +302,9 @@ pub struct OsmNodesMap {
     pub destination: Option<crate::Pos>,
     pub current_path_cost: i32,
     pub current_max_cost: i32,
+    /// The least a metre of road can cost (1 in BRouter; less with the rider's preferred roads), to tell which
+    /// nodes lie beyond the cost left.
+    pub least_cost_per_meter: f64,
 
     /// End nodes stay in the index even when loaded (needed for escape analysis).
     pub end_node1: Option<NodeIdx>,
@@ -348,6 +351,7 @@ impl OsmNodesMap {
             destination: None,
             current_path_cost: 0,
             current_max_cost: 1_000_000_000,
+            least_cost_per_meter: 1.0,
             end_node1: None,
             end_node2: None,
             cleanup_mode: 0,
@@ -902,7 +906,9 @@ impl OsmNodesMap {
                 && self.current_max_cost < 1_000_000_000
             {
                 let distance = self.node(n).calc_distance(&destination);
-                if distance > self.current_max_cost - self.current_path_cost + 100 {
+                if f64::from(distance) * self.least_cost_per_meter
+                    > f64::from(self.current_max_cost - self.current_path_cost + 100)
+                {
                     self.vanish(n);
                 }
             }

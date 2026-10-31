@@ -18,8 +18,7 @@ use brouter_mapaccess::SegmentStore;
 use crate::engine::{Job, JobResult};
 use crate::java::JavaException;
 use crate::local_rules::LocalRules;
-use crate::request::{Answer, Router};
-use crate::surfaces::SurfaceFile;
+use crate::request::{Answer, Rider, Router};
 
 /// How a request ended: its answer, or the panic of an internal error.
 pub type Outcome = std::thread::Result<Result<Answer, JavaException>>;
@@ -39,15 +38,15 @@ impl RouterPool {
         profile_dir: impl Into<PathBuf>,
         threads: usize,
         local_rules: Option<Arc<LocalRules>>,
-        surfaces: Option<Arc<SurfaceFile>>,
+        rider: Rider,
     ) -> Self {
         let (profile_dir, threads) = (profile_dir.into(), threads.max(1));
         let pool = Pool(Arc::new(Shared { queue: Mutex::default(), work: Condvar::new(), threads }));
         let threads = (0..threads)
             .map(|_| {
-                let (pool, segments, profile_dir, rules, surfaces) =
-                    (pool.clone(), segments.clone(), profile_dir.clone(), local_rules.clone(), surfaces.clone());
-                std::thread::spawn(move || pool.work(Router::with_segments(segments, profile_dir, rules, surfaces)))
+                let (pool, segments, profile_dir, rules, rider) =
+                    (pool.clone(), segments.clone(), profile_dir.clone(), local_rules.clone(), rider.clone());
+                std::thread::spawn(move || pool.work(Router::with_segments(segments, profile_dir, rules, rider)))
             })
             .collect();
         Self { pool, threads }

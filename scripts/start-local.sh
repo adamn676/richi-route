@@ -8,6 +8,8 @@ java_bin="$app_dir/.cache/runtime/java/bin/java"
 rust_dir="$app_dir/.cache/runtime/rust/bin"
 engine_dir="$app_dir/engine"
 rules_dir="$app_dir/experiments/routing/.local/local-routing-rules"
+# The rider's road preferences, learned from their own rides (npm run strava:learn), if there are any.
+preferences="$app_dir/.cache/strava/preferences/rider.tsv"
 log_dir="$app_dir/experiments/routing/.local"
 # Vite ignores .env files; local settings such as VITE_GOOGLE_MAPS_EMBED_KEY come from app/.env.local instead.
 if [ -f "$app_dir/.env.local" ]; then set -a; . "$app_dir/.env.local"; set +a; fi
@@ -70,6 +72,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+if [ -f "$preferences" ]; then export RICHIROUTE_PREFERENCES="$preferences"; fi
 RICHIROUTE_RULES="$rules_dir/rules.tsv" RICHIROUTE_SURFACES="$rules_dir/surfaces.tsv" "$engine_dir/target/release/richi-engine" serve \
   "$bundle_dir/data" "$rules_dir/profiles" 17777 12 127.0.0.1 > "$log_dir/native-routing.log" 2>&1 &
 router_pid=$!

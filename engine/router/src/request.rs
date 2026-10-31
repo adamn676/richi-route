@@ -13,6 +13,7 @@ use crate::java::{self, JavaException};
 use crate::local_rules::LocalRules;
 use crate::param_collector::{get_url_params, get_way_point_list, set_params};
 use crate::pool::Pool;
+use crate::preferences::Preferences;
 use crate::profile_cache::ProfileCache;
 use crate::routing_context::RoutingContext;
 use crate::surfaces::SurfaceFile;
@@ -24,13 +25,20 @@ pub enum Answer {
     Error(String),
 }
 
+/// The rider's own data: surface corrections and road preferences, applied to every request.
+#[derive(Clone, Default)]
+pub struct Rider {
+    pub surfaces: Option<Arc<SurfaceFile>>,
+    pub preferences: Option<Arc<Preferences>>,
+}
+
 /// Answers requests on one thread: keeps its profile cache and search arenas between requests. Routers
 /// on several threads can share one `SegmentStore` (open segment files and decoded cells).
 pub struct Router {
     segments: Arc<SegmentStore>,
     profiles: ProfileCache,
     arenas: Arenas,
-    surfaces: Option<Arc<SurfaceFile>>,
+    rider: Rider,
 }
 
 impl Router {
@@ -39,20 +47,20 @@ impl Router {
     /// budget; routers on several threads, or with a tighter memory budget, use `with_segments`.
     pub fn new(segment_dir: impl Into<PathBuf>, profile_dir: impl Into<PathBuf>) -> Self {
         let segments = SegmentStore::new(segment_dir, SegmentStore::DEFAULT_CELL_CACHE_BYTES);
-        Self::with_segments(Arc::new(segments), profile_dir, None, None)
+        Self::with_segments(Arc::new(segments), profile_dir, None, Rider::default())
     }
 
-    /// A router reading its segments through `segments`, with the planner's `local_rules` and
-    /// `surfaces` corrections if given.
+    /// A router reading its segments through `segments`, with the planner's `local_rules` if given and
+    /// the `rider`'s own data.
     pub fn with_segments(
         segments: Arc<SegmentStore>,
         profile_dir: impl Into<PathBuf>,
         local_rules: Option<Arc<LocalRules>>,
-        surfaces: Option<Arc<SurfaceFile>>,
+        rider: Rider,
     ) -> Self {
         // BRouter shares 2 × threads profile slots among its worker threads; a router keeps 2
         let profiles = ProfileCache::new(profile_dir, 2, local_rules);
-        Self { segments, profiles, arenas: Arenas::default(), surfaces }
+        Self { segments, profiles, arenas: Arenas::default(), rider }
     }
 
     /// `RouteReference.answer`: the server's memory class (128), the profile named by `profile`, the
@@ -76,7 +84,8 @@ impl Router {
         let mut params = get_url_params(&format!("/brouter?{query}"))?;
         let mut rc = RoutingContext::new();
         rc.memoryclass = 128;
-        rc.surfaces = self.surfaces.as_ref().map(|file| file.current()).filter(|surfaces| !surfaces.is_empty());
+        rc.surfaces = self.rider.surfaces.as_ref().map(|file| file.current()).filter(|surfaces| !surfaces.is_empty());
+        rc.preferences = self.rider.preferences.clone().filter(|preferences| !preferences.is_empty());
         rc.local_function = params.get("profile").map(str::to_string);
         let mut wplist = get_way_point_list(params.get("lonlats"))?;
         params.remove("profile");

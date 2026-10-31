@@ -39,6 +39,9 @@ active development and tested around Graz and Styria, Austria.
 Routing prefers paved roads, so unpaved sections are rare but possible. Where the map
 data records no surface, the road type usually tells; the rest is marked as unknown. When the map data has a surface
 wrong, you can correct it under **Untergrund** in the local planner, and routing uses the correction from then on.
+Routing can also learn from your own rides: given your Strava archive, it prefers the roads you chose when you were
+there, and **Richi Fahrten** shows the roads you rode on the map (see
+[your own rides](docs/local-development.md#your-own-rides)).
 
 ## Status and limits
 

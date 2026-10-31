@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use brouter_router::{Answer, LocalRules, Router, RouterPool, SegmentStore, SurfaceFile};
+use brouter_router::{Answer, LocalRules, Rider, Router, RouterPool, SegmentStore, SurfaceFile};
 
 fn data_dir(var: &str, default: &str) -> PathBuf {
     std::env::var_os(var).map_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join(default), PathBuf::from)
@@ -69,7 +69,7 @@ fn answers_match_java() {
 #[test]
 fn terminated_requests_end_at_once() {
     let Some((segments, profiles)) = data() else { return };
-    let pool = RouterPool::new(Arc::new(SegmentStore::new(segments, 64 << 20)), profiles, 1, None, None);
+    let pool = RouterPool::new(Arc::new(SegmentStore::new(segments, 64 << 20)), profiles, 1, None, Rider::default());
     // Graz to Virgen, about three seconds
     let long = "profile=richi-local-v1&lonlats=15.393249%2C47.076551%7C12.456876%2C47.003344&format=geojson";
     let (terminated, (sender, receiver)) = (Arc::new(AtomicBool::new(false)), mpsc::channel());
@@ -98,9 +98,9 @@ fn rows_with_corrections(lonlats: &str, corrections: &str) -> Option<Vec<[String
     let file = std::env::temp_dir().join(format!("richi-surfaces-{}-{}.tsv", std::process::id(), fnv1a(corrections)));
     std::fs::write(&file, format!("richiroute-surfaces\t1\n{corrections}")).unwrap();
     let rules = Arc::new(LocalRules::load(&profiles.join("../rules.tsv")).expect("the planner's rules"));
-    let surfaces = Some(Arc::new(SurfaceFile::open(&file).unwrap()));
+    let rider = Rider { surfaces: Some(Arc::new(SurfaceFile::open(&file).unwrap())), preferences: None };
     let segments = Arc::new(SegmentStore::new(segments, 64 << 20));
-    let mut router = Router::with_segments(segments, &profiles, Some(rules), surfaces);
+    let mut router = Router::with_segments(segments, &profiles, Some(rules), rider);
     let query = format!(
         "profile=richi-local-v1&lonlats={lonlats}&format=geojson&alternativeidx=0\
          &profile%3Apass1coefficient=2&profile%3Apass2coefficient=0.7"

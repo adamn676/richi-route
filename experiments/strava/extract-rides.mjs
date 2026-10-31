@@ -18,7 +18,8 @@ for (const ride of rides) {
   try { positions = filePositions(ride.file, await readFile(path.join(strava, 'export', ride.file))); } catch { skipped.unreadable++; continue; }
   if (positions.length < 10) { skipped.short++; continue; }
   if (!positions.every(inRoutingArea)) { skipped.outside++; continue; }
-  const points = simplify(positions).map(([lon, lat]) => [+lon.toFixed(6), +lat.toFixed(6)]);
+  // Within a metre of the recording: tracing allows 12 m from the road in all, GPS error included.
+  const points = simplify(positions, 1).map(([lon, lat]) => [+lon.toFixed(6), +lat.toFixed(6)]);
   if (!output.write(`${JSON.stringify({ id: ride.id, date: ride.date, gear: ride.gear, points })}\n`)) await new Promise(resolve => output.once('drain', resolve));
   kept++;
 }

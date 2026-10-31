@@ -1055,6 +1055,36 @@ lapses and OSM's tag counts again. Only planned routes can be reported:
 imported tracks lie beside the roads, not on them. Reports are saved only by
 the local planner (`npm run dev:local`).
 
+## Your own rides
+
+Routing can prefer the roads you choose. From a Strava archive (Strava:
+Settings → My Account → Download or Delete Your Account → Request your archive),
+extract the rides and learn from them:
+
+```sh
+unzip -o ~/Downloads/export_*.zip activities.csv 'activities/*' -d .cache/strava/export
+npm run strava:learn
+```
+
+This takes the outdoor rides on road bikes (not virtual rides or mountain
+bikes) inside the routing area and traces them onto the roads as an opened GPX
+track is traced. For every road section it then counts how often you took it
+when it came up, that is when you rode it or the planner offered it between two
+points of the same ride, however seldom you were there. The engine makes a
+section cheaper the more often you took it, down to half its cost
+(`.cache/strava/preferences/rider.tsv`, read by `npm run dev:local` when it
+starts). The roads you rode also become map tiles
+(`.cache/strava/rides.pmtiles`), which the map service serves: **Richi
+Fahrten** in the Kartenansicht menu shows them, darker the more often you rode
+a road. Your rides and what is learned from them stay in `.cache/`.
+
+To check a change, `node experiments/strava/measure.mjs` routes every ride in
+legs of about 10 km between its own points and measures how much of each route
+lies on the road ridden; `--groups 0` measures only the fifth of the rides kept
+out of learning (`learn.mjs --groups 1,2,3,4`), and `--preferences` names a
+learned file. On 2026-10-31 the held-out rides matched 67 % without and 74.5 %
+with the preferences.
+
 ## Checks
 
 The [Checks workflow](../.github/workflows/checks.yml) runs on pushes to `main`

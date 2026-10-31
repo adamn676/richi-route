@@ -1019,6 +1019,11 @@ impl Searcher {
         let (air_distance_cost_factor, last_air_distance_cost_factor) =
             (*air_distance_cost_factor, *last_air_distance_cost_factor);
         let open_key = |p: &OsmPath| p.cost.wrapping_add((f64::from(p.airdistance) * air_distance_cost_factor) as i32);
+        // Pruning drops a path whose cost so far plus the least the distance left can cost exceeds the best route's;
+        // the order of the search keeps the distance itself, as BRouter's estimate.
+        let least_cost_per_meter = rc.preferences.as_ref().map_or(1.0, |p| p.least_cost_per_meter());
+        let least_cost = |airdistance: i32| f64::from(airdistance) * least_cost_per_meter;
+        cache.nodes_map.least_cost_per_meter = least_cost_per_meter;
         let detail_mode = guide_track.is_some();
 
         open_set.clear();
@@ -1182,7 +1187,9 @@ impl Searcher {
 
             // recheck cutoff before doing expensive stuff
             let add_diff = 100;
-            if paths[pi].cost.wrapping_add(paths[pi].airdistance) > max_total_cost.wrapping_add(add_diff) {
+            if f64::from(paths[pi].cost) + least_cost(paths[pi].airdistance)
+                > f64::from(max_total_cost.wrapping_add(add_diff))
+            {
                 continue;
             }
 
@@ -1275,7 +1282,7 @@ impl Searcher {
                     } else {
                         f64::from(max_total_cost)
                     } + f64::from(add_diff);
-                    if is_final_link || f64::from(best_path.cost.wrapping_add(best_path.airdistance)) <= limit {
+                    if is_final_link || f64::from(best_path.cost) + least_cost(best_path.airdistance) <= limit {
                         // add only if this may beat an existing path for that link
                         let mut dominator = cache.nodes_map.link(link).first_link_holder(current_node);
                         while let Some(dp) = dominator {

@@ -171,8 +171,8 @@ export function useMap(container: string, creditsContainer: string) {
     creditsOutside = Boolean(credits);
     instance.on('error', event => {
       const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : '';
-      // Rad-Infos reports problems with its own sources.
-      if (sourceId.startsWith('cycling-')) return;
+      // Rad-Infos reports problems with its own sources; Richi Fahrten is only offered where the map service has it.
+      if (sourceId.startsWith('cycling-') || sourceId === 'rides') return;
       // Offline, the relief shows where an offline area has it, and is simply missing elsewhere.
       if (sourceId === 'basemap-terrain') {
         if (navigator.onLine) mapError.value = 'Geländedaten nicht erreichbar. Geländedaten installieren und Kartendienst neu starten.';
