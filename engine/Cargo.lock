@@ -45,4 +45,20 @@ name = "richi-engine"
 version = "0.1.0"
 dependencies = [
  "brouter-router",
+ "richi-server",
+]
+
+[[package]]
+name = "richi-ios"
+version = "0.1.0"
+dependencies = [
+ "brouter-router",
+ "richi-server",
+]
+
+[[package]]
+name = "richi-server"
+version = "0.1.0"
+dependencies = [
+ "brouter-router",
 ]

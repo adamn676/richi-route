@@ -52,7 +52,8 @@ there, and **Richi Fahrten** shows the roads you rode on the map (see
   and aerial overview cover Europe; detailed aerial photos cover Austria, Switzerland and France.
 - **Your data:** routes are stored in your browser. There are no accounts and no cloud sync; download RichiRoute
   files to keep copies, because clearing the browser's data removes saved routes.
-- **Not yet:** using it offline on a phone, without the computer, is a goal but not available yet.
+- **Not yet:** using it offline on a phone, without the computer. A native iPhone app is in its first test: the
+  routing engine and the offline map run on the phone ([iPhone app](docs/local-development.md#iphone-app)).
 
 ## Getting started
 
@@ -103,6 +104,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify 4, Pinia, MapLibre GL JS 6, TypeScript, built with Vite 8 |
 | `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)) |
+| `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, in its first test ([iPhone app](docs/local-development.md#iphone-app)) |
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
 | `scripts/` | Setup and the local launcher (`start-local.sh`) |

@@ -2,6 +2,7 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { AttributionControl, Map, ScaleControl, setMaxParallelImageRequests, type LayerSpecification, type RasterTileSource, type StyleSpecification } from 'maplibre-gl';
 import { aerialVectorLayers, imagerySource, imageryOverviewSource, initialBasemap, vectorBasemapUrl } from '@/config/basemaps';
 import { MAP_BOUNDS, MAP_LABELS_ANCHOR } from '@/config/map.config';
+import { hillshadePaint } from '@/config/mapStyle';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 import { setSearchFocus } from '@/services/geocoding.service';
 import { offlineTiles, setNetworkTiles, terrainTiles } from '@/services/offline-tiles';
@@ -82,10 +83,8 @@ export function useMap(container: string, creditsContainer: string) {
     if (hillshade.value && !instance.getSource('basemap-terrain')) {
       instance.addSource('basemap-terrain', { type: 'raster-dem', tiles: [offlineTiles('terrain')], maxzoom: terrainTiles.maxzoom, tileSize: 512,
         encoding: 'terrarium' });
-      instance.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain',
-        // Soft, and softer still in town, where the coarse terrain data would only smudge streets and buildings.
-        paint: { 'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 12, .25, 16, .08], 'hillshade-shadow-color': '#5d6a63',
-          'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#7b8a80' } }, 'basemap-overlay-anchor');
+      instance.addLayer({ id: 'basemap-hillshade', type: 'hillshade', source: 'basemap-terrain', paint: hillshadePaint },
+        'basemap-overlay-anchor');
     }
     // On Karte the shading lies beneath the roads; on online maps it lies over them.
     if (instance.getLayer('basemap-hillshade')) {

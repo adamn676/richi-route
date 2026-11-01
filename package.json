@@ -24,6 +24,7 @@
     "imagery:setup": "node scripts/setup-imagery.mjs",
     "imagery:save": "node scripts/save-imagery.mjs",
     "imagery:region": "node scripts/imagery-region.mjs",
+    "ios:map": "node scripts/build-ios-map.mjs",
     "bench:brouter:performance": "node experiments/routing/brouter-patch/build-performance.mjs",
     "bench:brouter:patch": "node experiments/routing/brouter-patch/build.mjs",
     "strava:learn": "node experiments/strava/extract-rides.mjs && node experiments/strava/trace-rides.mjs && node experiments/strava/measure.mjs --name offered --routes && node experiments/strava/learn.mjs && node experiments/strava/build-heatmap.mjs",

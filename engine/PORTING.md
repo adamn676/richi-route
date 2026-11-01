@@ -30,7 +30,10 @@ differs is a bug in the port. Speed work comes later and must not change results
 ## Crates
 
 One crate per BRouter package, in dependency order: `util`, `codec`, `expressions`, `mapaccess`, then
-`router` and a command-line/server binary. `Description` (a shared `Rc<[u8]>` tag bitmap) and the
+`router`. On top: `server` (the planner's routing server), the command-line binary `cli` and `ios`, the
+library the iPhone app starts the server from. `ios` is the only crate the app calls: one function that
+takes and returns plain numbers, so its single `#[unsafe(no_mangle)]` export trusts nothing it is given.
+`Description` (a shared `Rc<[u8]>` tag bitmap) and the
 `ByteArrayUnifier`/`TagValueValidator` traits connect the data layer to the profile language without
 either depending on the other.
 

@@ -371,6 +371,54 @@ RICHIROUTE_MAP_FILE=/absolute/path/area.pmtiles MAPS_PORT=8089 npm run maps:star
 
 Start Vite with the same `MAPS_PORT`; the normal launcher uses 8088.
 
+## iPhone app
+
+`ios/` holds the native iPhone app (SwiftUI). For now it is a first test: it
+starts the routing engine inside the app and draws routes on the offline map.
+The routing engine is built into the app as `engine/ios`, which runs the same
+server as `richi-engine serve` on a free port of 127.0.0.1. The app calls one
+function, `richi_engine_start(threads)`, which takes and returns plain numbers.
+The map is MapLibre Native 7.0.0.
+
+`npm run ios:map` writes `ios/RichiRoute/Map/` (outside git), the map the app
+bundles: `style.json` (Karte with Geländerelief, from the same
+`scripts/map-style.mjs` that `maps:start` serves, the relief settings shared
+with the planner, and the route colours as metadata), the Latin glyph ranges of
+its three fonts and the icons, about 1 MB. Other glyph ranges are empty files,
+so foreign letters drop out of labels instead of leaving tiles blank. The style
+reads one offline area: the app puts the `file://` URLs of each area's
+`map.pmtiles` and `terrain.pmtiles` in place of `{map}` and `{terrain}`, and
+repeats both sources and their layers per area. Run it after `maps:setup`,
+before copying `ios/` to the Mac.
+
+`node scripts/build-ios-data.mjs [--areas at-6,at-7] [--personal]` lays out
+`ios/Routing/` (routing data, profiles, rules, surface corrections and the
+planner's request parameters) and `ios/Areas/` (offline areas from
+`scripts/build-offline-packages.mjs`) as links, outside git. `--personal` adds
+your road preferences from your own rides; use it only for builds on your own
+phone. Building needs a Mac with Xcode 27, Rust (`rustup target add
+aarch64-apple-ios aarch64-apple-ios-sim`) and XcodeGen. Copy `engine/` and
+`ios/` side by side to the Mac, following the links, then generate the project:
+
+```sh
+rsync -a --exclude target engine/ mac:RichiRoute/engine/
+rsync -aL --exclude build --exclude RichiRoute.xcodeproj --exclude RichiRoute/Info.plist ios/ mac:RichiRoute/ios/
+ssh mac 'cd RichiRoute/ios && xcodegen generate'
+```
+
+The build compiles the engine with cargo for the device or the simulator. Run
+the app from Xcode on the iPhone; ⌘U runs `RichiRouteUITests`, which taps each
+test case and logs time and memory (`RESULT` lines in the test log). On the
+simulator it also runs over SSH:
+`xcodebuild test -project RichiRoute.xcodeproj -scheme RichiRoute -destination 'platform=iOS Simulator,name=iPhone 17'`.
+On the device, signing over SSH fails (`errSecInternalComponent`), so run it
+from Xcode there.
+
+Measured on 1 November 2026 on an iPhone 13 mini, offline, with the same
+routes as the computer: Graz–Virgen (339 km) 2.6 s, Graz–Mistelbach (264 km)
+2.7 s, Virgen–Mistelbach (518 km) 4.4 s, at most 851 MB of the app's roughly
+2.1 GB. Wien–München ends with the engine's memory limit, as on the computer.
+
 ## Online map choices
 
 The map menu offers two local maps (**Karte**, **Satellit**) and one online map,

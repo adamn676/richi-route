@@ -1,3 +1,11 @@
+import type { HillshadeLayerSpecification } from 'maplibre-gl';
+
+// The relief: soft, and softer still in town, where the coarse terrain data would only smudge streets and buildings.
+export const hillshadePaint = {
+  'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 12, .25, 16, .08], 'hillshade-shadow-color': '#5d6a63',
+  'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#7b8a80',
+} satisfies HillshadeLayerSpecification['paint'];
+
 export const routeStyle = {
   outlineColor: '#ffffff',
   // Paved to unpaved, told apart also with colour-blindness; unknown stays a light grey that recedes.
