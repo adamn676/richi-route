@@ -21,7 +21,7 @@ import type { Coord } from '@/domain/route-model';
 import type { EditorRoute, RouteFeature } from '@/stores/route.store';
 import { getSegments } from '@/utils/geometry';
 import { animateDashes, flowingDashes, reducedMotion } from '@/utils/line-flow';
-import { addArrowImages, addArrowLayers, arrowPoints, arrowSpacing, onZoomStep, type ArrowPiece } from '@/utils/route-arrows';
+import { addArrowImage, addArrowLayer, arrowPoints, arrowSpacing, onZoomStep, type ArrowPiece } from '@/utils/route-arrows';
 
 // While a surface section is shown (SurfaceFocusLayer), the rest of the route fades.
 const faded: ExpressionSpecification = ['boolean', ['global-state', 'surfaceFocus'], false];
@@ -71,11 +71,10 @@ export function useSegmentedRoute() {
     const settled: ExpressionSpecification = ['all', routed, ['!', arriving]], arrivingRoute: ExpressionSpecification = ['all', routed, arriving];
     line(SEGMENTS_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': ['case', faded, .35, .95] });
     line(SEGMENTS_ROUTE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': ['case', faded, .35, 1] });
-    // Glass beads along the calculated route show which way it runs, in the colour of the surface beneath.
+    // Arrows along the calculated route show which way it runs.
     map.addSource(SEGMENTS_ARROW_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    addArrowImages(map, 'route-arrow', { paved: routeStyle.paved, likelyPaved: routeStyle.likelyPaved, rough: routeStyle.rough,
-      unpaved: routeStyle.unpaved, unknown: routeStyle.unknown });
-    addArrowLayers(map, SEGMENTS_ARROW_LAYER, SEGMENTS_ARROW_SOURCE_ID, 'route-arrow', ['case', faded, .35, 1], MAP_LABELS_ANCHOR);
+    addArrowImage(map, 'route-arrow');
+    addArrowLayer(map, SEGMENTS_ARROW_LAYER, SEGMENTS_ARROW_SOURCE_ID, 'route-arrow', ['case', faded, .35, 1], MAP_LABELS_ANCHOR);
     line(SEGMENTS_ARRIVING_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': 0 });
     line(SEGMENTS_ARRIVING_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': 0 });
     // A leg that failed, or leads to a stop without a street, stays a red dashed line.
@@ -137,17 +136,16 @@ export function useSegmentedRoute() {
     dotsShown = false;
   }
 
-  // The beads run evenly along each stretch of calculated legs, placed afresh when the route changes or the zoom steps.
+  // The arrows run evenly along each stretch of calculated legs, placed afresh when the route changes or the zoom steps.
   function placeArrows(map: MaplibreMap): void {
     const stretches: ArrowPiece[][] = [];
     let open = false;
     for (const feature of arrowLegs) {
       if (feature.properties.status !== 'routed') { open = false; continue; }
-      const pieces: ArrowPiece[] = getSegments(feature).map(({ geometry, properties }) => ({ coordinates: geometry.coordinates as Coord[], key: properties.surface }));
       // Each leg ends at a stop or shape point.
-      pieces[pieces.length - 1].marked = true;
-      if (open) stretches.at(-1)!.push(...pieces);
-      else stretches.push(pieces);
+      const piece: ArrowPiece = { coordinates: feature.geometry.coordinates as Coord[], marked: true };
+      if (open) stretches.at(-1)!.push(piece);
+      else stretches.push([piece]);
       open = true;
     }
     const latitude = stretches[0]?.[0]?.coordinates[0]?.[1] ?? 0;

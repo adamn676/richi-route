@@ -8,14 +8,14 @@ import type { LoopSuggestion } from '@/services/loop-suggestions.service';
 import { LOOP_OUTLINE_LAYER, MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '@/config/map.config';
 import { loopColors } from '@/config/mapStyle';
 import { showOnMap } from '@/utils/map-fit';
-import { addArrowImages, addArrowLayers, arrowPoints, arrowSpacing, onZoomStep } from '@/utils/route-arrows';
+import { addArrowImage, addArrowLayer, arrowPoints, arrowSpacing, onZoomStep } from '@/utils/route-arrows';
 
 // The suggested loops in their card colours, beneath the route. The selected one is the route itself; the others stay
-// faint for comparison, and the one pointed at in the list stands out, with glass beads showing its direction.
+// faint for comparison, and the one pointed at in the list stands out, with arrows showing its direction.
 const props = defineProps<{ map: Map; loops: LoopSuggestion[] | null; highlighted: number | null; selected: number | null }>();
 const emit = defineEmits<{ highlight: [index: number | null] }>();
 const source = 'loop-suggestions-source', arrows = 'loop-suggestions-arrows';
-const layers = [LOOP_OUTLINE_LAYER, 'loop-suggestions-line', `${arrows}-beads`, `${arrows}-chevrons`];
+const layers = [LOOP_OUTLINE_LAYER, 'loop-suggestions-line', arrows];
 let ready = false, stopZoom: (() => void) | undefined;
 const highlight: ExpressionSpecification = ['coalesce', ['global-state', 'loopHighlight'], -1];
 const selection: ExpressionSpecification = ['coalesce', ['global-state', 'loopSelected'], -1];
@@ -38,8 +38,8 @@ function draw() {
       'line-width': ['case', isHighlighted, 6, 4],
       'line-opacity': ['case', isHighlighted, 1, ['!=', selection, -1], .45, ['==', highlight, -1], .9, .35] } }, below);
   props.map.addSource(arrows, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-  addArrowImages(props.map, 'loop-arrow', Object.fromEntries(loopColors.map((colour, index) => [index, colour])));
-  addArrowLayers(props.map, arrows, arrows, 'loop-arrow', 1, below);
+  addArrowImage(props.map, 'route-arrow');
+  addArrowLayer(props.map, arrows, arrows, 'route-arrow', 1, below);
   mark();
 }
 // Pointing and selecting change only the map's state, not the loops' data.
@@ -49,10 +49,10 @@ function mark() {
   props.map.setGlobalStateProperty('loopSelected', props.selected ?? -1);
   placeArrows();
 }
-// Beads run along the loop pointed at; the selected one is the route, which has its own.
+// Arrows run along the loop pointed at; the selected one is the route, which has its own.
 function placeArrows() {
   const index = props.highlighted, loop = index !== null && index !== props.selected ? props.loops?.[index] : undefined;
-  const stretches = loop ? [[{ coordinates: loop.leg.coordinates, key: String(index), marked: true }]] : [];
+  const stretches = loop ? [[{ coordinates: loop.leg.coordinates, marked: true }]] : [];
   props.map.getSource<GeoJSONSource>(arrows)?.setData({ type: 'FeatureCollection',
     features: loop ? arrowPoints(stretches, arrowSpacing(props.map.getZoom(), loop.leg.coordinates[0][1])) : [] });
 }
