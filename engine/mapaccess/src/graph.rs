@@ -914,12 +914,6 @@ impl OsmNodesMap {
         }
     }
 
-    fn add_active_node(&mut self, n: NodeIdx) {
-        self.node_mut(n).visit_id = self.last_visit_id;
-        self.nodes_created += 1;
-        self.nodes2check.push(n);
-    }
-
     pub fn clear_temp(&mut self) {
         self.nodes2check = Vec::new();
     }
@@ -930,43 +924,50 @@ impl OsmNodesMap {
     pub fn collect_outreachers(&mut self) -> Result<(), MapError> {
         let capacity = usize::try_from(self.nodes_created)
             .map_err(|_| MapError::IllegalArgument(format!("Illegal Capacity: {}", self.nodes_created)))?;
-        self.nodes2check = Vec::with_capacity(capacity);
+        let mut stack = Vec::with_capacity(capacity);
         self.nodes_created = 0;
         for n in self.hmap.values() {
-            // addActiveNode, with the fields borrowed apart from the index
+            // addActiveNode
             self.nodes[n.index()].visit_id = self.last_visit_id;
             self.nodes_created += 1;
-            self.nodes2check.push(n);
+            stack.push(n);
         }
 
         self.last_visit_id += 1;
         self.base_id = self.last_visit_id;
+        let visit_id = self.last_visit_id;
+        // the destination and the cost left, if nodes beyond it vanish
+        let budget = self
+            .destination
+            .filter(|_| self.current_max_cost < 1_000_000_000)
+            .map(|d| (d, f64::from(self.current_max_cost - self.current_path_cost + 100)));
 
-        while let Some(n) = self.nodes2check.pop() {
-            self.node_mut(n).visit_id = self.last_visit_id;
+        while let Some(n) = stack.pop() {
+            self.nodes[n.index()].visit_id = visit_id;
 
-            let mut l = self.node(n).firstlink;
+            let mut l = self.nodes[n.index()].firstlink;
             while let Some(li) = l {
-                let t = self.target(li, n);
-                if self.node(t).visit_id != self.last_visit_id {
-                    self.add_active_node(t);
+                let (t, next) = self.links[li.index()].target_and_next(n);
+                let t = t.expect("link in the source's chain has a target");
+                let target = &mut self.nodes[t.index()];
+                if target.visit_id != visit_id {
+                    // addActiveNode
+                    target.visit_id = visit_id;
+                    self.nodes_created += 1;
+                    stack.push(t);
                 }
-                l = self.next_link(li, n);
+                l = next;
             }
-            if let Some(destination) = self.destination
-                && self.current_max_cost < 1_000_000_000
+            if let Some((destination, budget)) = budget
+                && f64::from(self.nodes[n.index()].calc_distance(&destination)) * self.least_cost_per_meter > budget
             {
-                let distance = self.node(n).calc_distance(&destination);
-                if f64::from(distance) * self.least_cost_per_meter
-                    > f64::from(self.current_max_cost - self.current_path_cost + 100)
-                {
-                    self.vanish(n);
-                }
+                self.vanish(n);
             }
-            if self.node(n).firstlink.is_none() {
+            if self.nodes[n.index()].firstlink.is_none() {
                 self.nodes_created -= 1;
             }
         }
+        self.nodes2check = stack;
         Ok(())
     }
 }

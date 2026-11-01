@@ -8,7 +8,7 @@
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext};
 use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos};
-use brouter_util::cheap_ruler;
+use brouter_util::{CheapAngleMeter, cheap_ruler};
 use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
@@ -562,8 +562,15 @@ impl NewPath {
                     lat0 = lat1.wrapping_sub(lat2.wrapping_sub(lat1));
                 }
             }
-            let angle = rc.anglemeter.calc_angle(lon0, lat0, lon1, lat1, lon2, lat2);
-            let cosangle = rc.anglemeter.get_cos_angle();
+            // the angle itself only matters to the crossing penalty: keep this the condition it has in
+            // `process_way_section`
+            let (angle, cosangle) =
+                if rc.bike_mode && rc.consider_crossing && lastpriorityclassifier > 0 && nsection == 0 {
+                    let angle = rc.anglemeter.calc_angle(lon0, lat0, lon1, lat1, lon2, lat2);
+                    (angle, rc.anglemeter.get_cos_angle())
+                } else {
+                    (0.0, CheapAngleMeter::cos_angle(lon0, lat0, lon1, lat1, lon2, lat2))
+                };
 
             // *** elevation stuff
             let mut delta_h = 0.0;

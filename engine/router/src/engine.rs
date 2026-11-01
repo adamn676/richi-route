@@ -1123,12 +1123,14 @@ impl Searcher {
                 if !memory_panic_mode {
                     // not in memory bounds
                     cache.nodes_map.collect_outreachers()?;
+                    // (popping all first lets the lookups of paths and nodes below overlap)
                     while let Some(p3) = open_set.pop_lowest_key_value() {
-                        let p3_path = &paths[p3 as usize];
-                        if p3_path.airdistance != -1 && cache.nodes_map.can_escape(p3_path.target_node) {
-                            open_border_list.push(p3);
-                        }
+                        open_border_list.push(p3);
                     }
+                    open_border_list.retain(|&p3| {
+                        let p3_path = &paths[p3 as usize];
+                        p3_path.airdistance != -1 && cache.nodes_map.can_escape(p3_path.target_node)
+                    });
                     cache.nodes_map.clear_temp();
                     for p in open_border_list.drain(..) {
                         open_set.add(open_key(&paths[p as usize]), p);

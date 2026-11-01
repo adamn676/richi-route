@@ -59,6 +59,22 @@ pub fn destination(lon1: i32, lat1: i32, distance: f64, angle: f64) -> [i32; 2] 
     [lon2, lat2]
 }
 
+/// Sine and cosine of the turn at `(lon1, lat1)`, `None` if a leg has no length.
+fn turn(lon0: i32, lat0: i32, lon1: i32, lat1: i32, lon2: i32, lat2: i32) -> Option<(f64, f64)> {
+    let lonlat2m = get_lon_lat_to_meter_scales(lat1);
+    let (lon2m, lat2m) = (lonlat2m[0], lonlat2m[1]);
+    let dx10 = f64::from(lon1.wrapping_sub(lon0)) * lon2m;
+    let dy10 = f64::from(lat1.wrapping_sub(lat0)) * lat2m;
+    let dx21 = f64::from(lon2.wrapping_sub(lon1)) * lon2m;
+    let dy21 = f64::from(lat2.wrapping_sub(lat1)) * lat2m;
+
+    let dd = ((dx10 * dx10 + dy10 * dy10) * (dx21 * dx21 + dy21 * dy21)).sqrt();
+    if dd == 0. {
+        return None;
+    }
+    Some(((dy10 * dx21 - dx10 * dy21) / dd, (dy10 * dy21 + dx10 * dx21) / dd))
+}
+
 /// Port of `CheapAngleMeter`: the angle defined by three points, with its cosine on the fly.
 #[derive(Clone, Default)]
 pub struct CheapAngleMeter {
@@ -71,20 +87,10 @@ impl CheapAngleMeter {
     }
 
     pub fn calc_angle(&mut self, lon0: i32, lat0: i32, lon1: i32, lat1: i32, lon2: i32, lat2: i32) -> f64 {
-        let lonlat2m = get_lon_lat_to_meter_scales(lat1);
-        let (lon2m, lat2m) = (lonlat2m[0], lonlat2m[1]);
-        let dx10 = f64::from(lon1.wrapping_sub(lon0)) * lon2m;
-        let dy10 = f64::from(lat1.wrapping_sub(lat0)) * lat2m;
-        let dx21 = f64::from(lon2.wrapping_sub(lon1)) * lon2m;
-        let dy21 = f64::from(lat2.wrapping_sub(lat1)) * lat2m;
-
-        let dd = ((dx10 * dx10 + dy10 * dy10) * (dx21 * dx21 + dy21 * dy21)).sqrt();
-        if dd == 0. {
+        let Some((mut sinp, cosp)) = turn(lon0, lat0, lon1, lat1, lon2, lat2) else {
             self.cosangle = 1.;
             return 0.;
-        }
-        let mut sinp = (dy10 * dx21 - dx10 * dy21) / dd;
-        let cosp = (dy10 * dy21 + dx10 * dx21) / dd;
+        };
         self.cosangle = cosp;
 
         let mut offset = 0.;
@@ -103,6 +109,11 @@ impl CheapAngleMeter {
             offset = if sinp > 0. { -180. } else { 180. };
         }
         offset + sinp * (57.4539 + s2 * (9.57565 + s2 * (4.30904 + s2 * 2.56491)))
+    }
+
+    /// The cosine `calc_angle` leaves, without the angle.
+    pub fn cos_angle(lon0: i32, lat0: i32, lon1: i32, lat1: i32, lon2: i32, lat2: i32) -> f64 {
+        turn(lon0, lat0, lon1, lat1, lon2, lat2).map_or(1., |(_, cosp)| cosp)
     }
 
     pub fn get_angle(lon1: i32, lat1: i32, lon2: i32, lat2: i32) -> f64 {

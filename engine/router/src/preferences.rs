@@ -18,6 +18,9 @@ const FACTORS: std::ops::RangeInclusive<f32> = 0.1..=10.0;
 
 pub struct Preferences {
     factors: HashMap<(Pos, Pos), f32, FxBuildHasher>,
+    /// One bit per hash of a section's start: most links start where no section does, and the bit says
+    /// so without a look into the big table.
+    starts: Vec<u64>,
     /// The lowest factor, or 1.
     lowest: f64,
 }
@@ -34,7 +37,7 @@ impl Preferences {
         if lines.next() != Some("richiroute-preferences\t1") {
             return Err("not a prepared preferences file".into());
         }
-        let mut preferences = Self { factors: HashMap::default(), lowest: 1.0 };
+        let mut preferences = Self { factors: HashMap::default(), starts: Vec::new(), lowest: 1.0 };
         for (n, line) in lines.enumerate().filter(|(_, l)| !l.is_empty()) {
             let invalid = || format!("preferences line {}: invalid", n + 2);
             let fields: Vec<&str> = line.split('\t').collect();
@@ -44,6 +47,12 @@ impl Preferences {
             preferences.factors.insert((Pos::new(int(lon1)?, int(lat1)?), Pos::new(int(lon2)?, int(lat2)?)), factor);
             preferences.lowest = preferences.lowest.min(f64::from(factor));
         }
+        let mut starts = vec![0u64; (preferences.len() * 8).next_power_of_two().div_ceil(64)];
+        for &(from, _) in preferences.factors.keys() {
+            let bit = start_bit(from, &starts);
+            starts[bit / 64] |= 1 << (bit % 64);
+        }
+        preferences.starts = starts;
         Ok(preferences)
     }
 
@@ -63,8 +72,18 @@ impl Preferences {
 
     /// The factor for travelling the section from `from` to `to`.
     pub(crate) fn factor(&self, from: Pos, to: Pos) -> f64 {
+        let bit = start_bit(from, &self.starts);
+        if self.starts[bit / 64] & 1 << (bit % 64) == 0 {
+            return 1.0;
+        }
         self.factors.get(&(from, to)).map_or(1.0, |&f| f64::from(f))
     }
+}
+
+/// The bit of `starts` for a section starting at `p`.
+fn start_bit(p: Pos, starts: &[u64]) -> usize {
+    let id = (u64::from(p.ilon as u32) << 32 | u64::from(p.ilat as u32)).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    (id >> 32) as usize & (starts.len() * 64 - 1)
 }
 
 #[cfg(test)]
