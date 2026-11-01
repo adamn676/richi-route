@@ -17,7 +17,8 @@
 //! it changes (BRouter has none). The rider's road preferences come from the prepared file named by
 //! `RICHIROUTE_PREFERENCES` (`Preferences`), read once.
 //!
-//! A search that runs away ends with BRouter's memory error at its own budget; behind that, the heap
+//! A search that runs away ends with BRouter's memory error at its own budget, 3 GB unless
+//! `RICHIROUTE_SEARCH_MB` says otherwise (`limit_search_memory`); behind that, the heap
 //! has a ceiling (`HEAP_CEILING`), so that a fault elsewhere ends the program, not the machine.
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -28,7 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 
 use brouter_router::{
-    Answer, LocalRules, Outcome, Preferences, Rider, RouterPool, SegmentStore, SurfaceFile, panic_message,
+    Answer, LocalRules, Outcome, Preferences, Rider, RouterPool, SegmentStore, SurfaceFile, limit_search_memory,
+    panic_message,
 };
 use richi_server::{MAX_RUNNING_TIME_MS, serve};
 
@@ -104,6 +106,10 @@ fn main() {
         Some(Ok(n)) if n >= min => n,
         Some(_) => fail(&format!("{name} must be a number of at least {min}")),
     };
+    if let Some(mb) = std::env::var_os("RICHIROUTE_SEARCH_MB") {
+        let mb = mb.to_str().and_then(|mb| mb.parse::<usize>().ok());
+        limit_search_memory(mb.unwrap_or_else(|| fail("RICHIROUTE_SEARCH_MB must be a number")) << 20);
+    }
     let local_rules = std::env::var_os("RICHIROUTE_RULES")
         .map(|file| Arc::new(LocalRules::load(Path::new(&file)).unwrap_or_else(|e| fail(&e))));
     let rider = Rider {

@@ -27,7 +27,7 @@ fn serves_routes_from_the_bundle_layout() {
         std::os::unix::fs::symlink(target, routing.join(name)).unwrap();
     }
 
-    let port = richi_ios::start(&routing, 1).unwrap();
+    let port = richi_ios::start(&routing, 1, 1024).unwrap();
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
     let query = "profile=richi-local-v1&lonlats=15.4395%2C47.0707%7C15.45%2C47.08&format=geojson&alternativeidx=0";
     write!(stream, "GET /brouter?{query} HTTP/1.1\r\n\r\n").unwrap();
@@ -37,7 +37,7 @@ fn serves_routes_from_the_bundle_layout() {
     assert!(answer.starts_with("HTTP/1.1 200 OK"), "{}", &answer[..answer.len().min(200)]);
     assert!(answer.contains("\"track-length\""));
     assert!(
-        richi_ios::start(&routing, 1).unwrap_err().starts_with("Cannot load local routing rules"),
+        richi_ios::start(&routing, 1, 1024).unwrap_err().starts_with("Cannot load local routing rules"),
         "the data is gone"
     );
 }

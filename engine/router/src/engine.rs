@@ -11,9 +11,9 @@
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::time::{Duration, Instant};
 
 use brouter_expressions::{ExpressionError, Profile, WayContext};
 use brouter_mapaccess::{
@@ -79,11 +79,26 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
 /// the memory of its biggest search for good (about twice that of a long round trip).
 const KEPT_PATHS: usize = (64 << 20) / std::mem::size_of::<OsmPath>();
 
+/// A search's memory per path, with the graph and open set that grow along (measured: 18 million paths
+/// peak at 3.2 GB).
+const BYTES_PER_PATH: usize = 175;
+
 /// Beyond this many paths a search stops with BRouter's memory error, as a search past Java's heap
-/// (`-Xmx`) would end: a runaway search fails alone instead of taking the program down. Searches on the
-/// planner's loops stay below half of it; the arena of a runaway one peaks at about 1.3 GB (a doubling
-/// and its copy), so a few at once stay below the heap ceiling.
-const MAX_SEARCH_PATHS: usize = 1 << 22;
+/// (`-Xmx`) would end: a runaway search fails alone instead of taking the program down. The default
+/// 3 GB reach about 840 km exactly (see `limit_search_memory`).
+static MAX_SEARCH_PATHS: AtomicUsize = AtomicUsize::new((3 << 30) / BYTES_PER_PATH);
+
+/// Searches beyond this many paths (about 370 MB) take turns, so long sections searched side by side
+/// never need more than one search's limit. The planner's loops stay below it.
+const SHARED_PATHS: usize = 1 << 21;
+static LONG_SEARCH: Mutex<()> = Mutex::new(());
+
+/// Limits the memory of a search, and with it how far a section reaches.
+pub fn limit_search_memory(bytes: usize) {
+    MAX_SEARCH_PATHS.store(bytes / BYTES_PER_PATH, Relaxed);
+}
+
+const MEMORY_LIMIT: &str = "memory limit reached";
 
 /// The search arenas. A worker keeps them between requests: they grow to tens of megabytes, which
 /// would otherwise be allocated and faulted in again for every request. The nodes cache keeps only
@@ -768,7 +783,17 @@ impl Searcher {
 
             // Java prepares a dirty reference track before passing on a timeout; nothing reads it here
             let operation = if cfi == 0 { "pass0" } else { "pass1" };
-            let mut t = self.find_track(operation, start, end, track.as_ref(), ref_track)?;
+            let mut t = self.find_track(operation, start, end, track.as_ref(), ref_track);
+            // Not in BRouter: past the memory limit the second pass leans further towards the target.
+            // Leaning a quarter more takes about a quarter less memory (see PORTING.md, long sections).
+            for lean in [1.25, 1.5] {
+                if cfi == 0 || !matches!(&t, Err(Abort::Error(e)) if e == MEMORY_LIMIT) {
+                    break;
+                }
+                self.air_distance_cost_factor = air_distance_cost_factors[cfi] * lean;
+                t = self.find_track(operation, start, end, track.as_ref(), ref_track);
+            }
+            let mut t = t?;
 
             if t.is_none()
                 && let (Some(old), Some(match_path)) = (&track, self.match_path)
@@ -1037,22 +1062,41 @@ impl Searcher {
         let mut memory_panic_mode = false;
         let mut need_non_panic_processing = false;
 
+        let ended = || {
+            if terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
+                let seconds = start_time.elapsed().as_secs();
+                return Some(error(format!("operation killed by thread-priority-watchdog after {seconds} seconds")));
+            }
+            let timeout = *max_running_time;
+            (timeout > 0 && start_time.elapsed().as_millis() as i64 > timeout)
+                .then(|| error(format!("{operation_name} timeout after {} seconds", timeout / 1000)))
+        };
+        let max_paths = MAX_SEARCH_PATHS.load(Relaxed);
+        let mut turn: Option<MutexGuard<'static, ()>> = None;
+
         let mut iterations = 0u32;
         loop {
-            // termination and the clock are checked every 256 steps (Java: every step), which delays
-            // them by well under a millisecond
+            // termination, memory and the clock are checked every 256 steps (Java: every step), which
+            // delays them by well under a millisecond
             iterations = iterations.wrapping_add(1);
             if iterations.is_multiple_of(256) {
-                if terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
-                    let seconds = start_time.elapsed().as_secs();
-                    return Err(error(format!("operation killed by thread-priority-watchdog after {seconds} seconds")));
+                if paths.len() > max_paths {
+                    return Err(error(MEMORY_LIMIT));
                 }
-                if paths.len() > MAX_SEARCH_PATHS {
-                    return Err(error("memory limit reached"));
+                if let Some(e) = ended() {
+                    return Err(e);
                 }
-                let timeout = *max_running_time;
-                if timeout > 0 && start_time.elapsed().as_millis() as i64 > timeout {
-                    return Err(error(format!("{operation_name} timeout after {} seconds", timeout / 1000)));
+                while turn.is_none() && paths.len() > SHARED_PATHS {
+                    match LONG_SEARCH.try_lock() {
+                        Ok(guard) => turn = Some(guard),
+                        Err(TryLockError::Poisoned(poisoned)) => turn = Some(poisoned.into_inner()),
+                        Err(TryLockError::WouldBlock) => {
+                            if let Some(e) = ended() {
+                                return Err(e);
+                            }
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                    }
                 }
             }
 
@@ -1093,7 +1137,7 @@ impl Searcher {
                     }
                     if !cache.nodes_map.is_in_memory_bounds(open_set.get_size(), true) {
                         if max_total_cost < 1_000_000_000 || need_non_panic_processing {
-                            return Err(error("memory limit reached"));
+                            return Err(error(MEMORY_LIMIT));
                         }
                         memory_panic_mode = true;
                     }

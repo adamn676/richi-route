@@ -51,7 +51,9 @@ mod surfaces;
 mod track;
 
 pub use brouter_mapaccess::SegmentStore;
-pub use engine::{BROUTER_ENGINEMODE_ROUNDTRIP, BROUTER_ENGINEMODE_ROUTING, RoutingEngine, panic_message};
+pub use engine::{
+    BROUTER_ENGINEMODE_ROUNDTRIP, BROUTER_ENGINEMODE_ROUTING, RoutingEngine, limit_search_memory, panic_message,
+};
 pub use format::{VERSION, format_json};
 pub use java::JavaException;
 pub use local_rules::{LocalRules, VERSION_MISMATCH};

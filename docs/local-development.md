@@ -377,7 +377,10 @@ Start Vite with the same `MAPS_PORT`; the normal launcher uses 8088.
 starts the routing engine inside the app and draws routes on the offline map.
 The routing engine is built into the app as `engine/ios`, which runs the same
 server as `richi-engine serve` on a free port of 127.0.0.1. The app calls one
-function, `richi_engine_start(threads)`, which takes and returns plain numbers.
+function, `richi_engine_start(threads, search_mb)`, which takes and returns
+plain numbers. A search may take what iOS leaves the app at start, less 1 GB for
+the map and a second search. Where a section needs more, the engine searches it
+again leaning towards the target ([long sections](../engine/PORTING.md#long-sections)).
 The map is MapLibre Native 7.0.0.
 
 `npm run ios:map` writes `ios/RichiRoute/Map/` (outside git), the map the app
@@ -401,9 +404,9 @@ aarch64-apple-ios aarch64-apple-ios-sim`) and XcodeGen. Copy `engine/` and
 `ios/` side by side to the Mac, following the links, then generate the project:
 
 ```sh
-rsync -a --exclude target engine/ mac:RichiRoute/engine/
-rsync -aL --exclude build --exclude RichiRoute.xcodeproj --exclude RichiRoute/Info.plist ios/ mac:RichiRoute/ios/
-ssh mac 'cd RichiRoute/ios && xcodegen generate'
+rsync -a --exclude target engine/ mac:projects/RichiRoute/engine/
+rsync -aL --exclude build --exclude RichiRoute.xcodeproj --exclude RichiRoute/Info.plist ios/ mac:projects/RichiRoute/ios/
+ssh mac 'cd projects/RichiRoute/ios && xcodegen generate'
 ```
 
 The build compiles the engine with cargo for the device or the simulator. Run
@@ -414,10 +417,12 @@ simulator it also runs over SSH:
 On the device, signing over SSH fails (`errSecInternalComponent`), so run it
 from Xcode there.
 
-Measured on 1 November 2026 on an iPhone 13 mini, offline, with the same
-routes as the computer: Graz–Virgen (339 km) 2.6 s, Graz–Mistelbach (264 km)
-2.7 s, Virgen–Mistelbach (518 km) 4.4 s, at most 851 MB of the app's roughly
-2.1 GB. Wien–München ends with the engine's memory limit, as on the computer.
+Measured on 1 November 2026 on an iPhone 13 mini, offline, with about 1 GB per
+search: Virgen–Mistelbach (518 km) 4.6 s and Wien–München (448 km) 5.8 s, the
+same routes as the computer; Wien–Bregenz (661 km) 28 s and Graz–Mailand
+(729 km) 36 s, leaning towards the target (1–2 % more cost). Bratislava–Zürich
+(839 km) ends with the memory limit. The app peaked at 1.46 GB of its roughly
+2.1 GB.
 
 ## Online map choices
 
