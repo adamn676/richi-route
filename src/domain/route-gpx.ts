@@ -40,23 +40,39 @@ export function exportGpx(route: ExportRoute, name = 'RichiRoute'): string {
     `<metadata><name>${xml(name)}</name><desc>Geplant mit RichiRoute. Kartendaten © OpenStreetMap-Mitwirkende.</desc></metadata>`,
     `<trk><name>${xml(name)}</name><trkseg>`,
   ];
-  let previous: number[] | undefined;
-  let previousElevation: number | undefined;
+  trackSegments(route).forEach((segment, index) => {
+    if (index) lines.push('</trkseg><trkseg>');
+    for (const [lon, lat, elevation] of segment) {
+      lines.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">${elevation === undefined ? '' : `<ele>${elevation.toFixed(2)}</ele>`}</trkpt>`);
+    }
+  });
+  lines.push('</trkseg></trk></gpx>');
+  return lines.join('\n');
+}
+
+// The whole track as [longitude, latitude, height where known], as one line (a FIT course has no segments).
+export function routeTrack(route: ExportRoute): number[][] {
+  return trackSegments(route).flat();
+}
+
+// The track in segments: a point two sections share once; a small gap where sections meet starts a new segment
+// rather than inventing a connector.
+function trackSegments(route: ExportRoute): number[][][] {
+  const reason = gpxUnavailableReason(route);
+  if (reason) throw new Error(reason);
+  const segments: number[][][] = [[]];
   for (let i = 1; i < route.points.length; i++) {
     const leg = route.legs[legId(route.points[i - 1].id, route.points[i].id)];
     leg.coordinates.forEach(([lon, lat], index) => {
       const elevation = leg.elevations?.[index];
+      const previous = segments.at(-1)!.at(-1);
       if (index === 0 && previous) {
         const sameCoord = previous[0] === lon && previous[1] === lat;
-        if (sameCoord && previousElevation === elevation) return;
-        // Preserve a small junction gap as separate segments rather than inventing a connector.
-        if (!sameCoord) lines.push('</trkseg><trkseg>');
+        if (sameCoord && previous[2] === elevation) return;
+        if (!sameCoord) segments.push([]);
       }
-      lines.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">${elevation === undefined ? '' : `<ele>${elevation.toFixed(2)}</ele>`}</trkpt>`);
-      previous = [lon, lat];
-      previousElevation = elevation;
+      segments.at(-1)!.push(elevation === undefined ? [lon, lat] : [lon, lat, elevation]);
     });
   }
-  lines.push('</trkseg></trk></gpx>');
-  return lines.join('\n');
+  return segments;
 }

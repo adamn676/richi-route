@@ -66,7 +66,7 @@ builds the routing engine and the address search (`cargo build --release`, quick
 and prepares the shared local rules and their profile. It then starts the engine
 with twelve routing threads (the planner's six requests at a time, with room to run a request's sections
 side by side) and the rules (`richi-engine serve`, BRouter's server
-protocol, and the loop suggestions at `/loops`), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
+protocol, the loop suggestions at `/loops` and FIT courses at `/fit`), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
 at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
 `127.0.0.1:5173`. It checks readiness before opening
 the frontend. Ctrl+C stops the processes it started. Logs are
@@ -929,7 +929,7 @@ deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
 
-The same menu offers **GPX** for a bike computer and a **RichiRoute-Datei** (`.richiroute.json`) with the route's points, geometry,
+The same menu offers **GPX** and **FIT (Garmin)** for a bike computer and a **RichiRoute-Datei** (`.richiroute.json`) with the route's points, geometry,
 elevation, surfaces and routing revision, to go on editing it, also on another
 device. Opening such a file (the open icon, or dropping it on the map) makes it the
 current route, as a GPX track does; files are limited to 64 MB. Changed routing
@@ -945,7 +945,15 @@ Storage is specific to the browser and site origin.
 Its **GPX** entry exports the calculated track and known elevation once all
 points and legs are ready. Dashed placeholder legs cannot be exported, and small
 gaps stay separate track segments. Export uses GPX 1.1 without device-specific
-turn instructions. Physical cycling-computer imports have not been tested.
+turn instructions.
+
+**FIT (Garmin)** exports the same track as a FIT course, named as the route, which the routing engine writes
+(`engine/planner`, asked at `/fit` with a JSON `POST`, as the loops are; the engine in the iPhone app has it too). Copied by USB
+into a Garmin Edge's `Garmin/NewFiles`, it should become a course with its climbs (ClimbPro) and elevation profile.
+The track is thinned to within 5 m of the route sideways and 2 m in height, keeping where each climb starts and
+ends, so its climbing stays the planner's; distances are those along the whole track, and times assume 20 km/h.
+Neusiedl am See–Feldkirch (756 km) takes 108 KB with 5,674 of its 22,125 points, 0.2 % shorter as drawn. Without
+the routing service, the sidebar says so. Neither export has been tried on a bike computer yet.
 
 ## Inspect the route elevation profile
 
@@ -1272,14 +1280,16 @@ in `experiments/routing/.local/surface-browser/`.
 The saved-route browser check uses synthetic routes and real IndexedDB without
 a running routing engine. It covers large-route fidelity, backup round-trips,
 recovery on switching, conflicting tabs and transaction failures. Set
-`ROUTE_TEST_ORIGIN` to test a separate frontend port. Its screenshots and downloaded
+`ROUTE_TEST_ORIGIN` to test a separate frontend port. Vite's `/routing` proxy follows `ROUTING_PORT` (default
+17777), as `/maps` follows `MAPS_PORT` and `/geocoding` `SEARCH_PORT`, so checks can run on services of their own,
+for example `ROUTING_PORT=17797 MAPS_PORT=8098 SEARCH_PORT=17798 npm run dev -- --port 5176`. Its screenshots and downloaded
 backup go to `.cache/saved-routes/`.
 
 Further browser checks, run the same way: `browser-initial-route.mjs` (a route
 appears at once, edits keep it visible, failures show dashed sections and one
 error), `browser-local-rules.mjs` (rule notices, refreshing stale routes, rule
 revisions), `browser-route-files.mjs` (reopening without routing, exact GPX
-export, drafts across tabs, full storage) and `browser-western-example.mjs`
+export, the FIT download through the routing service, drafts across tabs, full storage) and `browser-western-example.mjs`
 (the stored western loop with its shaping points, through reload and undo).
 
 To watch the editor check in a browser window and record a replay:

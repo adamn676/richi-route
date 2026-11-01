@@ -40,16 +40,20 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>, background = f
   });
 }
 
-// The routing service's answer as JSON, or the error to show for it.
-async function answer(fetching: () => Promise<Response>, signal: AbortSignal): Promise<unknown> {
-  let response: Response;
+// The routing service's response, or the error to show when it gives none.
+async function reach(fetching: () => Promise<Response>, signal?: AbortSignal): Promise<Response> {
   try {
-    response = await fetching();
+    return await fetching();
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal?.aborted) throw error;
     if (error instanceof Error && error.name === 'TimeoutError') throw new SectionError(timeoutMessage, { cause: error });
     throw new Error(navigator.onLine === false ? offlineMessage : unavailableMessage, { cause: error });
   }
+}
+
+// The routing service's answer as JSON, or the error to show for it.
+async function answer(fetching: () => Promise<Response>, signal: AbortSignal): Promise<unknown> {
+  const response = await reach(fetching, signal);
   if (!response.ok) {
     const detail = (await response.text()).trim();
     if (detail === 'local routing rules version mismatch') throw new Error('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.');
@@ -93,6 +97,23 @@ export async function traceLoops(start: Coord, target: LoopTarget, dice: number[
   const body = JSON.stringify({ profile: routingProfile, parameters, start, target, random: dice, earlier });
   return await answer(() => fetch('/routing/loops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
     signal: AbortSignal.any([signal, AbortSignal.timeout(loopsTimeout)]) }), signal) as LoopFound[];
+}
+
+// The route as a FIT course for Garmin bike computers, which the routing service writes (its /fit): the track as
+// `routeTrack` gives it.
+export async function courseFit(name: string, coordinates: number[][]): Promise<Blob> {
+  const response = await reach(() => fetch('/routing/fit', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, coordinates }), signal: AbortSignal.timeout(60_000) }))
+    // a timeout here is no section's fault
+    .catch((error: unknown) => {
+      throw error instanceof SectionError ? new Error('Die FIT-Datei konnte nicht rechtzeitig erstellt werden.', { cause: error }) : error;
+    });
+  if (response.status === 502 || response.status === 503) throw new Error(unavailableMessage);
+  if (!response.ok) {
+    const detail = (await response.text()).trim();
+    throw new Error(`Die FIT-Datei konnte nicht erstellt werden (HTTP ${response.status}${detail ? `: ${detail}` : ''}).`);
+  }
+  return response.blob();
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {

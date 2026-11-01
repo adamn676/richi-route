@@ -1,6 +1,6 @@
 [package]
 name = "richi-planner"
-description = "RichiRoute's planner logic on top of the engine: loop suggestions"
+description = "RichiRoute's planner logic on top of the engine: loop suggestions and FIT courses"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

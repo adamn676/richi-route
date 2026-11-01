@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
-import { saveEntry, gpxReady } from './browser-ui.mjs';
+import { closeSaveMenu, saveEntry, gpxReady } from './browser-ui.mjs';
 
 const legacyDraftKey = 'richiroute.route-draft.v1';
-const origin = 'http://127.0.0.1:5173';
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const errors = [];
 async function makeContext(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
-  await context.addInitScript(() => {
-    if (location.origin === 'http://127.0.0.1:5173') localStorage.setItem('richiroute.review-basemap', 'street');
-  });
+  await context.addInitScript(origin => {
+    if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street');
+  }, origin);
   context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
   return context;
 }
@@ -116,6 +116,25 @@ try {
   }
   assert.deepEqual(parsed.points, expected);
   assert.equal(parsed.elevations, expected.length);
+
+  // A FIT course comes from the routing service: without it the sidebar says so; with it, the same track goes there.
+  await closeSaveMenu(page);
+  await (await saveEntry(page, 'FIT (Garmin)')).click();
+  await page.getByText(/Routing-Dienst ist nicht erreichbar/).waitFor();
+  await context.unroute('**/routing/**');
+  const fitRequest = page.waitForRequest(request => request.url().endsWith('/routing/fit'));
+  const fitDownload = page.waitForEvent('download');
+  await closeSaveMenu(page);
+  await (await saveEntry(page, 'FIT (Garmin)')).click();
+  const [request, fit] = await Promise.all([fitRequest, fitDownload]);
+  assert.match(fit.suggestedFilename(), /^richiroute-\d{4}-\d{2}-\d{2}\.fit$/);
+  const sent = request.postDataJSON();
+  assert.deepEqual(sent.coordinates.map(([lon, lat]) => [lon, lat]), expected);
+  assert.ok(sent.name && sent.coordinates.every(point => point.length === 3));
+  const bytes = await fs.readFile(await fit.path());
+  assert.equal(bytes.toString('latin1', 8, 12), '.FIT');
+  assert.equal(bytes.length, 14 + bytes.readUInt32LE(4) + 2);
+  await page.getByText('FIT-Datei heruntergeladen.').waitFor();
   await page.screenshot({ path: 'experiments/routing/.local/editor-saved-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Speichern', exact: true }).scrollIntoViewIfNeeded();
@@ -145,15 +164,15 @@ try {
   await corrupt.close();
 
   const quota = await makeContext({ storageState });
-  await quota.addInitScript(() => {
-    if (location.origin !== 'http://127.0.0.1:5173') return;
+  await quota.addInitScript(origin => {
+    if (location.origin !== origin) return;
     const put = IDBObjectStore.prototype.put;
     window.denyDraftSave = true;
     IDBObjectStore.prototype.put = function(...args) {
       if (this.name === 'draft' && window.denyDraftSave) throw new DOMException('Full', 'QuotaExceededError');
       return put.apply(this, args);
     };
-  });
+  }, origin);
   const quotaPage = await quota.newPage();
   await quotaPage.goto(origin);
   await idle(quotaPage);
@@ -177,7 +196,7 @@ try {
   assert.equal(await gpxReady(quotaPage), false);
   await quota.close();
   assert.deepEqual(errors, []);
-  console.log('Passed: browser reopening without routing, exact GPX geometry/elevation, mobile export, cross-tab protection, malformed draft, quota recovery, exit flush.');
+  console.log('Passed: browser reopening without routing, exact GPX geometry/elevation, FIT through the routing service, mobile export, cross-tab protection, malformed draft, quota recovery, exit flush.');
 } finally {
   await browser.close();
 }

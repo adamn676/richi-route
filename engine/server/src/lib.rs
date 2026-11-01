@@ -10,21 +10,25 @@
 //! answers the planner's loop suggestions as JSON (`richi_planner::suggestions_json`); where no
 //! direction has a loop, the first direction's failure as `/brouter` would answer it, 400 for a
 //! malformed request, 405 and 415 for another method or content type.
+//!
+//! `POST /fit` with a route as JSON (`richi_planner::Course`), under the same rules, answers it as a FIT
+//! course file.
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
-use richi_planner::{Failure, LoopRequest, Stop, suggestions_json};
+use richi_planner::{Course, Failure, LoopRequest, Stop, suggestions_json};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
 
-/// The largest request body: the squares of the loops suggested lately take a few megabytes at most.
+/// The largest request body: the squares of the loops suggested lately take a few megabytes at most, the
+/// track of a 1,000 km route under one.
 const MAX_BODY: usize = 8 << 20;
 
 /// Answers the connections to `listener`, each search ending after `max_running_time` ms.
@@ -69,7 +73,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
     }
     let mut request = request.as_deref().unwrap_or_default().split(' ');
     let (method, target) = (request.next().unwrap_or_default(), request.next().unwrap_or_default());
-    if target == "/loops" {
+    if target == "/loops" || target == "/fit" {
         // only what a web page cannot send to another site without asking first (no CORS preflight)
         if method != "POST" {
             return send(stream, "405 Method Not Allowed", "");
@@ -81,7 +85,8 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
         if length > MAX_BODY || !reader.take(length as u64).read_to_end(&mut body).is_ok_and(|read| read == length) {
             return send(stream, "400 Bad Request", "");
         }
-        return loops(stream, &String::from_utf8_lossy(&body), pool, max_running_time);
+        let body = String::from_utf8_lossy(&body);
+        return if target == "/fit" { fit(stream, &body) } else { loops(stream, &body, pool, max_running_time) };
     }
     let query = target.split_once('?').map_or("", |(_, query)| query).to_string();
     let file_name = match get_url_params(&format!("/brouter?{query}")) {
@@ -114,9 +119,9 @@ fn answer(stream: TcpStream, outcome: Outcome, file_name: Option<String>) {
             send_body(
                 stream,
                 "200 OK",
-                "application/vnd.geo+json",
+                "application/vnd.geo+json; charset=utf-8",
                 disposition.as_deref().unwrap_or_default(),
-                &geojson,
+                geojson.as_bytes(),
             );
         }
         Ok(Ok(Answer::Error(message))) => send(stream, "400 Bad Request", &format!("{message}\n")),
@@ -135,10 +140,24 @@ fn loops(stream: TcpStream, body: &str, pool: &RouterPool, max_running_time: i64
         Err(reason) => return send(stream, "400 Bad Request", &format!("{reason}\n")),
     };
     match request.suggest(pool, max_running_time, || client_gone(&stream)) {
-        Ok(suggestions) => send_body(stream, "200 OK", "application/json", "", &suggestions_json(&suggestions)),
+        Ok(suggestions) => send_body(
+            stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            "",
+            suggestions_json(&suggestions).as_bytes(),
+        ),
         Err(Stop::Failed(Failure::Engine(outcome))) => answer(stream, outcome, None),
         Err(Stop::Failed(Failure::Internal(reason))) => internal_error(stream, reason),
         Err(Stop::Aborted) => {}
+    }
+}
+
+/// `POST /fit`.
+fn fit(stream: TcpStream, body: &str) {
+    match Course::parse(body) {
+        Ok(course) => send_body(stream, "200 OK", "application/vnd.ant.fit", "", &course.fit(SystemTime::now())),
+        Err(reason) => send(stream, "400 Bad Request", &format!("{reason}\n")),
     }
 }
 
@@ -170,13 +189,12 @@ fn file_name(params: &UrlParams) -> Option<String> {
 }
 
 fn send(stream: TcpStream, status: &str, text: &str) {
-    send_body(stream, status, "text/plain", "", text);
+    send_body(stream, status, "text/plain; charset=utf-8", "", text.as_bytes());
 }
 
 /// `writeHttpHeader` with the extra `headers`, then the body; the connection closes with the stream.
-fn send_body(mut stream: TcpStream, status: &str, mime_type: &str, headers: &str, body: &str) {
-    let head =
-        format!("HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: {mime_type}; charset=utf-8\r\n{headers}\r\n");
+fn send_body(mut stream: TcpStream, status: &str, content_type: &str, headers: &str, body: &[u8]) {
+    let head = format!("HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: {content_type}\r\n{headers}\r\n");
     // a client that went away needs no answer
-    let _ = stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(body.as_bytes()));
+    let _ = stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(body));
 }

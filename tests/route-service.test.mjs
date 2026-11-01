@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { routingEngine, traceLoops } from '../src/services/route.service.ts';
+import { courseFit, routingEngine, traceLoops } from '../src/services/route.service.ts';
 import { PlacementError } from '../src/domain/route-model.ts';
 import { requestFor } from '../experiments/routing/engines.mjs';
 
@@ -105,4 +105,20 @@ test('loop suggestions are one request with the planner\'s profile, failing like
   await assert.rejects(traceLoops(from, { meters: 60000, ascent: 600 }, dice, [], new AbortController().signal), /Kartendaten \(E10_N45\.rd5\)/);
   t.mock.method(globalThis, 'fetch', async () => { throw new DOMException('Timed out', 'TimeoutError'); });
   await assert.rejects(traceLoops(from, { meters: 60000, ascent: 600 }, dice, [], new AbortController().signal), /Zeitlimit/);
+});
+
+test('a FIT course is one JSON request to the routing service, failing with a message of its own', async t => {
+  let asked;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    asked = { url, method: init.method, type: init.headers['Content-Type'], body: JSON.parse(init.body) };
+    return new Response(new Uint8Array([14, 16]), { headers: { 'Content-Type': 'application/vnd.ant.fit' } });
+  });
+  const track = [[...from, 300], to];
+  const fit = await courseFit('Graz → Lienz', track);
+  assert.deepEqual([...new Uint8Array(await fit.arrayBuffer())], [14, 16]);
+  assert.deepEqual(asked, { url: '/routing/fit', method: 'POST', type: 'application/json', body: { name: 'Graz → Lienz', coordinates: track } });
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 502 }));
+  await assert.rejects(courseFit('', track), /nicht erreichbar/);
+  t.mock.method(globalThis, 'fetch', async () => new Response('coordinates must be a list\n', { status: 400 }));
+  await assert.rejects(courseFit('', track), /FIT-Datei konnte nicht erstellt werden \(HTTP 400: coordinates must be a list\)/);
 });

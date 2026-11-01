@@ -12,8 +12,8 @@
             @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
           <input ref="fileInput" type="file" accept=".gpx,.json,application/gpx+xml,application/xml,text/xml,application/json" aria-label="Datei auswählen"
             hidden @change="chooseFile" />
-          <!-- Every way to keep the route: in this browser, as GPX for a bike computer (once every section is calculated), and
-               as a RichiRoute file to go on editing it. -->
+          <!-- Every way to keep the route: in this browser, as GPX or a FIT course for a bike computer (once every section is
+               calculated), and as a RichiRoute file to go on editing it. -->
           <v-menu location="bottom end">
             <template #activator="{ props: menu, isActive }">
               <v-icon-button ref="saveButton" v-bind="menu" v-tooltip:bottom="{ text: 'Speichern (Strg+S)', disabled: isActive }" :disabled="!hasDraft"
@@ -23,6 +23,8 @@
               <v-list-item :prepend-icon="IconBookmark" title="In „Meine Routen“" :subtitle="saved ? 'Gespeichert' : active ? 'Änderungen speichern' : 'In diesem Browser'"
                 :disabled="!canSave" @click="keep" />
               <v-list-item :prepend-icon="IconRoute" title="GPX" :subtitle="exportReason ?? 'Für den Radcomputer'" :disabled="Boolean(exportReason)" @click="downloadGpx" />
+              <v-list-item :prepend-icon="IconBike" title="FIT (Garmin)" :subtitle="exportReason ?? 'Für Garmin-Radcomputer'" :disabled="Boolean(exportReason) || busy"
+                @click="downloadFit" />
               <v-list-item :prepend-icon="IconFileDownload" title="RichiRoute-Datei" subtitle="Zum Weiterbearbeiten" :disabled="busy" @click="download" />
             </v-list>
           </v-menu>
@@ -119,7 +121,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { IconArrowBackUp, IconArrowForwardUp, IconBookmark, IconDeviceFloppy, IconEraser, IconFileDownload, IconFileImport, IconGripVertical, IconPlus, IconRoute,
+import { IconArrowBackUp, IconArrowForwardUp, IconBike, IconBookmark, IconDeviceFloppy, IconEraser, IconFileDownload, IconFileImport, IconGripVertical, IconPlus, IconRoute,
   IconTrash } from '@/components/icons';
 import { localRoutingNotices } from '@/domain/local-routing-notices';
 import { isRoutingPolicyCurrent } from '@/config/routing-policy';
@@ -129,14 +131,14 @@ import SurfaceDetails from '@/components/ui/SurfaceDetails.vue';
 import LoopSuggestions from '@/components/ui/LoopSuggestions.vue';
 import { useRouteStore, type Waypoint } from '@/stores/route.store';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
-import { exportGpx, gpxUnavailableReason } from '@/domain/route-gpx';
+import { gpxUnavailableReason } from '@/domain/route-gpx';
 import { useStopDragging } from '@/composables/useStopDragging';
 import type { useRouteLibrary } from '@/composables/useRouteLibrary';
 
 // A chosen file, GPX or RichiRoute, opens as the route (AppSidebar).
 const emit = defineEmits<{ 'open-file': [file: File] }>();
 const props = defineProps<{ library: ReturnType<typeof useRouteLibrary> }>();
-const { name, title, edited, active, busy, error, hasDraft, save, download } = props.library;
+const { name, title, edited, active, busy, error, hasDraft, save, download, downloadGpx, downloadFit } = props.library;
 const saved = computed(() => Boolean(active.value) && !edited.value && title.value === active.value!.name);
 const canSave = computed(() => hasDraft.value && !busy.value && !saved.value);
 // A saved route saves at once; a new one asks for its name first.
@@ -174,16 +176,6 @@ function chooseFile(event: Event) {
   const file = input.files?.[0];
   input.value = '';
   if (file) emit('open-file', file);
-}
-function downloadGpx() {
-  const url = URL.createObjectURL(new Blob([exportGpx(routeStore)], { type: 'application/gpx+xml' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `richiroute-${new Date().toISOString().slice(0, 10)}.gpx`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const viaIds = computed(() => routeStore.waypoints.filter((point) => point.kind === 'via').map((point) => point.id));
 // The offer to undo a removal ends with the next step in the history; the route's recalculation is none.

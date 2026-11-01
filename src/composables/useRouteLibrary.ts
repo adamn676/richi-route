@@ -6,6 +6,8 @@ import { exportRouteBackup, importRouteBackup, routeSummary, routeTitle, type Sa
 import { routeLibrary } from '../services/route-library.service.ts';
 import { recentRoutes } from '../services/recent-routes.service.ts';
 import { gpxSections } from '../domain/gpx-route.ts';
+import { exportGpx, routeTrack } from '../domain/route-gpx.ts';
+import { courseFit } from '../services/route.service.ts';
 import { readGpx } from '../services/gpx-import.service.ts';
 import { useRouteStore } from '../stores/route.store.ts';
 import { useLoopSuggestionsStore } from '../stores/loop-suggestions.store.ts';
@@ -249,18 +251,33 @@ export function useRouteLibrary() {
     });
   }
 
+  function saveFile(contents: Blob, extension: string) {
+    const url = URL.createObjectURL(contents);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `richiroute-${new Date().toISOString().slice(0, 10)}.${extension}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function download() {
     await run(async () => {
-      const contents = exportRouteBackup(title.value, payload());
-      const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `richiroute-${new Date().toISOString().slice(0, 10)}.richiroute.json`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saveFile(new Blob([exportRouteBackup(title.value, payload())], { type: 'application/json' }), 'richiroute.json');
       message.value = 'RichiRoute-Datei heruntergeladen.';
+    });
+  }
+
+  function downloadGpx() {
+    saveFile(new Blob([exportGpx(store, title.value)], { type: 'application/gpx+xml' }), 'gpx');
+  }
+
+  // A FIT course, named as the route, comes from the routing service.
+  async function downloadFit() {
+    await run(async () => {
+      saveFile(await courseFit(title.value, routeTrack(store)), 'fit');
+      message.value = 'FIT-Datei heruntergeladen.';
     });
   }
 
@@ -283,5 +300,5 @@ export function useRouteLibrary() {
   onBeforeUnmount(() => { window.removeEventListener('focus', refreshList); channel?.close(); clearTimeout(check); });
 
   return { entries, recent, active, name, title, edited, busy, refreshing, error, message, restorable, reading, hasDraft, save, open, openRecent, saveRecent,
-    openGpx, cancelGpx, newRoute, rename, duplicate, remove, openFile, download };
+    openGpx, cancelGpx, newRoute, rename, duplicate, remove, openFile, download, downloadGpx, downloadFit };
 }

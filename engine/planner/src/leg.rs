@@ -85,7 +85,7 @@ pub fn bearing(from: Coord, to: Coord) -> f64 {
 }
 
 /// `routerClimbThreshold`.
-const CLIMB_THRESHOLD: f64 = 5.0;
+pub const CLIMB_THRESHOLD: f64 = 5.0;
 
 /// The last of `cumulativeAscent(elevations, routerClimbThreshold)`.
 pub fn ascent(elevations: &[f64]) -> f64 {

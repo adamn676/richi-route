@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
 import { parseDraft, serializeDraft } from '../src/domain/route-draft.ts';
-import { exportGpx, gpxUnavailableReason } from '../src/domain/route-gpx.ts';
+import { exportGpx, gpxUnavailableReason, routeTrack } from '../src/domain/route-gpx.ts';
 import { useRouteStore } from '../src/stores/route.store.ts';
 import { routingEngine } from '../src/services/route.service.ts';
 import { routingPolicyVersion } from '../src/config/routing-policy.ts';
@@ -149,4 +149,13 @@ test('a shared join retains known elevation when the preceding leg has none', ()
   assert.equal((gpx.match(/<ele>/g) ?? []).length, 3);
   assert.equal((gpx.match(/<trkseg>/g) ?? []).length, 1);
   assert.match(gpx, /lat="47.1020000" lon="15.4020000"><ele>310.00<\/ele>/);
+});
+
+test('the track for a FIT course has each point once, with its height where known', () => {
+  const route = fixture();
+  assert.deepEqual(routeTrack(route), [[15.4, 47.1, 300], [15.401, 47.101, 305], [15.402, 47.102, 310], [15.401, 47.101, 305], [15.4, 47.1, 300]]);
+  route.legs['shape-b:stop-c'].elevations = null;
+  assert.deepEqual(routeTrack(route).slice(2), [[15.402, 47.102, 310], [15.402, 47.102], [15.401, 47.101], [15.4, 47.1]]);
+  route.pendingLegCount = 1;
+  assert.throws(() => routeTrack(route), /noch berechnet/);
 });
