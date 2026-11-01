@@ -1,6 +1,7 @@
 import { ref, watch, type ShallowRef } from 'vue';
 import type { ExpressionSpecification, Map } from 'maplibre-gl';
 import { ridesStyle } from '@/config/mapStyle';
+import { absoluteUrl } from '@/utils/url';
 
 const shownKey = 'richiroute.rides';
 const most = Math.log(100);
@@ -21,7 +22,7 @@ export function useRidesLayer(map: ShallowRef<Map | null>) {
     const instance = map.value;
     if (!instance || !tiles || !instance.getLayer('basemap-overlay-anchor')) return;
     if (!instance.getSource('rides')) {
-      instance.addSource('rides', { type: 'vector', tiles: tiles.tiles.map(url => new URL(url, location.origin).href), minzoom: tiles.minzoom, maxzoom: tiles.maxzoom });
+      instance.addSource('rides', { type: 'vector', tiles: tiles.tiles.map(absoluteUrl), minzoom: tiles.minzoom, maxzoom: tiles.maxzoom });
       const rides: ExpressionSpecification = ['ln', ['get', 'rides']];
       instance.addLayer({ id: 'rides', type: 'line', source: 'rides', 'source-layer': 'rides',
         layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'rides'] },

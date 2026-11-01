@@ -14,10 +14,13 @@ context.on('page', page => page.on('pageerror', error => errors.push(error.messa
 const tile = lineTile('rides', 'rides', new Map([[5, [[[0, 2048], [4096, 2048]]]]]));
 let available = false;
 await context.route(`${origin}/maps/rides**`, route => {
+  const url = route.request().url();
   if (!available) return route.fulfill({ status: 404 });
-  if (route.request().url().endsWith('/rides.json')) {
+  if (url.endsWith('/rides.json')) {
     return route.fulfill({ json: { tilejson: '3.0.0', tiles: ['/maps/rides/{z}/{x}/{y}.mvt'], minzoom: 6, maxzoom: 14, bounds: [5, 45, 20, 50] } });
   }
+  // Only real tile addresses, as the map service answers.
+  if (!/\/maps\/rides\/\d+\/\d+\/\d+\.mvt$/.test(url)) return route.fulfill({ status: 404 });
   return route.fulfill({ body: tile, contentType: 'application/vnd.mapbox-vector-tile' });
 });
 

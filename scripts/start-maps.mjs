@@ -154,7 +154,8 @@ const server = createServer(async (request, response) => {
     }
     else if (pathname === '/rides.json') {
       if (!ridesHeader) { response.writeHead(404); response.end(); return; }
-      data = Buffer.from(JSON.stringify({ tilejson: '3.0.0', name: 'Richi Fahrten', tiles: ['/maps/rides/{z}/{x}/{y}.mvt'],
+      // Tile addresses carry the file's version, so a rebuilt heatmap is not taken from the browser's cache.
+      data = Buffer.from(JSON.stringify({ tilejson: '3.0.0', name: 'Richi Fahrten', tiles: [`/maps/rides/{z}/{x}/{y}.mvt?v=${ridesEtag.slice(1, -1)}`],
         minzoom: ridesHeader.minZoom, maxzoom: ridesHeader.maxZoom,
         bounds: [ridesHeader.minLon, ridesHeader.minLat, ridesHeader.maxLon, ridesHeader.maxLat] }));
       type = 'application/json'; tileEtag = ridesEtag;

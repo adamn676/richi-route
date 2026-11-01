@@ -5,6 +5,7 @@ import { MAP_BOUNDS, MAP_LABELS_ANCHOR } from '@/config/map.config';
 import { onlineBasemap, onlineBasemaps } from '@/config/online-basemaps';
 import { setSearchFocus } from '@/services/geocoding.service';
 import { offlineTiles, setNetworkTiles, terrainTiles } from '@/services/offline-tiles';
+import { absoluteUrl } from '@/utils/url';
 
 const hillshadeKey = 'richiroute.hillshade';
 
@@ -33,7 +34,6 @@ export function useMap(container: string, creditsContainer: string) {
   });
   let vectorReady = false, vectorFailed = false;
   let vectorRequest: AbortController | undefined;
-  const absoluteUrl = (url: string) => url.startsWith('/') ? location.origin + url : url;
   async function loadVectorMap() {
     const instance = map.value;
     if (!instance || vectorReady || vectorFailed || vectorRequest) return;
