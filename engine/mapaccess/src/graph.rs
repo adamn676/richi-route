@@ -4,8 +4,12 @@
 use crate::node_hash::NodeHashMap;
 use crate::pos::OsmPos;
 use crate::{Geometry, MapError};
-use brouter_util::{ByteArrayCache, ByteArrayUnifier, ByteDataReader, Description};
+use brouter_util::{ByteArrayCache, ByteArrayUnifier, ByteDataReader, Description, FxBuildHasher};
+use std::collections::HashMap;
 use std::num::NonZeroU32;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 macro_rules! arena_index {
     ($(#[$doc:meta])* $name:ident) => {
@@ -37,6 +41,10 @@ arena_index!(
 arena_index!(
     /// A turn restriction in `OsmNodesMap`.
     RestrictionIdx
+);
+arena_index!(
+    /// A description in `OsmNodesMap` (`OsmNodesMap::description`).
+    DescIdx
 );
 
 /// `selev` of a hollow node: only its position is known so far.
@@ -110,7 +118,7 @@ pub struct OsmNode {
     pub ilon: i32,
     /// Elevation in quarter meters; `i16::MIN` if unknown, -12345 while hollow.
     pub selev: i16,
-    pub node_description: Option<Description>,
+    pub node_description: Option<DescIdx>,
     pub first_restriction: Option<RestrictionIdx>,
     pub visit_id: i32,
     /// Head of the node's link chain; follow it with `OsmLink::next(node)`.
@@ -149,7 +157,7 @@ const NO_HOLDER: u32 = u32::MAX;
 #[derive(Clone, Debug)]
 pub struct OsmLink {
     /// The way tags (valid for both directions).
-    pub description_bitmap: Option<Description>,
+    pub description_bitmap: Option<DescIdx>,
     /// Intermediate nodes in forward direction, `None` for none (see `GeometryDecoder`).
     pub geometry: Option<Geometry>,
     n1: Option<NodeIdx>,
@@ -283,6 +291,8 @@ struct SubtreeFrame {
     pending: Option<(LinkIdx, NodeIdx, i32)>,
 }
 
+static MAP_IDS: AtomicU64 = AtomicU64::new(0);
+
 /// Port of `OsmNodesMap`: owns the graph (node, link and turn-restriction arenas), the index of hollow
 /// nodes by position, and the router-facing state used by the decoder and the memory checks.
 pub struct OsmNodesMap {
@@ -291,6 +301,14 @@ pub struct OsmNodesMap {
     restrictions: Vec<TurnRestriction>,
     hmap: NodeHashMap,
     ab_unifier: ByteArrayCache,
+    /// The descriptions of nodes and links, each array once, and their indices by address (unique while
+    /// the table holds the array).
+    descriptions: Vec<Description>,
+    description_ids: HashMap<usize, DescIdx, FxBuildHasher>,
+    /// The geometry of each cell woven, which links' `Geometry`s slice.
+    geometries: Vec<Arc<[u8]>>,
+    /// Tells maps apart for the `GeometryDecoder`, which a recycled map's `Geometry`s would fool.
+    id: u64,
 
     pub nodes_created: i32,
     pub maxmem: i64,
@@ -343,6 +361,10 @@ impl OsmNodesMap {
             restrictions,
             hmap,
             ab_unifier: ByteArrayCache::new(16_384),
+            descriptions: Vec::new(),
+            description_ids: HashMap::default(),
+            geometries: Vec::new(),
+            id: MAP_IDS.fetch_add(1, Relaxed),
             nodes_created: 0,
             maxmem: 0,
             currentmaxmem: 4_000_000, // start with 4 MB
@@ -495,6 +517,33 @@ impl OsmNodesMap {
         &mut self.ab_unifier
     }
 
+    /// The index of this description array, the same for every clone of it.
+    pub fn add_description(&mut self, description: Description) -> DescIdx {
+        let address = Rc::as_ptr(&description).cast::<u8>() as usize;
+        *self.description_ids.entry(address).or_insert_with(|| {
+            self.descriptions.push(description);
+            DescIdx::from_index(self.descriptions.len() - 1)
+        })
+    }
+
+    pub fn description(&self, d: Option<DescIdx>) -> Option<&[u8]> {
+        d.map(|d| &*self.descriptions[d.index()])
+    }
+
+    /// Adds a woven cell's geometry; returns its index for `Geometry::new`.
+    pub(crate) fn add_geometry_cell(&mut self, geometry: Arc<[u8]>) -> usize {
+        self.geometries.push(geometry);
+        self.geometries.len() - 1
+    }
+
+    pub fn geometry(&self, g: Geometry) -> &[u8] {
+        &self.geometries[g.cell()][g.range()]
+    }
+
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
     pub fn is_hollow(&self, n: NodeIdx) -> bool {
         self.node(n).is_hollow()
     }
@@ -553,7 +602,7 @@ impl OsmNodesMap {
         node: NodeIdx,
         linklon: i32,
         linklat: i32,
-        description: Option<Description>,
+        description: Option<DescIdx>,
         geometry: Option<Geometry>,
         is_reverse: bool,
     ) {
@@ -678,7 +727,8 @@ impl OsmNodesMap {
         let node_desc_size = mc.read_var_length_unsigned();
         let node_description = (node_desc_size != 0).then(|| {
             let len = node_desc_size as usize;
-            self.ab_unifier.unify(mc.read_bytes(len), 0, len)
+            let description = self.ab_unifier.unify(mc.read_bytes(len), 0, len);
+            self.add_description(description)
         });
         let (ilon, ilat) = {
             let n = self.node_mut(node);
@@ -697,9 +747,10 @@ impl OsmNodesMap {
             let desc_size = sizecode >> 1;
             let description = (desc_size > 0).then(|| {
                 let len = desc_size as usize;
-                exp_ctx_way.unify(mc.read_bytes(len), 0, len)
+                self.add_description(exp_ctx_way.unify(mc.read_bytes(len), 0, len))
             });
-            let geometry = mc.read_data_until(end_pointer).map(Geometry::from);
+            let geometry =
+                mc.read_data_until(end_pointer).map(|g| Geometry::new(self.add_geometry_cell(g.into()), 0, g.len()));
 
             self.add_link_to(node, linklon, linklat, description, geometry, is_reverse);
         }

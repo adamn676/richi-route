@@ -3,12 +3,14 @@
 //!
 //! `StdModel` is the only path model: kinematic models (`---model:` profiles) are not supported, so
 //! `StdPath`'s fields sit directly in `OsmPath`, and pre-paths (`StdModel.createPrePath` returns
-//! `null`) do not exist. Paths live in an arena per search, addressed by `PathIdx`, whose `u32` is also
-//! the link-holder handle stored in the graph.
+//! `null`) do not exist. Paths live in an arena per search (`Paths`), addressed by `PathIdx`, whose `u32`
+//! is also the link-holder handle stored in the graph.
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext};
 use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos};
 use brouter_util::cheap_ruler;
+use std::num::NonZeroU32;
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::java::{max_f32, min_f32, min_f64};
 use crate::libm;
@@ -54,14 +56,24 @@ pub struct OsmPath {
     last_initial_cost: f32,
     priorityclassifier: i32,
     bitfield: u8,
-    /// The final pass's state; boxed, so that the many paths of the search passes stay small.
-    detail: Option<Box<Detail>>,
+    /// The final pass's state, kept apart (`Paths`), so that the many paths of the search passes stay small.
+    detail: Option<DetailIdx>,
 
     // StdPath: the elevation hysteresis buffers (0-10 m, in micrometers)
     ehbd: i32,
     ehbu: i32,
     uphillcostdiv: i32,
     downhillcostdiv: i32,
+}
+
+/// A path's `Detail` in `Paths`, plus one so that `Option<DetailIdx>` takes four bytes.
+#[derive(Clone, Copy, Debug)]
+struct DetailIdx(NonZeroU32);
+
+impl DetailIdx {
+    fn index(self) -> usize {
+        (self.0.get() - 1) as usize
+    }
 }
 
 /// What a path carries in the final (detail) pass only (and a beeline path's message).
@@ -112,14 +124,15 @@ pub struct PathEnv<'a> {
 
 impl OsmPath {
     /// `init(link)`: the path standing at the target of the router's start link.
-    pub fn start(link: LinkIdx, map: &OsmNodesMap) -> Self {
+    pub fn start(link: LinkIdx, map: &OsmNodesMap) -> NewPath {
         let target_node = map.link(link).target(None).expect("the start link has a target");
-        Self {
+        let path = Self {
             selev: map.node(target_node).selev,
             origin_lon: -1,
             origin_lat: -1,
             ..Self::blank(link, None, target_node)
-        }
+        };
+        NewPath { path, detail: None }
     }
 
     fn blank(link: LinkIdx, source_node: Option<NodeIdx>, target_node: NodeIdx) -> Self {
@@ -151,21 +164,21 @@ impl OsmPath {
     /// `OsmPathElement.create(path)`: a new element at the path's target, carrying `message`, after
     /// the elements of the path's origins.
     pub fn new_element(
-        paths: &mut [OsmPath],
+        paths: &mut Paths,
         idx: PathIdx,
         message: Option<Box<MessageData>>,
         map: &OsmNodesMap,
         elements: &mut PathElements,
     ) -> ElemIdx {
         let origin = match paths[idx as usize].origin_path {
-            NO_PATH => paths[idx as usize].detail.as_ref().and_then(|d| d.origin_element),
+            NO_PATH => paths.detail(idx).and_then(|d| d.origin_element),
             origin_path => Some(Self::element_index(paths, origin_path, map, elements)),
         };
         elements.push(paths[idx as usize].element(map, message, origin))
     }
 
     /// The path's own element (`myElement`), made once with the path's message.
-    fn element_index(paths: &mut [OsmPath], idx: PathIdx, map: &OsmNodesMap, elements: &mut PathElements) -> ElemIdx {
+    fn element_index(paths: &mut Paths, idx: PathIdx, map: &OsmNodesMap, elements: &mut PathElements) -> ElemIdx {
         if let Some(e) = paths[idx as usize].my_element {
             return e;
         }
@@ -177,7 +190,7 @@ impl OsmPath {
             i = paths[i as usize].origin_path;
         }
         for &i in missing.iter().rev().chain([&idx]) {
-            let message = paths[i as usize].take_message();
+            let message = paths.take_message(i);
             paths[i as usize].my_element = Some(Self::new_element(paths, i, message, map, elements));
         }
         paths[idx as usize].my_element.expect("made above")
@@ -191,28 +204,27 @@ impl OsmPath {
     /// `RoutingContext.createPath(origin, link, refTrack, detailMode)`: extends the path `origin` by
     /// `link`. The message of `origin` moves to its element, which Java shares between both.
     pub fn create(
-        paths: &mut [OsmPath],
+        paths: &mut Paths,
         origin: PathIdx,
         link: LinkIdx,
         ref_track: Option<&OsmTrack>,
         detail_mode: bool,
         env: &mut PathEnv,
-    ) -> Result<OsmPath, ExpressionError> {
+    ) -> Result<NewPath, ExpressionError> {
         let (origin_element, origin_path) = if detail_mode {
             (Some(Self::element_index(paths, origin, env.map, env.elements)), NO_PATH)
         } else {
             (None, origin)
         };
+        let detail = detail_mode.then(|| {
+            let kinematics = paths.detail(origin).map(|d| d.kinematics).unwrap_or_default();
+            Detail { message: None, origin_element, kinematics }
+        });
         let o = &paths[origin as usize];
         let source = o.target_node;
         let target = env.map.target(link, source);
-        let detail = detail_mode.then(|| {
-            let kinematics = o.detail.as_ref().map(|d| d.kinematics).unwrap_or_default();
-            Box::new(Detail { message: None, origin_element, kinematics })
-        });
-        let mut p = Self {
+        let path = Self {
             cost: o.cost,
-            detail,
             origin_path,
             last_classifier: o.last_classifier,
             last_initial_cost: o.last_initial_cost,
@@ -222,6 +234,7 @@ impl OsmPath {
             ehbu: o.ehbu,
             ..Self::blank(link, Some(source), target)
         };
+        let mut p = NewPath { path, detail };
         p.add_additional_penalty(ref_track, detail_mode, o, env)?;
         Ok(p)
     }
@@ -249,6 +262,51 @@ impl OsmPath {
         !self.get_bit(HAD_DESTINATION_START_BIT) && self.get_bit(IS_ON_DESTINATION_BIT)
     }
 
+    pub fn elevation_correction(&self) -> i32 {
+        (if self.downhillcostdiv > 0 { self.ehbd / self.downhillcostdiv } else { 0 })
+            .wrapping_add(if self.uphillcostdiv > 0 { self.ehbu / self.uphillcostdiv } else { 0 })
+    }
+
+    pub fn definitly_worse_than(&self, p: &OsmPath) -> bool {
+        let mut c = p.cost;
+        if p.downhillcostdiv > 0 {
+            let delta = p.ehbd / p.downhillcostdiv
+                - if self.downhillcostdiv > 0 { self.ehbd / self.downhillcostdiv } else { 0 };
+            if delta > 0 {
+                c = c.wrapping_add(delta);
+            }
+        }
+        if p.uphillcostdiv > 0 {
+            let delta =
+                p.ehbu / p.uphillcostdiv - if self.uphillcostdiv > 0 { self.ehbu / self.uphillcostdiv } else { 0 };
+            if delta > 0 {
+                c = c.wrapping_add(delta);
+            }
+        }
+        self.cost > c
+    }
+}
+
+/// A path while it is created, with its detail at hand until `Paths::push` stores it apart.
+pub struct NewPath {
+    path: OsmPath,
+    detail: Option<Detail>,
+}
+
+impl Deref for NewPath {
+    type Target = OsmPath;
+    fn deref(&self) -> &OsmPath {
+        &self.path
+    }
+}
+
+impl DerefMut for NewPath {
+    fn deref_mut(&mut self) -> &mut OsmPath {
+        &mut self.path
+    }
+}
+
+impl NewPath {
     fn reset_state(&mut self) {
         self.ehbd = 0;
         self.ehbu = 0;
@@ -263,16 +321,8 @@ impl OsmPath {
         self.detail.get_or_insert_default()
     }
 
-    pub fn message(&self) -> Option<&MessageData> {
-        self.detail.as_ref()?.message.as_deref()
-    }
-
     fn message_mut(&mut self) -> Option<&mut MessageData> {
         self.detail.as_mut()?.message.as_deref_mut()
-    }
-
-    pub fn take_message(&mut self) -> Option<Box<MessageData>> {
-        self.detail.as_mut()?.message.take()
     }
 
     fn add_additional_penalty(
@@ -288,7 +338,7 @@ impl OsmPath {
         let (source_node, target_node) = (map.node(source), map.node(self.target_node));
         let rc = &mut *env.rc;
 
-        let Some(description) = map.link(link).description_bitmap.as_deref() else {
+        let Some(description) = map.description(map.link(link).description_bitmap) else {
             // could be a beeline path
             self.detail_mut().message = Some(Box::new(MessageData {
                 time: 1.0,
@@ -379,8 +429,8 @@ impl OsmPath {
         }
         self.set_bit(IS_ON_DESTINATION_BIT, new_destination);
 
-        let transfer_nodes = match &map.link(link).geometry {
-            Some(g) => env.geometry.decode_geometry(g, source_node, target_node, is_reverse),
+        let transfer_nodes = match map.link(link).geometry {
+            Some(g) => env.geometry.decode_geometry(map, g, source_node, target_node, is_reverse),
             None => &[],
         };
 
@@ -450,7 +500,7 @@ impl OsmPath {
             }
 
             // if recording, new MessageData for each section (needed for turn-instructions)
-            if let Some(d) = self.detail.as_deref_mut()
+            if let Some(d) = self.detail.as_mut()
                 && d.message.as_ref().is_some_and(|m| m.way_key_values.is_some())
             {
                 if let Some(e) = d.origin_element {
@@ -529,8 +579,14 @@ impl OsmPath {
 
             let section =
                 Section { distance: f64::from(dist), delta_h, angle, cosangle, nsection, lastpriorityclassifier };
-            let mut section_cost =
-                self.process_way_section(rc, way, node, source_node.node_description.as_deref(), &costs, &section);
+            let mut section_cost = self.process_way_section(
+                rc,
+                way,
+                node,
+                map.description(source_node.node_description),
+                &costs,
+                &section,
+            );
             // the rider's preference for the link, looked up by its first section: once per link keeps the search fast
             if nsection == 0
                 && let Some(preferences) = &rc.preferences
@@ -556,7 +612,7 @@ impl OsmPath {
             // compute kinematic
             self.compute_kinematic(rc, way, f64::from(dist), delta_h, detail_mode);
 
-            if let Some(Detail { message: Some(m), kinematics, .. }) = self.detail.as_deref_mut() {
+            if let Some(Detail { message: Some(m), kinematics, .. }) = self.detail.as_mut() {
                 m.time = kinematics.total_time;
                 m.energy = kinematics.total_energy;
                 m.lon = lon2;
@@ -616,7 +672,7 @@ impl OsmPath {
         self.cost = (f64::from(self.cost) + rc.nogos.nogo_cost) as i32;
 
         // add target-node costs
-        let target_cost = self.process_target_node(way, node, target_node.node_description.as_deref())?;
+        let target_cost = self.process_target_node(way, node, map.description(target_node.node_description))?;
         if target_cost < 0.0 || target_cost + f64::from(self.cost) >= 2_000_000_000.0 {
             self.cost = -1;
             return Ok(());
@@ -789,30 +845,6 @@ impl OsmPath {
         Ok(f64::from(initialcost))
     }
 
-    pub fn elevation_correction(&self) -> i32 {
-        (if self.downhillcostdiv > 0 { self.ehbd / self.downhillcostdiv } else { 0 })
-            .wrapping_add(if self.uphillcostdiv > 0 { self.ehbu / self.uphillcostdiv } else { 0 })
-    }
-
-    pub fn definitly_worse_than(&self, p: &OsmPath) -> bool {
-        let mut c = p.cost;
-        if p.downhillcostdiv > 0 {
-            let delta = p.ehbd / p.downhillcostdiv
-                - if self.downhillcostdiv > 0 { self.ehbd / self.downhillcostdiv } else { 0 };
-            if delta > 0 {
-                c = c.wrapping_add(delta);
-            }
-        }
-        if p.uphillcostdiv > 0 {
-            let delta =
-                p.ehbu / p.uphillcostdiv - if self.uphillcostdiv > 0 { self.ehbu / self.uphillcostdiv } else { 0 };
-            if delta > 0 {
-                c = c.wrapping_add(delta);
-            }
-        }
-        self.cost > c
-    }
-
     /// `StdPath.computeKinematic`: travel time and energy, in the final (detail) pass only.
     fn compute_kinematic(&mut self, rc: &RoutingContext, way: &WayContext, dist: f64, delta_h: f64, detail_mode: bool) {
         if !detail_mode {
@@ -848,9 +880,67 @@ impl OsmPath {
             k.total_energy = (f64::from(k.total_energy) + energy) as f32;
         }
     }
+}
 
-    pub fn total_energy(&self) -> f32 {
-        self.detail.as_ref().map_or(0.0, |d| d.kinematics.total_energy)
+/// The paths of a search, with the details of those that have one kept apart.
+#[derive(Default)]
+pub struct Paths {
+    paths: Vec<OsmPath>,
+    details: Vec<Detail>,
+}
+
+impl Paths {
+    pub fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.paths.capacity()
+    }
+
+    pub fn clear(&mut self) {
+        self.paths.clear();
+        self.details.clear();
+    }
+
+    pub fn push(&mut self, path: NewPath) -> PathIdx {
+        let idx = PathIdx::try_from(self.paths.len()).expect("path arena overflow");
+        let NewPath { mut path, detail } = path;
+        path.detail = detail.map(|d| {
+            self.details.push(d);
+            DetailIdx(u32::try_from(self.details.len()).ok().and_then(NonZeroU32::new).expect("detail arena overflow"))
+        });
+        self.paths.push(path);
+        idx
+    }
+
+    fn detail(&self, idx: PathIdx) -> Option<&Detail> {
+        Some(&self.details[self.paths[idx as usize].detail?.index()])
+    }
+
+    pub fn message(&self, idx: PathIdx) -> Option<&MessageData> {
+        self.detail(idx)?.message.as_deref()
+    }
+
+    pub fn take_message(&mut self, idx: PathIdx) -> Option<Box<MessageData>> {
+        self.details[self.paths[idx as usize].detail?.index()].message.take()
+    }
+
+    pub fn total_energy(&self, idx: PathIdx) -> f32 {
+        self.detail(idx).map_or(0.0, |d| d.kinematics.total_energy)
+    }
+}
+
+impl Index<usize> for Paths {
+    type Output = OsmPath;
+    fn index(&self, i: usize) -> &OsmPath {
+        &self.paths[i]
+    }
+}
+
+impl IndexMut<usize> for Paths {
+    fn index_mut(&mut self, i: usize) -> &mut OsmPath {
+        &mut self.paths[i]
     }
 }
 

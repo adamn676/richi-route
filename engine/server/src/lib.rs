@@ -18,13 +18,14 @@ use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, g
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
 
-pub fn serve(listener: &TcpListener, pool: RouterPool) -> ! {
+/// Answers the connections to `listener`, each search ending after `max_running_time` ms.
+pub fn serve(listener: &TcpListener, pool: RouterPool, max_running_time: i64) -> ! {
     let pool = Arc::new(pool);
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let pool = pool.clone();
-                std::thread::spawn(move || respond(stream, &pool));
+                std::thread::spawn(move || respond(stream, &pool, max_running_time));
             }
             // out of file handles, or a socket the system took back: try again shortly instead of spinning
             Err(_) => std::thread::sleep(Duration::from_millis(100)),
@@ -34,7 +35,7 @@ pub fn serve(listener: &TcpListener, pool: RouterPool) -> ! {
 }
 
 /// `RouteServer.run` for one connection.
-fn respond(stream: TcpStream, pool: &RouterPool) {
+fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
     // a client that stops sending before the headers end is dropped
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let mut lines = BufReader::new(&stream).lines();
@@ -54,7 +55,7 @@ fn respond(stream: TcpStream, pool: &RouterPool) {
     let terminated = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel();
     let reply = move |outcome, _| sender.send(outcome).unwrap_or_default();
-    pool.submit(query, MAX_RUNNING_TIME_MS, Some(terminated.clone()), reply);
+    pool.submit(query, max_running_time, Some(terminated.clone()), reply);
     let outcome: Outcome = loop {
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(outcome) => break outcome,

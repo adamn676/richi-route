@@ -6,12 +6,12 @@
 //! once per tag.
 
 use crate::store::lock;
-use crate::{Geometry, NodeIdx, OsmNodesMap, TurnRestriction};
+use crate::{DescIdx, Geometry, NodeIdx, OsmNodesMap, TurnRestriction};
 use brouter_codec::{
     NoisyDiffCoder, StatCoderContext, TagTree, TagValueValidator, TagValueWrapper, WaypointMatcher,
     decode_transfer_nodes, expand_id32, match_transfer_nodes,
 };
-use brouter_util::{BitCoderContext, ByteDataWriter, Description};
+use brouter_util::{BitCoderContext, ByteDataWriter};
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -136,7 +136,7 @@ const FILTERED_TAG_SETS: usize = 4;
 pub(crate) struct WeaveBuffers {
     used: Vec<bool>,
     way_tags: Vec<Option<TagValueWrapper>>,
-    node_tags: Vec<Option<Description>>,
+    node_tags: Vec<Option<DescIdx>>,
     nodes: Vec<NodeIdx>,
 }
 
@@ -324,11 +324,9 @@ pub(crate) fn weave(
     }));
     // ... and without one: fresh copies
     node_tags.clear();
-    node_tags.extend(
-        cell.node_tags
-            .ranges()
-            .map(|(start, len)| (len > 0).then(|| Rc::from(&cell.node_tags.bytes[start..start + len]))),
-    );
+    node_tags.extend(cell.node_tags.ranges().map(|(start, len)| {
+        (len > 0).then(|| hollow_nodes.add_description(Rc::from(&cell.node_tags.bytes[start..start + len])))
+    }));
 
     nodes.clear();
     for cn in &cell.nodes {
@@ -344,7 +342,7 @@ pub(crate) fn weave(
         nodes.push(node);
     }
 
-    let cell_geometry = Rc::new(cell.geometry.clone());
+    let mut cell_geometry = None;
     let mut restrictions = cell.restrictions.iter().peekable();
     let mut external_links = cell.external_links.iter();
     let (mut links_start, mut geometry_start) = (0, 0);
@@ -358,7 +356,7 @@ pub(crate) fn weave(
 
         let osm_node = hollow_nodes.node_mut(node);
         osm_node.selev = cn.selev;
-        osm_node.node_description = node_tags[cn.node_tags as usize].clone(); // TODO in Java: unified?
+        osm_node.node_description = node_tags[cn.node_tags as usize]; // TODO in Java: unified?
 
         for link in &cell.links[links_start..cn.links_end as usize] {
             let target = link.target as usize;
@@ -380,20 +378,24 @@ pub(crate) fn weave(
             }
 
             if let Some(tags) = way_tags {
-                let geometry = (!geometry_range.is_empty())
-                    .then(|| Geometry::new(&cell_geometry, geometry_range.start, geometry_range.end));
+                let description = Some(hollow_nodes.add_description(tags.data.clone()));
+                let geometry = (!geometry_range.is_empty()).then(|| {
+                    let cell =
+                        *cell_geometry.get_or_insert_with(|| hollow_nodes.add_geometry_cell(cell.geometry.clone()));
+                    Geometry::new(cell, geometry_range.start, geometry_range.end)
+                });
                 if target != n {
                     // valid internal (forward-) link
                     let node2 = nodes[target];
                     let l = hollow_nodes.reusable_link(node, node2);
                     let osm_link = hollow_nodes.link_mut(l);
-                    osm_link.description_bitmap = Some(tags.data.clone());
+                    osm_link.description_bitmap = description;
                     osm_link.geometry = geometry;
                     hollow_nodes.add_link(node, l, is_reverse, node2);
                 } else {
                     // weave external link
                     let (linklon, linklat) = (ilon.wrapping_add(dlon), ilat.wrapping_add(dlat));
-                    hollow_nodes.add_link_to(node, linklon, linklat, Some(tags.data.clone()), geometry, is_reverse);
+                    hollow_nodes.add_link_to(node, linklon, linklat, description, geometry, is_reverse);
                     hollow_nodes.node_mut(node).visit_id = 1;
                 }
             }

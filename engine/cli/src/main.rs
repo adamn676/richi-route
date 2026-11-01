@@ -132,7 +132,11 @@ fn main() {
         let address = args.get(6).map_or("127.0.0.1", String::as_str);
         let listener = TcpListener::bind((address, port)).unwrap_or_else(|e| fail(&format!("{address}:{port}: {e}")));
         let segments = Arc::new(SegmentStore::new(&args[2], SegmentStore::DEFAULT_CELL_CACHE_BYTES));
-        serve(&listener, RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules), rider));
+        serve(
+            &listener,
+            RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules), rider),
+            MAX_RUNNING_TIME_MS,
+        );
     }
 
     let threads = number(4, 1, 1, "threads");

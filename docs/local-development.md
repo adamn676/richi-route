@@ -378,10 +378,12 @@ starts the routing engine inside the app and draws routes on the offline map.
 The routing engine is built into the app as `engine/ios`, which runs the same
 server as `richi-engine serve` on a free port of 127.0.0.1. The app calls one
 function, `richi_engine_start(threads, search_mb)`, which takes and returns
-plain numbers. A search may take what iOS leaves the app at start, less 1 GB for
-the map and a second search. Where a section needs more, the engine searches it
-again leaning towards the target ([long sections](../engine/PORTING.md#long-sections)).
-The map is MapLibre Native 7.0.0.
+plain numbers. A search may take what iOS leaves the app at start, less 768 MB
+for the map and a second search. Where a section needs more, the engine searches
+it again leaning towards the target
+([long sections](../engine/PORTING.md#long-sections)). The phone takes about
+three times as long as the computer, so its searches may run two minutes
+instead of one. The map is MapLibre Native 7.0.0.
 
 `npm run ios:map` writes `ios/RichiRoute/Map/` (outside git), the map the app
 bundles: `style.json` (Karte with Geländerelief, from the same

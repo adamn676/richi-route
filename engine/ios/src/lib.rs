@@ -36,6 +36,7 @@ pub fn start(data: &Path, threads: u8, search_mb: u32) -> Result<u16, String> {
     let segments = Arc::new(SegmentStore::new(data.join("segments"), SegmentStore::DEFAULT_CELL_CACHE_BYTES));
     limit_search_memory(search_mb as usize * (1 << 20));
     let pool = RouterPool::new(segments, data.join("profiles"), usize::from(threads.max(1)), Some(rules), rider);
-    std::thread::spawn(move || richi_server::serve(&listener, pool));
+    // a phone takes about three times as long as a computer: long sections get twice BRouter's minute
+    std::thread::spawn(move || richi_server::serve(&listener, pool, 2 * richi_server::MAX_RUNNING_TIME_MS));
     Ok(port)
 }

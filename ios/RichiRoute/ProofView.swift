@@ -22,6 +22,7 @@ struct ProofView: View {
         Case(id: "Wien – München", points: [wien, [11.5755, 48.1374]]),
         Case(id: "Wien – Bregenz", points: [wien, bregenz]),
         Case(id: "Graz – Mailand", points: [graz, [9.19, 45.4642]]),
+        Case(id: "Neusiedl – Feldkirch", points: [[16.8429, 47.9486], [9.5982, 47.2378]]),
         Case(id: "Bratislava – Zürich", points: [[17.1077, 48.1486], [8.5417, 47.3769]]),
         Case(id: "Wien – Salzburg – Bregenz (zwei lange Abschnitte zugleich)", points: [wien, [13.045, 47.8095], bregenz]),
         Case(id: "Runde ab Virgen, 60 km", points: [virgen], extra: [
@@ -72,7 +73,7 @@ struct ProofView: View {
                     case .success(let km): Text("\(km, specifier: "%.1f") km in \(outcome.seconds, specifier: "%.1f") s")
                     case .failure(let failure): Text("\(failure.message) nach \(outcome.seconds, specifier: "%.1f") s").foregroundStyle(.red)
                     }
-                    Text("Speicher \(mb(outcome.memory.footprint)), Spitze \(mb(outcome.memory.peak)), frei \(mb(outcome.memory.available))")
+                    Text("Speicher \(mb(outcome.memory.footprint)), Spitze \(mb(outcome.memory.peak)), frei \(mb(outcome.memory.available)), Suche bis \(engine?.searchMB ?? 0) MB")
                 }
                 .font(.footnote).foregroundStyle(.secondary)
             }

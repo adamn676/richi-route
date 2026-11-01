@@ -1,41 +1,37 @@
-use crate::OsmNode;
+use crate::{OsmNode, OsmNodesMap};
 use brouter_util::ByteDataReader;
-use std::ops::Deref;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::num::NonZeroU32;
+use std::ops::Range;
 
 /// A link's transfer nodes in the forward direction (`OsmLink::geometry`, Java's `byte[] geometry`):
-/// a slice of the geometry of the cell it was decoded from, shared by the links woven from that cell.
-/// Two `Geometry`s are the same array in Java's sense when `same` says so.
-#[derive(Clone, Debug)]
+/// a slice of the geometry of the cell it was woven from, which `OsmNodesMap::geometry` reads. The
+/// links of one weave share the cell. Two `Geometry`s are the same array in Java's sense when `same`
+/// says so.
+#[derive(Clone, Copy, Debug)]
 pub struct Geometry {
-    cell: Rc<Arc<[u8]>>,
+    /// The cell's position in the map's table, plus one so that `Option<Geometry>` takes 12 bytes.
+    cell: NonZeroU32,
     start: u32,
     end: u32,
 }
 
 impl Geometry {
-    /// The links of one woven cell share `cell`.
-    pub(crate) fn new(cell: &Rc<Arc<[u8]>>, start: usize, end: usize) -> Self {
-        Self { cell: cell.clone(), start: start as u32, end: end as u32 }
+    pub(crate) fn new(cell: usize, start: usize, end: usize) -> Self {
+        let cell = u32::try_from(cell + 1).ok().and_then(NonZeroU32::new).expect("geometry table overflow");
+        Self { cell, start: start as u32, end: end as u32 }
     }
 
-    /// Java's reference comparison.
+    pub(crate) fn cell(self) -> usize {
+        (self.cell.get() - 1) as usize
+    }
+
+    pub(crate) fn range(self) -> Range<usize> {
+        self.start as usize..self.end as usize
+    }
+
+    /// Java's reference comparison (within one map).
     pub fn same(&self, other: &Geometry) -> bool {
-        Rc::ptr_eq(&self.cell, &other.cell) && self.start == other.start
-    }
-}
-
-impl From<&[u8]> for Geometry {
-    fn from(ab: &[u8]) -> Self {
-        Self::new(&Rc::new(Arc::from(ab)), 0, ab.len())
-    }
-}
-
-impl Deref for Geometry {
-    type Target = [u8];
-    fn deref(&self) -> &[u8] {
-        &self.cell[self.start as usize..self.end as usize]
+        self.cell == other.cell && self.start == other.start
     }
 }
 
@@ -53,7 +49,8 @@ pub struct OsmTransferNode {
 #[derive(Default)]
 pub struct GeometryDecoder {
     nodes: Vec<OsmTransferNode>,
-    last: Option<(Geometry, bool)>,
+    /// The last geometry decoded, with the id of its map and the direction.
+    last: Option<(u64, Geometry, bool)>,
 }
 
 impl GeometryDecoder {
@@ -66,13 +63,15 @@ impl GeometryDecoder {
     /// the nodes in reverse order.
     pub fn decode_geometry(
         &mut self,
-        geometry: &Geometry,
+        map: &OsmNodesMap,
+        geometry: Geometry,
         source_node: &OsmNode,
         target_node: &OsmNode,
         reverse_link: bool,
     ) -> &[OsmTransferNode] {
-        if let Some((last_geometry, last_reverse)) = &self.last
-            && last_geometry.same(geometry)
+        if let Some((last_map, last_geometry, last_reverse)) = &self.last
+            && *last_map == map.id()
+            && last_geometry.same(&geometry)
             && *last_reverse == reverse_link
         {
             return &self.nodes;
@@ -80,7 +79,7 @@ impl GeometryDecoder {
 
         self.nodes.clear();
         let startnode = if reverse_link { target_node } else { source_node };
-        let mut r = ByteDataReader::new(geometry);
+        let mut r = ByteDataReader::new(map.geometry(geometry));
         let mut olon = startnode.ilon;
         let mut olat = startnode.ilat;
         let mut oselev = i32::from(startnode.selev);
@@ -97,7 +96,7 @@ impl GeometryDecoder {
             self.nodes.reverse(); // reverse chaining
         }
 
-        self.last = Some((geometry.clone(), reverse_link));
+        self.last = Some((map.id(), geometry, reverse_link));
         &self.nodes
     }
 }

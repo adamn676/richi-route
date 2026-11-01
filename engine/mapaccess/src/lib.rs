@@ -2,8 +2,9 @@
 //!
 //! # Graph API (for the router)
 //!
-//! - **Arenas.** `OsmNodesMap` owns all nodes, links and turn restrictions. They are addressed by
-//!   `NodeIdx`, `LinkIdx` and `RestrictionIdx` (`u32` newtypes; `Option<_>` is Java's `null`). Compare
+//! - **Arenas.** `OsmNodesMap` owns all nodes, links, turn restrictions and descriptions. They are
+//!   addressed by `NodeIdx`, `LinkIdx`, `RestrictionIdx` and `DescIdx` (`u32` newtypes; `Option<_>` is
+//!   Java's `null`). Compare
 //!   indices where Java compares references. Nothing is freed before the map is dropped. Read them with
 //!   `map.node(n)` / `map.link(l)`, change them with `node_mut` / `link_mut`.
 //! - **Nodes.** `OsmNode` has `ilon`, `ilat`, `selev`, `node_description`, `visit_id` and `firstlink`.
@@ -11,6 +12,8 @@
 //!   loaded; `NodesCache::obtain_non_hollow_node` loads it. Java's `OsmNode` extends `OsmLink`; that
 //!   inherited link is `OsmNode::own_link()`, which the decoder uses for one of the node's links (so
 //!   `map.link(node.own_link()).description_bitmap` is Java's `node.descriptionBitmap`).
+//!   `node_description` and a link's `description_bitmap` are `DescIdx`s; `map.description` gives
+//!   the tag bitmap, the same array for the same index (`map.add_description` indexes an array).
 //! - **Links.** An `OsmLink` connects `n1 -> n2` (the way's direction) and sits in the chains of both
 //!   nodes. Walk a chain with `node.firstlink` and `link.next(node)`, or `map.links(node)` when the
 //!   loop doesn't change the graph. The neighbour is
@@ -20,8 +23,8 @@
 //!   The source arguments take `impl Into<Option<NodeIdx>>`, so pass `n`, or `None` where Java passes
 //!   `null` (the start link from `map.create_link(None, Some(start))`).
 //! - **Geometry.** `link.geometry` holds the transfer nodes in the forward direction (a `Geometry`, a
-//!   slice of its cell's data that derefs to Java's bytes), and `link.description_bitmap` the way tags.
-//!   Both compare by identity like Java's arrays (`Geometry::same`, `Rc::ptr_eq`).
+//!   slice of its cell's data; `map.geometry(g)` gives Java's bytes), and `link.description_bitmap`
+//!   the way tags. Both compare by identity like Java's arrays (`Geometry::same`, the `DescIdx`).
 //!   `GeometryDecoder::decode_geometry` returns the transfer nodes with elevations for either direction.
 //! - **Turn restrictions.** `map.restrictions(node)` lists them in Java's order, for
 //!   `TurnRestriction::is_turn_forbidden`.
@@ -64,7 +67,7 @@ mod store;
 mod waypoints;
 
 pub use geometry::{Geometry, GeometryDecoder, OsmTransferNode};
-pub use graph::{LinkIdx, NodeIdx, OsmLink, OsmNode, OsmNodesMap, RestrictionIdx, TurnRestriction};
+pub use graph::{DescIdx, LinkIdx, NodeIdx, OsmLink, OsmNode, OsmNodesMap, RestrictionIdx, TurnRestriction};
 pub use nodes_cache::{ElevationTypes, NodesCache};
 pub use pos::{OsmPos, Pos};
 pub use store::SegmentStore;

@@ -25,7 +25,7 @@ use brouter_util::{SortedHeap, cheap_ruler};
 use crate::java::{JavaException, min_f32, parse_double};
 use crate::libm;
 use crate::param_collector::OsmNodeNamed;
-use crate::path::{GRAVITY, OsmPath, PathEnv, PathIdx};
+use crate::path::{GRAVITY, NewPath, OsmPath, PathEnv, PathIdx, Paths};
 use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
 use crate::pool::Pool;
 use crate::profile_cache::ProfileCache;
@@ -80,17 +80,17 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
 const KEPT_PATHS: usize = (64 << 20) / std::mem::size_of::<OsmPath>();
 
 /// A search's memory per path, with the graph and open set that grow along (measured: 18 million paths
-/// peak at 3.2 GB).
-const BYTES_PER_PATH: usize = 175;
+/// peak at 2.7 GB).
+const BYTES_PER_PATH: usize = 145;
 
 /// Beyond this many paths a search stops with BRouter's memory error, as a search past Java's heap
 /// (`-Xmx`) would end: a runaway search fails alone instead of taking the program down. The default
-/// 3 GB reach about 840 km exactly (see `limit_search_memory`).
+/// 3 GB reach about 960 km exactly (see `limit_search_memory`).
 static MAX_SEARCH_PATHS: AtomicUsize = AtomicUsize::new((3 << 30) / BYTES_PER_PATH);
 
-/// Searches beyond this many paths (about 370 MB) take turns, so long sections searched side by side
-/// never need more than one search's limit. The planner's loops stay below it.
-const SHARED_PATHS: usize = 1 << 21;
+/// Searches beyond this many paths (about 150 MB) take turns, so long sections searched side by side
+/// never need much more than one search's limit.
+const SHARED_PATHS: usize = 1 << 20;
 static LONG_SEARCH: Mutex<()> = Mutex::new(());
 
 /// Limits the memory of a search, and with it how far a section reaches.
@@ -105,7 +105,7 @@ const MEMORY_LIMIT: &str = "memory limit reached";
 /// its allocations: each request opens its files again.
 #[derive(Default)]
 pub(crate) struct Arenas {
-    paths: Vec<OsmPath>,
+    paths: Paths,
     elements: PathElements,
     nodes_cache: Option<NodesCache>,
     open_set: SortedHeap<PathIdx>,
@@ -207,7 +207,7 @@ struct Searcher {
     geometry: GeometryDecoder,
     open_set: SortedHeap<PathIdx>,
     /// The paths of the current search; link holders refer to them by index.
-    paths: Vec<OsmPath>,
+    paths: Paths,
     elements: PathElements,
 
     island_node_pairs: OsmNodePairSet,
@@ -900,12 +900,11 @@ impl Searcher {
     fn start_path_on_link(&mut self, n1: NodeIdx, n2: NodeIdx, end_pos: Pos) -> Result<Option<PathIdx>, Abort> {
         let cache = self.nodes_cache.as_mut().expect("cache was reset");
         let start_link = cache.nodes_map.create_link(None, Some(n1));
-        let start_path = self.paths.len() as PathIdx;
-        self.paths.push(OsmPath::start(start_link, &cache.nodes_map));
+        let start_path = self.paths.push(OsmPath::start(start_link, &cache.nodes_map));
         // Java adds the start path as the start link's holder; the start link is in no node's chain,
         // so nothing ever reads it.
         let map = &cache.nodes_map;
-        let mut best: Option<(OsmPath, brouter_mapaccess::LinkIdx)> = None;
+        let mut best: Option<(NewPath, brouter_mapaccess::LinkIdx)> = None;
         let mut minradius = 1e10;
         let mut l = map.node(n1).firstlink;
         while let Some(link) = l {
@@ -937,8 +936,7 @@ impl Searcher {
         }
         let Some((mut best_path, best_link)) = best else { return Ok(None) };
         best_path.treedepth = 1;
-        let idx = self.paths.len() as PathIdx;
-        self.paths.push(best_path);
+        let idx = self.paths.push(best_path);
         if let Some(previous) = cache.nodes_map.link_mut(best_link).add_link_holder(idx, n1) {
             self.paths[idx as usize].set_next_for_link(previous);
         }
@@ -1200,7 +1198,7 @@ impl Searcher {
                         .wrapping_add(p.elevation_correction())
                         .wrapping_add(cct.cost.wrapping_sub(elements[pe].cost));
                     if cost_estimate <= max_total_cost {
-                        let message = p.message().cloned().map(Box::new);
+                        let message = paths.message(path).cloned().map(Box::new);
                         *match_path = Some(OsmPath::new_element(paths, path, message, &cache.nodes_map, elements));
                     }
                     if cost_estimate < max_total_cost {
@@ -1282,7 +1280,7 @@ impl Searcher {
                         }
                     }
 
-                    let mut best_path: Option<OsmPath> = None;
+                    let mut best_path: Option<NewPath> = None;
 
                     let is_final_link = (current_node_id == end_node_id1 || current_node_id == end_node_id2)
                         && (next_id == end_node_id1 || next_id == end_node_id2);
@@ -1339,8 +1337,7 @@ impl Searcher {
 
                         if dominator.is_none() {
                             best_path.treedepth = paths[pi].treedepth + 1;
-                            let idx = PathIdx::try_from(paths.len()).expect("path arena overflow");
-                            paths.push(best_path);
+                            let idx = paths.push(best_path);
                             if let Some(previous) = cache.nodes_map.link_mut(link).add_link_holder(idx, current_node) {
                                 paths[idx as usize].set_next_for_link(previous);
                             }
@@ -1606,16 +1603,15 @@ impl Searcher {
 
 /// `compileTrack`: the track of the found path, from its elements.
 fn compile_track(
-    paths: &mut [OsmPath],
+    paths: &mut Paths,
     path: PathIdx,
     map: &brouter_mapaccess::OsmNodesMap,
     elements: &mut PathElements,
     final_track: bool,
     inverse_routing: bool,
 ) -> OsmTrack {
-    let message = paths[path as usize].take_message();
+    let message = paths.take_message(path);
     let mut element = OsmPath::new_element(paths, path, message, map, elements);
-    let path = &paths[path as usize];
 
     // for final track, cut endnode
     if final_track && let Some(origin) = elements[element].origin {
@@ -1626,8 +1622,8 @@ fn compile_track(
     let total_energy = elements[element].energy();
 
     let mut track = OsmTrack::new();
-    track.cost = path.cost;
-    track.energy = path.total_energy() as i32;
+    track.cost = paths[path as usize].cost;
+    track.energy = paths.total_energy(path) as i32;
 
     let mut distance = 0i32;
     let mut current = Some(element);

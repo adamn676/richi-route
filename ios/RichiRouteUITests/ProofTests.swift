@@ -10,8 +10,8 @@ final class ProofTests: XCTestCase {
         let budget = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Suche bis'")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout: 30))
         print("RESULT \(budget.label)")
-        let names = ["Virgen – Mistelbach", "Wien – München", "Wien – Bregenz", "Graz – Mailand", "Bratislava – Zürich",
-                     "Wien – Salzburg – Bregenz", "Runde ab Virgen"]
+        let names = ["Virgen – Mistelbach", "Wien – München", "Wien – Bregenz", "Graz – Mailand", "Neusiedl – Feldkirch",
+                     "Bratislava – Zürich", "Wien – Salzburg – Bregenz", "Runde ab Virgen"]
         for name in names {
             let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
             // the list makes its lower rows only when they scroll into view

@@ -20,7 +20,7 @@ struct Engine: Sendable {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let profile = json["profile"] as? String,
                   let parameters = json["parameters"] as? [String: Any] else { return nil }
-            let searchMB = UInt32(max(Int(Memory.now().available >> 20) - 1024, 512))
+            let searchMB = UInt32(max(Int(Memory.now().available >> 20) - 768, 512))
             let port = richi_engine_start(2, searchMB)
             return port == 0 ? nil : Engine(port: port, profile: profile, parameters: parameters.sorted { $0.key < $1.key }
                 .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, searchMB: searchMB)
@@ -38,7 +38,7 @@ struct Engine: Sendable {
             URLQueryItem(name: "alternativeidx", value: "0"),
         ] + extra + parameters
         var request = URLRequest(url: url.url!)
-        request.timeoutInterval = 120
+        request.timeoutInterval = 150
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {

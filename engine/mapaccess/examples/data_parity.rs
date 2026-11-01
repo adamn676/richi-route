@@ -339,7 +339,7 @@ fn node_line(nc: &NodesCache, n: NodeIdx) -> String {
         node.selev,
         node.visit_id,
         u8::from(node.is_hollow()),
-        hex(node.node_description.as_deref())
+        hex(map.description(node.node_description))
     );
     for tr in map.restrictions(n) {
         write!(
@@ -374,11 +374,11 @@ fn link_line(nc: &NodesCache, n: NodeIdx, l: LinkIdx, gd: &mut GeometryDecoder) 
         node_pos(nc, t),
         u8::from(rev),
         u8::from(link.is_bidirectional()),
-        hex(link.description_bitmap.as_deref()),
-        hex(link.geometry.as_deref())
+        hex(map.description(link.description_bitmap)),
+        hex(link.geometry.map(|g| map.geometry(g)))
     );
-    if let Some(geometry) = &link.geometry {
-        for tn in gd.decode_geometry(geometry, map.node(n), map.node(t), rev) {
+    if let Some(geometry) = link.geometry {
+        for tn in gd.decode_geometry(map, geometry, map.node(n), map.node(t), rev) {
             write!(s, "{},{},{};", tn.ilon, tn.ilat, tn.selev).unwrap();
         }
     }
