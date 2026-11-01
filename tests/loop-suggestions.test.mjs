@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compassName, correctedRadius, firstRadius, loopSections, pickLoops, pointsAlong, refinedRadius, twiceShare, unpavedShare, withoutSpurs }
+import { compassName, correctedRadius, firstRadius, loopCells, loopSections, pickLoops, pointsAlong, refinedRadius, seenShare, twiceShare,
+  unpavedShare, withoutSpurs }
   from '../src/domain/loop-suggestions.ts';
 import { suggestLoops } from '../src/services/loop-suggestions.service.ts';
 import { distanceMeters } from '../src/domain/route-model.ts';
@@ -87,7 +88,7 @@ test('suggestions: three passes, three named loops, failed directions left out',
     const bearing = (Math.atan2((lon - start[0]) * Math.cos(start[1] * Math.PI / 180), lat - start[1]) * 180 / Math.PI + 360) % 360;
     return towns[Math.round(bearing / 90) % 4 * 90];
   };
-  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, town);
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, town, { random: () => 0 });
   assert.equal(calls.length, 12 + 11 + 11, 'The direction without a loop is not tried again');
   assert.equal(loops.length, 3);
   assert.ok(loops.every(loop => Math.abs(loop.leg.distanceMeters - 40000) < 4000), loops.map(loop => loop.leg.distanceMeters).join());
@@ -97,12 +98,39 @@ test('suggestions: three passes, three named loops, failed directions left out',
   assert.equal(misses[0], Math.min(...misses), 'With distances alike, the closest climbing comes first');
 });
 
-test('asking again turns the directions, so the loops run elsewhere', async () => {
-  const directions = [];
-  const trace = async (_, radius, direction) => { directions.push(direction); return circle(radius, direction); };
-  const loops = await suggestLoops(start, { meters: 40000, ascent: 800, turn: 10 }, new AbortController().signal, trace, async () => undefined);
-  assert.deepEqual(directions.slice(0, 12), [10, 40, 70, 100, 130, 160, 190, 220, 250, 280, 310, 340]);
-  assert.ok(loops.every(loop => loop.heading));
+test('each search turns the directions by chance and gives each a shape it keeps', async () => {
+  const tries = [];
+  const trace = async (_, radius, direction, signal, points) => { tries.push([direction, points]); return circle(radius, direction); };
+  const dice = [.5, ...Array.from({ length: 12 }, (_, i) => i % 3 / 3 + .1)];
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, async () => undefined,
+    { random: () => dice.shift() });
+  assert.deepEqual(tries.slice(0, 12).map(([direction]) => direction), Array.from({ length: 12 }, (_, i) => 15 + i * 30));
+  assert.deepEqual(new Set(tries.map(([, points]) => points)), new Set([4, 5, 6]));
+  // Each direction keeps its shape while its distance is tried again.
+  const shapes = new Map(tries.slice(0, 12));
+  assert.ok(tries.every(([direction, points]) => shapes.get(direction) === points));
+  assert.ok(loops.every(loop => loop.heading && loop.cells.length));
+});
+
+test('roads suggested lately count against a loop, so asking again brings others', async () => {
+  const trace = async (_, radius, direction) => circle(radius, direction);
+  const ask = earlier => suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, async () => undefined,
+    { random: () => 0, earlier });
+  const first = await ask([]), again = await ask(first.map(loop => ({ cells: loop.cells, weight: 1 })));
+  // Each new loop shares less than half its roads beyond home with any loop shown before.
+  const shared = again.map(loop => seenShare(loop.cells, first.map(({ cells }) => ({ cells, weight: 1 }))));
+  assert.ok(shared.every(share => share < .5), String(shared));
+  assert.ok(again.every(loop => Math.abs(loop.leg.distanceMeters - 40000) < 6000), 'Still about the distance');
+});
+
+test('the squares a loop passes leave out those near home; older suggestions weigh less', () => {
+  const leg = circle(5000, 0), near = loopCells(leg, start, 0), far = loopCells(leg, start, 3000);
+  assert.ok(near.length > far.length && far.length > 50);
+  assert.equal(seenShare(far, [{ cells: far, weight: 1 }]), 1);
+  assert.equal(seenShare(far, [{ cells: far, weight: .5 }]), .5);
+  const half = far.slice(0, Math.floor(far.length / 2));
+  assert.equal(seenShare(far, [{ cells: half, weight: 1 }, { cells: [], weight: 1 }]), half.length / far.length);
+  assert.equal(seenShare(far, []), 0);
 });
 
 test('a routing service that fails everywhere reports why; a cancelled search stops', async () => {

@@ -797,8 +797,8 @@ closes the suggestions; the × beside the heading returns to the start alone. On
 up while choosing. The last target is remembered in this browser.
 
 The loops come from BRouter's round-trip mode (`engineMode=4`) with the
-planner's profile: a loop through five points on a circle, which comes out about
-6.2 times the circle's radius. Where a circle point snaps onto a dead end, the loop
+planner's profile: a loop through points on an arc around the start, which with
+five points comes out about 6.2 times the arc's radius. Where a circle point snaps onto a dead end, the loop
 rides in and back out; the planner cuts every stretch that returns to a point
 passed less than 1 km before, so dead ends and turning circles go while the road
 home a loop starts and ends on stays. It asks in twelve directions, then twice
@@ -806,7 +806,17 @@ more per direction with the radius corrected towards the distance (36 requests,
 locally about 2–4 s for 50 km, 9 s for 500 km and 33 s for 1,000 km). Direction decides most of the climbing: from Graz, loops to
 the north climb far more than those to the south. Of all loops, it prefers those
 within 15% of the distance, then the closest climbing, and avoids roads ridden
-both ways; the three it shows head at least 60° apart. Each card is named after
+both ways and unpaved roads; the three it shows head at least 60° apart.
+
+Asking again brings other loops. Each search turns the twelve directions by a
+random angle and gives each direction a random shape (four, five or six arc
+points: narrower or rounder). The planner also remembers the roads of the loops it
+showed from each place (within about 1 km) for the last four searches, in the
+browser's local storage. Among the loops nearly as good as the best and with
+hardly more unpaved road, those on roads shown lately come last, the latest
+search counting most, so each search shows something new until the good roads
+around are used up and older loops come back. A clearly worse loop never wins just
+by being new. Each card is named after
 the town the loop passes most (sampled at eight points, not the start's town or
 another card's), otherwise by its compass direction; its small outline shows where
 it goes. Climbing uses the planner's

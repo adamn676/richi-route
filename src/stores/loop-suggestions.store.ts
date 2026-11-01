@@ -5,6 +5,20 @@ import type { LoopTarget } from '@/domain/loop-suggestions';
 import { suggestLoops, type LoopSuggestion } from '@/services/loop-suggestions.service';
 import { useRouteStore } from './route.store';
 
+// The roads of the loops suggested lately from each place, newest search first, kept across visits so that each search
+// brings other loops (suggestLoops): within about 1 km counts as the same place, the last four searches from it weigh
+// less the older they are, and the ten places used last are kept.
+type LoopHistory = Record<string, string[][][]>;
+const historyKey = 'richiroute.loop-history', recency = [1, .75, .5, .3], places = 10;
+const placeOf = (start: Coord) => start.map(value => value.toFixed(2)).join();
+function readHistory(): LoopHistory {
+  try { return JSON.parse(localStorage.getItem(historyKey) ?? '{}') as LoopHistory; } catch { return {}; }
+}
+function writeHistory(history: LoopHistory) {
+  for (const place of Object.keys(history).slice(0, -places)) delete history[place];
+  try { localStorage.setItem(historyKey, JSON.stringify(history)); } catch { /* Without storage each visit starts afresh. */ }
+}
+
 // Three loops from the start for a distance and climbing. A selected loop is shown as the route, with its profile and
 // surfaces; selecting another replaces it in place, selecting it again returns to the start. Keeping one ends the
 // choice; discarding returns to the start alone.
@@ -16,22 +30,21 @@ export const useLoopSuggestionsStore = defineStore('loop-suggestions', () => {
   const loading = ref(false);
   const error = ref('');
   let controller: AbortController | undefined, searchedFrom = '', undoDepth = 0;
-  // Asking again from the same start for the same loop turns the directions by 10°, so the loops run through other
-  // points: three turns give different loops before they repeat.
-  let lastSearch = '', turn = 0;
 
   async function suggest(start: Coord, target: LoopTarget) {
     discard();
     searchedFrom = String(start);
-    const search = `${start}|${target.meters}|${target.ascent}`;
-    turn = search === lastSearch ? (turn + 10) % 30 : 0;
-    lastSearch = search;
     const current = controller = new AbortController();
     loading.value = true;
     try {
-      const found = await suggestLoops(start, { ...target, turn }, current.signal);
+      const history = readHistory(), place = placeOf(start), searches = history[place] ?? [];
+      const earlier = searches.flatMap((loops, i) => loops.map(cells => ({ cells, weight: recency[i] })));
+      const found = await suggestLoops(start, target, current.signal, undefined, undefined, { earlier });
       if (controller !== current) return;
       suggestions.value = found.map(suggestion => ({ ...suggestion, leg: markRaw(suggestion.leg) }));
+      delete history[place];
+      history[place] = [found.map(suggestion => suggestion.cells), ...searches].slice(0, recency.length);
+      writeHistory(history);
     } catch (cause) {
       if (controller === current) error.value = cause instanceof Error ? cause.message : 'Runden konnten nicht berechnet werden.';
     } finally {

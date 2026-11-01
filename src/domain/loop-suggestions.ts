@@ -3,13 +3,15 @@ import { bearing } from './gpx-inspection.ts';
 import { clipSpans, sectionCuts } from './gpx-route.ts';
 import { routingPolicyVersion } from '../config/routing-policy.ts';
 
-// `turn` turns the compass directions the loops head in, so that asking again finds other loops.
-export interface LoopTarget { meters: number; ascent: number; turn?: number }
-export interface LoopCandidate { direction: number; radius: number; leg: LegGeometry }
+export interface LoopTarget { meters: number; ascent: number }
+// `points` is how many points on its arc BRouter routes a loop through: fewer make it narrower, more rounder.
+export interface LoopCandidate { direction: number; radius: number; points: number; leg: LegGeometry }
 
-// BRouter builds a loop through five points on a circle; it comes out about 6.2 times the circle's radius.
-// Twelve directions give loops through different country, so climbing differs much more than distance.
+// BRouter builds a loop through points on an arc around the start; with five it comes out about 6.2 times the radius.
+// Twelve directions give loops through different country, so climbing differs much more than distance; `turn` turns
+// them all, so that each search heads out a little differently.
 export const loopDirections = (turn = 0) => Array.from({ length: 12 }, (_, i) => i * 30 + turn);
+export const loopShapes = [5, 4, 6];
 export const firstRadius = (meters: number) => meters / 6.2;
 // The second try in each direction scales the radius by how far the first missed the distance; the third aims
 // between both tries, as distance grows with the radius but not in proportion.
@@ -85,21 +87,60 @@ const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs
 
 // Distance counts most, and a loop more than 15% off only fills in; then climbing. Roads ridden twice make a loop
 // worse, and unpaved roads, which a loop meets where BRouter snaps a circle point to a track, much worse: 10 % of a
-// loop unpaved weighs as much as missing the distance by 15 %. Of the best, those heading at least 60° apart, so the
+// loop unpaved weighs as much as missing the distance by 15 %. Among the loops nearly as good as the best and with
+// hardly more unpaved road, those on roads suggested lately (`seen`, from 0 to 1) come last, so the suggestions change
+// from one search to the next; a worse loop never wins by being new, it only fills in. Of these, those heading at least 60° apart, so the
 // suggestions differ.
-export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count = 3): LoopCandidate[] {
-  const score = ({ leg }: LoopCandidate) => {
+export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count = 3,
+  seen: (candidate: LoopCandidate) => number = () => 0): LoopCandidate[] {
+  const quality = ({ leg }: LoopCandidate) => {
     const distance = Math.abs(leg.distanceMeters - target.meters) / target.meters;
     return 2 * distance + (distance > .15 ? 1 : 0) + Math.abs((leg.ascentMeters ?? 0) - target.ascent) / Math.max(target.ascent, 200) +
       4 * twiceShare(leg) + 10 * unpavedShare(leg);
   };
-  const scores = new Map(candidates.map(candidate => [candidate, score(candidate)]));
+  if (!candidates.length) return [];
+  const qualities = new Map(candidates.map(candidate => [candidate, quality(candidate)]));
+  const best = candidates.reduce((a, b) => qualities.get(b)! < qualities.get(a)! ? b : a);
+  const unpavedAtBest = unpavedShare(best.leg);
+  const scores = new Map(candidates.map(candidate => {
+    const own = qualities.get(candidate)!;
+    const asGood = own <= qualities.get(best)! + .25 && unpavedShare(candidate.leg) <= unpavedAtBest + .005;
+    return [candidate, asGood ? own + seen(candidate) : 100 + own];
+  }));
   const picks: LoopCandidate[] = [];
   for (const candidate of [...candidates].sort((a, b) => scores.get(a)! - scores.get(b)!)) {
     if (picks.every(pick => apart(pick.direction, candidate.direction) >= 60)) picks.push(candidate);
     if (picks.length === count) break;
   }
   return picks;
+}
+
+// The squares of about 250 m a loop passes through, counted every 100 m, leaving out those within `near` metres of the
+// start, which every loop from there shares.
+export function loopCells({ coordinates }: LegGeometry, start: Coord, near: number): string[] {
+  const size = 250, north = size / 111195, east = size / (111320 * Math.cos(start[1] * Math.PI / 180));
+  const cells = new Set<string>();
+  const visit = (coord: Coord) => {
+    if (distanceMeters(start, coord) >= near) cells.add(`${Math.floor(coord[0] / east)},${Math.floor(coord[1] / north)}`);
+  };
+  coordinates.forEach((coord, i) => {
+    if (i) {
+      const from = coordinates[i - 1], steps = Math.floor(distanceMeters(from, coord) / 100);
+      for (let k = 1; k <= steps; k++) visit([from[0] + (coord[0] - from[0]) * k / (steps + 1), from[1] + (coord[1] - from[1]) * k / (steps + 1)]);
+    }
+    visit(coord);
+  });
+  return [...cells];
+}
+
+// How much of a loop's squares an earlier suggestion already went through, each earlier one weighted by how recent it
+// is: the largest weighted share, from 0 to 1.
+export function seenShare(cells: string[], earlier: { cells: string[]; weight: number }[]): number {
+  if (!cells.length) return 0;
+  return Math.max(0, ...earlier.map(({ cells: before, weight }) => {
+    const passed = new Set(before);
+    return weight * cells.filter(cell => passed.has(cell)).length / cells.length;
+  }));
 }
 
 export function farthestPoint({ coordinates }: LegGeometry, start: Coord): Coord {

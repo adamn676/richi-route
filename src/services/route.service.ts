@@ -74,9 +74,9 @@ export async function traceGpxPortion(points: Coord[], signal: AbortSignal) {
 }
 
 // BRouter's round trip: a loop from the start through five points on a circle of this radius, centred in this direction.
-export async function traceRoundTrip(start: Coord, radiusMeters: number, direction: number, signal: AbortSignal) {
+export async function traceRoundTrip(start: Coord, radiusMeters: number, direction: number, signal: AbortSignal, points = 5) {
   return parseBRouterLeg(await request([start], signal, false,
-    { engineMode: '4', roundTripDistance: String(Math.round(radiusMeters)), direction: String(direction), roundTripPoints: '5' }));
+    { engineMode: '4', roundTripDistance: String(Math.round(radiusMeters)), direction: String(direction), roundTripPoints: String(points) }));
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {
