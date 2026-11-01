@@ -8,14 +8,15 @@ import type { LoopSuggestion } from '@/services/loop-suggestions.service';
 import { LOOP_OUTLINE_LAYER, MAP_LABELS_ANCHOR, SEGMENTS_OUTLINE_LAYER } from '@/config/map.config';
 import { loopColors } from '@/config/mapStyle';
 import { showOnMap } from '@/utils/map-fit';
-import { animateLight, runningLight } from '@/utils/line-flow';
+import { addArrowImages, addArrowLayers, arrowPoints, arrowSpacing, onZoomStep } from '@/utils/route-arrows';
 
 // The suggested loops in their card colours, beneath the route. The selected one is the route itself; the others stay
-// faint for comparison, and the one pointed at in the list stands out, with a light running inside it in riding direction.
+// faint for comparison, and the one pointed at in the list stands out, with glass beads showing its direction.
 const props = defineProps<{ map: Map; loops: LoopSuggestion[] | null; highlighted: number | null; selected: number | null }>();
 const emit = defineEmits<{ highlight: [index: number | null] }>();
-const source = 'loop-suggestions-source', layers = [LOOP_OUTLINE_LAYER, 'loop-suggestions-line', 'loop-suggestions-light'];
-let ready = false, stopLight: (() => void) | undefined;
+const source = 'loop-suggestions-source', arrows = 'loop-suggestions-arrows';
+const layers = [LOOP_OUTLINE_LAYER, 'loop-suggestions-line', `${arrows}-beads`, `${arrows}-chevrons`];
+let ready = false, stopZoom: (() => void) | undefined;
 const highlight: ExpressionSpecification = ['coalesce', ['global-state', 'loopHighlight'], -1];
 const selection: ExpressionSpecification = ['coalesce', ['global-state', 'loopSelected'], -1];
 const isHighlighted: ExpressionSpecification = ['==', ['get', 'index'], highlight];
@@ -28,7 +29,7 @@ function draw() {
   const existing = props.map.getSource<GeoJSONSource>(source);
   if (existing) { existing.setData(data); mark(); return; }
   const below = props.map.getLayer(SEGMENTS_OUTLINE_LAYER) ? SEGMENTS_OUTLINE_LAYER : MAP_LABELS_ANCHOR;
-  props.map.addSource(source, { type: 'geojson', lineMetrics: true, data });
+  props.map.addSource(source, { type: 'geojson', data });
   props.map.addLayer({ id: layers[0], type: 'line', source, filter: notSelected, layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': ['case', isHighlighted, 10, 7] } }, below);
   props.map.addLayer({ id: layers[1], type: 'line', source, filter: notSelected,
@@ -36,9 +37,9 @@ function draw() {
     paint: { 'line-color': ['match', ['get', 'index'], 0, loopColors[0], 1, loopColors[1], loopColors[2]],
       'line-width': ['case', isHighlighted, 6, 4],
       'line-opacity': ['case', isHighlighted, 1, ['!=', selection, -1], .45, ['==', highlight, -1], .9, .35] } }, below);
-  props.map.addLayer({ id: layers[2], type: 'line', source, filter: ['all', notSelected, isHighlighted],
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-width': 8, 'line-blur': 2, 'line-gradient': runningLight(1) } }, below);
+  props.map.addSource(arrows, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  addArrowImages(props.map, 'loop-arrow', Object.fromEntries(loopColors.map((colour, index) => [index, colour])));
+  addArrowLayers(props.map, arrows, arrows, 'loop-arrow', 1, below);
   mark();
 }
 // Pointing and selecting change only the map's state, not the loops' data.
@@ -46,10 +47,14 @@ function mark() {
   if (!ready) return;
   props.map.setGlobalStateProperty('loopHighlight', props.highlighted ?? -1);
   props.map.setGlobalStateProperty('loopSelected', props.selected ?? -1);
-  // The light runs from the start of the loop pointed at; the selected one is the route, which has its own.
-  stopLight?.();
-  const lit = props.highlighted !== null && props.highlighted !== props.selected && props.loops?.length;
-  stopLight = lit ? animateLight(props.map, layers[2], 4, 1) : undefined;
+  placeArrows();
+}
+// Beads run along the loop pointed at; the selected one is the route, which has its own.
+function placeArrows() {
+  const index = props.highlighted, loop = index !== null && index !== props.selected ? props.loops?.[index] : undefined;
+  const stretches = loop ? [[{ coordinates: loop.leg.coordinates, key: String(index), marked: true }]] : [];
+  props.map.getSource<GeoJSONSource>(arrows)?.setData({ type: 'FeatureCollection',
+    features: loop ? arrowPoints(stretches, arrowSpacing(props.map.getZoom(), loop.leg.coordinates[0][1])) : [] });
 }
 function styleLoaded() { ready = true; draw(); }
 // Pointing at a loop on the map marks it in the list too; a click chooses it (useMapInteractions).
@@ -83,13 +88,14 @@ onMounted(() => {
   props.map.on('mouseleave', layers[0], leave);
   ready = props.map.isStyleLoaded() === true;
   draw();
+  stopZoom = onZoomStep(props.map, placeArrows);
 });
 onBeforeUnmount(() => {
-  stopLight?.();
+  stopZoom?.();
   props.map.off('style.load', styleLoaded);
   props.map.off('mousemove', layers[0], point);
   props.map.off('mouseleave', layers[0], leave);
   for (const layer of [...layers].reverse()) if (props.map.getLayer(layer)) props.map.removeLayer(layer);
-  if (props.map.getSource(source)) props.map.removeSource(source);
+  for (const id of [source, arrows]) if (props.map.getSource(id)) props.map.removeSource(id);
 });
 </script>

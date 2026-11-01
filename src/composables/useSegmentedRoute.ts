@@ -1,25 +1,27 @@
 import type { Map as MaplibreMap, ExpressionSpecification, GeoJSONSource, LineLayerSpecification } from 'maplibre-gl';
-import type { Feature, LineString, Position } from 'geojson';
+import type { Feature, LineString } from 'geojson';
 import {
   MAP_LABELS_ANCHOR,
   SEGMENTS_AIR_LAYER,
   SEGMENTS_ARRIVING_LAYER,
   SEGMENTS_ARRIVING_OUTLINE_LAYER,
+  SEGMENTS_ARROW_LAYER,
+  SEGMENTS_ARROW_SOURCE_ID,
   SEGMENTS_BASE_LAYER,
   SEGMENTS_FORMER_LAYER,
   SEGMENTS_FORMER_OUTLINE_LAYER,
   SEGMENTS_FORMER_SOURCE_ID,
-  SEGMENTS_LIGHT_LAYER,
-  SEGMENTS_LIGHT_SOURCE_ID,
   SEGMENTS_OUTLINE_LAYER,
   SEGMENTS_ROUTE_LAYER,
   SEGMENTS_SOURCE_ID,
   SEGMENTS_WAITING_LAYER,
 } from '@/config/map.config';
 import { routeStyle } from '@/config/mapStyle';
+import type { Coord } from '@/domain/route-model';
 import type { EditorRoute, RouteFeature } from '@/stores/route.store';
 import { getSegments } from '@/utils/geometry';
-import { animateDashes, animateLight, flowingDashes, reducedMotion, runningLight } from '@/utils/line-flow';
+import { animateDashes, flowingDashes, reducedMotion } from '@/utils/line-flow';
+import { addArrowImages, addArrowLayers, arrowPoints, arrowSpacing, onZoomStep, type ArrowPiece } from '@/utils/route-arrows';
 
 // While a surface section is shown (SurfaceFocusLayer), the rest of the route fades.
 const faded: ExpressionSpecification = ['boolean', ['global-state', 'surfaceFocus'], false];
@@ -45,7 +47,7 @@ export function useSegmentedRoute() {
   let settling: ReturnType<typeof setTimeout> | undefined, appearing: ReturnType<typeof setTimeout> | undefined;
   let forgetting: ReturnType<typeof setTimeout> | undefined, drawnFormer: RouteFeature[] | undefined;
   let dotsShown = false, stopDots = () => {};
-  let lit: RouteFeature[] = [], stopLight: (() => void) | undefined;
+  let arrowLegs: RouteFeature[] = [], stopZoom: (() => void) | undefined;
   const motion = !reducedMotion();
 
   function segmentsOf(feature: RouteFeature, arrives: boolean, add: Feature<LineString>[]): number[] {
@@ -63,16 +65,17 @@ export function useSegmentedRoute() {
         MAP_LABELS_ANCHOR);
     map.addSource(SEGMENTS_FORMER_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addSource(SEGMENTS_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: add } });
-    map.addSource(SEGMENTS_LIGHT_SOURCE_ID, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } });
     // The route an edit replaced, faded beneath the new one until that is calculated.
     line(SEGMENTS_FORMER_OUTLINE_LAYER, SEGMENTS_FORMER_SOURCE_ID, undefined, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': .35 });
     line(SEGMENTS_FORMER_LAYER, SEGMENTS_FORMER_SOURCE_ID, undefined, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': .35 });
     const settled: ExpressionSpecification = ['all', routed, ['!', arriving]], arrivingRoute: ExpressionSpecification = ['all', routed, arriving];
     line(SEGMENTS_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': ['case', faded, .35, .95] });
     line(SEGMENTS_ROUTE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': ['case', faded, .35, 1] });
-    // A light runs inside the calculated route in riding direction, a brighter shade of each surface it passes.
-    line(SEGMENTS_LIGHT_LAYER, SEGMENTS_LIGHT_SOURCE_ID, undefined, { 'line-width': 7, 'line-blur': 2, 'line-gradient': runningLight(1),
-      'line-opacity': ['case', faded, 0, 1] });
+    // Glass beads along the calculated route show which way it runs, in the colour of the surface beneath.
+    map.addSource(SEGMENTS_ARROW_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    addArrowImages(map, 'route-arrow', { paved: routeStyle.paved, likelyPaved: routeStyle.likelyPaved, rough: routeStyle.rough,
+      unpaved: routeStyle.unpaved, unknown: routeStyle.unknown });
+    addArrowLayers(map, SEGMENTS_ARROW_LAYER, SEGMENTS_ARROW_SOURCE_ID, 'route-arrow', ['case', faded, .35, 1], MAP_LABELS_ANCHOR);
     line(SEGMENTS_ARRIVING_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': 0 });
     line(SEGMENTS_ARRIVING_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': 0 });
     // A leg that failed, or leads to a stop without a street, stays a red dashed line.
@@ -134,23 +137,22 @@ export function useSegmentedRoute() {
     dotsShown = false;
   }
 
-  // The light runs along each stretch of calculated legs as one line from its start, and only while there is one.
-  function showLight(map: MaplibreMap, features: RouteFeature[], fresh: boolean): void {
-    const routed = features.filter(feature => feature.properties.status === 'routed');
-    if (!fresh && routed.length === lit.length && routed.every((feature, i) => feature === lit[i])) return;
-    const stretches: Position[][] = [];
-    let previous: RouteFeature | undefined;
-    for (const feature of features) {
-      const coordinates = feature.geometry.coordinates;
-      if (feature.properties.status !== 'routed') previous = undefined;
-      else if (previous) stretches.at(-1)!.push(...coordinates.slice(1));
-      else { stretches.push([...coordinates]); previous = feature; }
+  // The beads run evenly along each stretch of calculated legs, placed afresh when the route changes or the zoom steps.
+  function placeArrows(map: MaplibreMap): void {
+    const stretches: ArrowPiece[][] = [];
+    let open = false;
+    for (const feature of arrowLegs) {
+      if (feature.properties.status !== 'routed') { open = false; continue; }
+      const pieces: ArrowPiece[] = getSegments(feature).map(({ geometry, properties }) => ({ coordinates: geometry.coordinates as Coord[], key: properties.surface }));
+      // Each leg ends at a stop or shape point.
+      pieces[pieces.length - 1].marked = true;
+      if (open) stretches.at(-1)!.push(...pieces);
+      else stretches.push(pieces);
+      open = true;
     }
-    map.getSource<GeoJSONSource>(SEGMENTS_LIGHT_SOURCE_ID)?.setData({ type: 'FeatureCollection',
-      features: stretches.map(coordinates => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })) });
-    lit = routed;
-    if (routed.length) stopLight ??= animateLight(map, SEGMENTS_LIGHT_LAYER, 4, 1);
-    else { stopLight?.(); stopLight = undefined; }
+    const latitude = stretches[0]?.[0]?.coordinates[0]?.[1] ?? 0;
+    map.getSource<GeoJSONSource>(SEGMENTS_ARROW_SOURCE_ID)?.setData({ type: 'FeatureCollection',
+      features: arrowPoints(stretches, arrowSpacing(map.getZoom(), latitude)) });
   }
 
   function renderSegments(map: MaplibreMap, route: EditorRoute | null, former: RouteFeature[] = []): void {
@@ -185,7 +187,11 @@ export function useSegmentedRoute() {
       if (add.length || remove.length) source.updateData({ removeAll: !drawn.size, remove, add });
     }
     drawn = next;
-    showLight(map, features, !source);
+    if (!source || features.length !== arrowLegs.length || features.some((feature, i) => feature !== arrowLegs[i])) {
+      arrowLegs = features;
+      placeArrows(map);
+    }
+    stopZoom ??= onZoomStep(map, () => placeArrows(map));
     if (arrived) fade(map);
     showWaiting(map, waitingLegs.size > 0);
     if (former !== drawnFormer || !source) {
@@ -204,7 +210,8 @@ export function useSegmentedRoute() {
     clearTimeout(appearing);
     clearTimeout(forgetting);
     stopDots();
-    stopLight?.();
+    stopZoom?.();
+    stopZoom = undefined;
   }
 
   return { renderSegments, dispose };
