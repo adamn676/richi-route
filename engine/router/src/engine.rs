@@ -1156,7 +1156,7 @@ impl Searcher {
                         .wrapping_add(p.elevation_correction())
                         .wrapping_add(cct.cost.wrapping_sub(elements[pe].cost));
                     if cost_estimate <= max_total_cost {
-                        let message = p.message.clone();
+                        let message = p.message().cloned().map(Box::new);
                         *match_path = Some(OsmPath::new_element(paths, path, message, &cache.nodes_map, elements));
                     }
                     if cost_estimate < max_total_cost {
@@ -1569,7 +1569,7 @@ fn compile_track(
     final_track: bool,
     inverse_routing: bool,
 ) -> OsmTrack {
-    let message = paths[path as usize].message.take();
+    let message = paths[path as usize].take_message();
     let mut element = OsmPath::new_element(paths, path, message, map, elements);
     let path = &paths[path as usize];
 

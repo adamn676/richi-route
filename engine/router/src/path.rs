@@ -41,9 +41,6 @@ pub struct OsmPath {
     pub source_node: Option<NodeIdx>,
     pub target_node: NodeIdx,
     pub link: LinkIdx,
-    /// Java's `originElement` in the final (detail) pass. The search passes leave elements out until a
-    /// track needs them: there, the origin element is always `origin_path`'s, made by `element_index`.
-    origin_element: Option<ElemIdx>,
     origin_path: PathIdx,
     /// The path's element once made (Java's `myElement`), shared by its successors.
     my_element: Option<ElemIdx>,
@@ -57,16 +54,49 @@ pub struct OsmPath {
     last_initial_cost: f32,
     priorityclassifier: i32,
     bitfield: u8,
-    pub message: Option<Box<MessageData>>,
+    /// The final pass's state; boxed, so that the many paths of the search passes stay small.
+    detail: Option<Box<Detail>>,
 
-    // StdPath: the elevation hysteresis buffers (0-10 m, in micrometers), travel time (s), energy (J)
+    // StdPath: the elevation hysteresis buffers (0-10 m, in micrometers)
     ehbd: i32,
     ehbu: i32,
+    uphillcostdiv: i32,
+    downhillcostdiv: i32,
+}
+
+/// What a path carries in the final (detail) pass only (and a beeline path's message).
+#[derive(Clone, Debug, Default)]
+struct Detail {
+    message: Option<Box<MessageData>>,
+    /// Java's `originElement`. The search passes leave elements out until a track needs them: there,
+    /// the origin element is always `origin_path`'s, made by `element_index`.
+    origin_element: Option<ElemIdx>,
+    kinematics: Kinematics,
+}
+
+/// StdPath's travel time (s), energy (J) and elevation buffer.
+#[derive(Clone, Copy, Debug, Default)]
+struct Kinematics {
     total_time: f32,
     total_energy: f32,
     elevation_buffer: f32,
-    uphillcostdiv: i32,
-    downhillcostdiv: i32,
+}
+
+impl Kinematics {
+    fn calc_incline(&mut self, dist: f64) -> f64 {
+        let min_delta = 3.0;
+        let mut shift = 0.0;
+        if f64::from(self.elevation_buffer) > min_delta {
+            shift = -min_delta;
+        } else if f64::from(self.elevation_buffer) < -min_delta {
+            shift = min_delta;
+        }
+        let decay_factor = libm::exp(-dist / 100.0);
+        let new_elevation_buffer = ((f64::from(self.elevation_buffer) + shift) * decay_factor - shift) as f32;
+        let incline = f64::from(self.elevation_buffer - new_elevation_buffer) / dist;
+        self.elevation_buffer = new_elevation_buffer;
+        incline
+    }
 }
 
 /// What path creation reads and changes besides the paths themselves.
@@ -100,7 +130,6 @@ impl OsmPath {
             source_node,
             target_node,
             link,
-            origin_element: None,
             origin_path: NO_PATH,
             my_element: None,
             next_for_link: NO_PATH,
@@ -111,12 +140,9 @@ impl OsmPath {
             last_initial_cost: 0.0,
             priorityclassifier: 0,
             bitfield: PATH_START_BIT,
-            message: None,
+            detail: None,
             ehbd: 0,
             ehbu: 0,
-            total_time: 0.0,
-            total_energy: 0.0,
-            elevation_buffer: 0.0,
             uphillcostdiv: 0,
             downhillcostdiv: 0,
         }
@@ -132,7 +158,7 @@ impl OsmPath {
         elements: &mut PathElements,
     ) -> ElemIdx {
         let origin = match paths[idx as usize].origin_path {
-            NO_PATH => paths[idx as usize].origin_element,
+            NO_PATH => paths[idx as usize].detail.as_ref().and_then(|d| d.origin_element),
             origin_path => Some(Self::element_index(paths, origin_path, map, elements)),
         };
         elements.push(paths[idx as usize].element(map, message, origin))
@@ -151,7 +177,7 @@ impl OsmPath {
             i = paths[i as usize].origin_path;
         }
         for &i in missing.iter().rev().chain([&idx]) {
-            let message = paths[i as usize].message.take();
+            let message = paths[i as usize].take_message();
             paths[i as usize].my_element = Some(Self::new_element(paths, i, message, map, elements));
         }
         paths[idx as usize].my_element.expect("made above")
@@ -180,9 +206,13 @@ impl OsmPath {
         let o = &paths[origin as usize];
         let source = o.target_node;
         let target = env.map.target(link, source);
+        let detail = detail_mode.then(|| {
+            let kinematics = o.detail.as_ref().map(|d| d.kinematics).unwrap_or_default();
+            Box::new(Detail { message: None, origin_element, kinematics })
+        });
         let mut p = Self {
             cost: o.cost,
-            origin_element,
+            detail,
             origin_path,
             last_classifier: o.last_classifier,
             last_initial_cost: o.last_initial_cost,
@@ -190,9 +220,6 @@ impl OsmPath {
             priorityclassifier: o.priorityclassifier,
             ehbd: o.ehbd,
             ehbu: o.ehbu,
-            total_time: o.total_time,
-            total_energy: o.total_energy,
-            elevation_buffer: o.elevation_buffer,
             ..Self::blank(link, Some(source), target)
         };
         p.add_additional_penalty(ref_track, detail_mode, o, env)?;
@@ -225,11 +252,27 @@ impl OsmPath {
     fn reset_state(&mut self) {
         self.ehbd = 0;
         self.ehbu = 0;
-        self.total_time = 0.0;
-        self.total_energy = 0.0;
         self.uphillcostdiv = 0;
         self.downhillcostdiv = 0;
-        self.elevation_buffer = 0.0;
+        if let Some(d) = &mut self.detail {
+            d.kinematics = Kinematics::default();
+        }
+    }
+
+    fn detail_mut(&mut self) -> &mut Detail {
+        self.detail.get_or_insert_default()
+    }
+
+    pub fn message(&self) -> Option<&MessageData> {
+        self.detail.as_ref()?.message.as_deref()
+    }
+
+    fn message_mut(&mut self) -> Option<&mut MessageData> {
+        self.detail.as_mut()?.message.as_deref_mut()
+    }
+
+    pub fn take_message(&mut self) -> Option<Box<MessageData>> {
+        self.detail.as_mut()?.message.take()
     }
 
     fn add_additional_penalty(
@@ -247,7 +290,7 @@ impl OsmPath {
 
         let Some(description) = map.link(link).description_bitmap.as_deref() else {
             // could be a beeline path
-            self.message = Some(Box::new(MessageData {
+            self.detail_mut().message = Some(Box::new(MessageData {
                 time: 1.0,
                 lon: target_node.ilon,
                 lat: target_node.ilat,
@@ -270,7 +313,9 @@ impl OsmPath {
 
         let mut linkdisttotal = 0i32;
 
-        self.message = detail_mode.then(Box::default);
+        if detail_mode {
+            self.detail_mut().message = Some(Box::default());
+        }
 
         let is_reverse = map.link(link).is_reverse(source);
         let tags_reverse = rc.inverse_direction ^ is_reverse;
@@ -308,7 +353,7 @@ impl OsmPath {
                 return Ok(());
             }
             let iicost = initialcost as i32;
-            if let Some(m) = &mut self.message {
+            if let Some(m) = self.message_mut() {
                 m.linkinitcost = m.linkinitcost.wrapping_add(iicost);
             }
             self.cost = self.cost.wrapping_add(iicost);
@@ -405,11 +450,13 @@ impl OsmPath {
             }
 
             // if recording, new MessageData for each section (needed for turn-instructions)
-            if self.message.as_ref().is_some_and(|m| m.way_key_values.is_some()) {
-                if let Some(e) = self.origin_element {
-                    env.elements[e].message = self.message.take();
+            if let Some(d) = self.detail.as_deref_mut()
+                && d.message.as_ref().is_some_and(|m| m.way_key_values.is_some())
+            {
+                if let Some(e) = d.origin_element {
+                    env.elements[e].message = d.message.take();
                 }
-                self.message = Some(Box::default());
+                d.message = Some(Box::default());
             }
 
             let mut dist = rc.nogos.calc_distance(lon1, lat1, lon2, lat2);
@@ -428,7 +475,7 @@ impl OsmPath {
                     is_startpoint = true;
 
                     if detail_mode {
-                        self.origin_element = if rc.nogos.wayfraction > 0.0 {
+                        self.detail_mut().origin_element = if rc.nogos.wayfraction > 0.0 {
                             ele1 = interpolate_ele(ele1, ele2, 1.0 - rc.nogos.wayfraction);
                             Some(env.elements.create(rc.nogos.ilonshortest, rc.nogos.ilatshortest, ele1, None))
                         } else {
@@ -447,7 +494,7 @@ impl OsmPath {
                 }
             }
 
-            if let Some(m) = &mut self.message {
+            if let Some(m) = self.message_mut() {
                 m.linkdist = m.linkdist.wrapping_add(dist);
             }
             linkdisttotal = linkdisttotal.wrapping_add(dist);
@@ -509,9 +556,9 @@ impl OsmPath {
             // compute kinematic
             self.compute_kinematic(rc, way, f64::from(dist), delta_h, detail_mode);
 
-            if let Some(m) = &mut self.message {
-                m.time = self.total_time;
-                m.energy = self.total_energy;
+            if let Some(Detail { message: Some(m), kinematics, .. }) = self.detail.as_deref_mut() {
+                m.time = kinematics.total_time;
+                m.energy = kinematics.total_energy;
                 m.lon = lon2;
                 m.lat = lat2;
                 m.ele = origin_ele2;
@@ -521,17 +568,18 @@ impl OsmPath {
 
             if stop_at_endpoint {
                 if detail_mode {
-                    let mut e = OsmPathElement {
+                    let cost = self.cost;
+                    let d = self.detail_mut();
+                    // Java shares the message with the path; the path's own element is dropped later
+                    let e = OsmPathElement {
                         ilat: rc.nogos.ilatshortest,
                         ilon: rc.nogos.ilonshortest,
                         selev: origin_ele2,
-                        message: None,
-                        cost: self.cost,
-                        origin: self.origin_element,
+                        message: d.message.clone(),
+                        cost,
+                        origin: d.origin_element,
                     };
-                    // Java shares the message with the path; the path's own element is dropped later
-                    e.message.clone_from(&self.message);
-                    self.origin_element = Some(env.elements.push(e));
+                    d.origin_element = Some(env.elements.push(e));
                 }
                 self.cost = (f64::from(self.cost) + rc.nogos.nogo_cost) as i32;
                 return Ok(());
@@ -550,9 +598,11 @@ impl OsmPath {
             }
 
             if detail_mode {
-                let e = env.elements.create(lon2, lat2, origin_ele2, self.origin_element);
-                env.elements[e].cost = self.cost;
-                self.origin_element = Some(e);
+                let cost = self.cost;
+                let d = self.detail_mut();
+                let e = env.elements.create(lon2, lat2, origin_ele2, d.origin_element);
+                env.elements[e].cost = cost;
+                d.origin_element = Some(e);
             }
             lon0 = lon1;
             lat0 = lat1;
@@ -626,7 +676,7 @@ impl OsmPath {
             }
         }
 
-        if let Some(m) = &mut self.message {
+        if let Some(m) = self.message_mut() {
             m.linkturncost = m.linkturncost.wrapping_add(turncost);
         }
 
@@ -666,7 +716,7 @@ impl OsmPath {
             }
             if elevation_cost > 0.0 {
                 section_cost += f64::from(elevation_cost);
-                if let Some(m) = &mut self.message {
+                if let Some(m) = self.message_mut() {
                     m.linkelevationcost = (m.linkelevationcost as f32 + elevation_cost) as i32;
                 }
             }
@@ -699,7 +749,7 @@ impl OsmPath {
             }
             if elevation_cost > 0.0 {
                 section_cost += f64::from(elevation_cost);
-                if let Some(m) = &mut self.message {
+                if let Some(m) = self.message_mut() {
                     m.linkelevationcost = (m.linkelevationcost as f32 + elevation_cost) as i32;
                 }
             }
@@ -710,7 +760,7 @@ impl OsmPath {
         // get the effective costfactor (slope dependent)
         let costfactor = cfup * upweight + cf * (1.0 - upweight - downweight) + cfdown * downweight;
 
-        if let Some(m) = &mut self.message {
+        if let Some(m) = self.message_mut() {
             m.costfactor = costfactor;
         }
 
@@ -732,7 +782,7 @@ impl OsmPath {
         if f64::from(initialcost) >= 1_000_000.0 {
             return Ok(-1.0);
         }
-        if let Some(m) = &mut self.message {
+        if let Some(m) = self.message_mut() {
             m.linknodecost = m.linknodecost.wrapping_add(initialcost as i32);
             m.node_key_values = Some(node.key_value_description(node_access_granted, description));
         }
@@ -763,30 +813,16 @@ impl OsmPath {
         self.cost > c
     }
 
-    fn calc_incline(&mut self, dist: f64) -> f64 {
-        let min_delta = 3.0;
-        let mut shift = 0.0;
-        if f64::from(self.elevation_buffer) > min_delta {
-            shift = -min_delta;
-        } else if f64::from(self.elevation_buffer) < -min_delta {
-            shift = min_delta;
-        }
-        let decay_factor = libm::exp(-dist / 100.0);
-        let new_elevation_buffer = ((f64::from(self.elevation_buffer) + shift) * decay_factor - shift) as f32;
-        let incline = f64::from(self.elevation_buffer - new_elevation_buffer) / dist;
-        self.elevation_buffer = new_elevation_buffer;
-        incline
-    }
-
     /// `StdPath.computeKinematic`: travel time and energy, in the final (detail) pass only.
     fn compute_kinematic(&mut self, rc: &RoutingContext, way: &WayContext, dist: f64, delta_h: f64, detail_mode: bool) {
         if !detail_mode {
             return;
         }
+        let k = &mut self.detail_mut().kinematics;
 
         // compute incline
-        self.elevation_buffer = (f64::from(self.elevation_buffer) + delta_h) as f32;
-        let incline = self.calc_incline(dist);
+        k.elevation_buffer = (f64::from(k.elevation_buffer) + delta_h) as f32;
+        let incline = k.calc_incline(dist);
 
         let mut max_speed = rc.max_speed;
         let speed_limit = f64::from(way.maxspeed() / 3.6);
@@ -804,17 +840,17 @@ impl OsmPath {
             speed = min_f64(speed, max_speed);
         }
         let dt = (dist / speed) as f32;
-        self.total_time += dt;
+        k.total_time += dt;
         // Calc energy assuming biking (no good model yet for hiking)
         // (Count only positive, negative would mean breaking to enforce maxspeed)
         let energy = dist * (rc.s_c_x * speed * speed + f_roll);
         if energy > 0.0 {
-            self.total_energy = (f64::from(self.total_energy) + energy) as f32;
+            k.total_energy = (f64::from(k.total_energy) + energy) as f32;
         }
     }
 
     pub fn total_energy(&self) -> f32 {
-        self.total_energy
+        self.detail.as_ref().map_or(0.0, |d| d.kinematics.total_energy)
     }
 }
 

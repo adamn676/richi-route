@@ -164,9 +164,11 @@ parity/bench.sh old/richi-engine new/richi-engine # A/B builds: run in turn, bes
 ```
 
 The workload is the 108 recorded loop queries of three starts (Graz, Feldbach, St. Pölten) from
-`target/parity/loops/java.json`, answered single-threaded; it prints the best time and peak RSS per
-binary, and fails if a binary's answers differ from the first one's. Settings: `RICHIROUTE_BENCH_RUNS`
-(3), `RICHIROUTE_BENCH_THREADS` (1), `RICHIROUTE_BENCH_CELL_CACHE_MB`, `RICHIROUTE_BENCH_STARTS` (comma
-separated) and `RICHIROUTE_BENCH_CPUS` (a `taskset` CPU list, to pin the runs on a shared machine). For
-an A/B decision, build both binaries from the same sources apart from the change, take the best of 3 or
-more runs and keep the change only if it is a clear win. Outputs go to `target/parity/bench/`.
+`target/parity/loops/java.json`, answered single-threaded (plus the store's thread that decodes cells
+ahead); it prints the best time and peak RSS per binary, and fails if a binary's answers differ from the
+first one's. Settings: `RICHIROUTE_BENCH_RUNS` (3), `RICHIROUTE_BENCH_THREADS` (1),
+`RICHIROUTE_BENCH_CELL_CACHE_MB`, `RICHIROUTE_BENCH_STARTS` (comma separated) and
+`RICHIROUTE_BENCH_CPUS` (a `taskset` CPU list, to pin the runs on a shared machine; give it two CPUs
+for the decoding ahead, one switches it off). For an A/B decision, build both binaries from the same
+sources apart from the change, take the best of 3 or more runs and keep the change only if it is a clear
+win. Outputs go to `target/parity/bench/`.

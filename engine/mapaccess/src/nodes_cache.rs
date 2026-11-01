@@ -31,6 +31,8 @@ pub struct NodesCache {
 
     pub nodes_map: OsmNodesMap,
     lookup_version: i32,
+    /// The profile's `isLookupIdxUsed`, for cells decoded ahead (see `SegmentStore::prefetch`).
+    lookups_used: Arc<[bool]>,
 
     /// The files this search (and the searches before it in the chain of caches) asked the store for.
     file_cache: HashMap<String, Option<Arc<PhysicalFile>>>,
@@ -60,6 +62,10 @@ pub struct NodesCache {
     pub direct_weaving: bool,
 }
 
+/// More lookups than a lookup table has. Beyond them, a cell decoded ahead counts lookups as unused;
+/// should the profile use one, weaving re-encodes the cell's way tags for it.
+const MAX_LOOKUPS: usize = 1024;
+
 impl NodesCache {
     /// A cache for one search. The previous search's cache, if any, is taken from `old_cache` (Java:
     /// `new NodesCache(..., oldCache, ...)` assigned over the old one) to reuse its open files and
@@ -87,6 +93,7 @@ impl NodesCache {
             store: store.clone(),
             nodes_map: OsmNodesMap::new(),
             lookup_version: i32::from(ctx_way.lookup_version()),
+            lookups_used: (0..MAX_LOOKUPS).map(|i| ctx_way.is_lookup_idx_used(i)).collect(),
             file_cache: HashMap::new(),
             data_buffers: DataBuffers::new(),
             weave_buffers: WeaveBuffers::default(),
@@ -224,6 +231,7 @@ impl NodesCache {
                     ilon,
                     ilat,
                     &self.store,
+                    &self.lookups_used,
                     &mut self.data_buffers,
                     &mut self.weave_buffers,
                     ctx_way,

@@ -3,7 +3,7 @@
 
 use crate::OsmNodesMap;
 use crate::direct_weaver::{DecodedCell, WeaveBuffers, weave};
-use crate::store::{CellKey, SegmentStore};
+use crate::store::{CellKey, Prefetch, SegmentStore};
 use brouter_codec::{DataBuffers, MicroCache, StatCoderContext, TagValueValidator, WaypointMatcher};
 use brouter_util::{ByteDataReader, crc};
 use std::fs::File;
@@ -268,7 +268,8 @@ impl OsmFile {
         &mut self,
         ilon: i32,
         ilat: i32,
-        store: &SegmentStore,
+        store: &Arc<SegmentStore>,
+        lookups_used: &Arc<[bool]>,
         data_buffers: &mut DataBuffers,
         weave_buffers: &mut WeaveBuffers,
         way_validator: &mut dyn TagValueValidator,
@@ -286,10 +287,11 @@ impl OsmFile {
             let key = CellKey { file: is.id, tile: self.tile_index as u32, lon_idx, lat_idx };
             let cell = store.cell(key, || {
                 let ab = self.read_cell(sub_idx, &mut data_buffers.iobuffer)?;
-                Ok(DecodedCell::decode(ab, lon_idx, lat_idx, self.divisor, way_validator))
+                Ok(DecodedCell::decode(ab, lon_idx, lat_idx, self.divisor, &|i| way_validator.is_lookup_idx_used(i)))
             })?;
             let grown = weave(&cell, weave_buffers, way_validator, waypoint_matcher, hollow_nodes);
             store.charge(key, &cell, grown);
+            store.prefetch(self.neighbours(lon_idx, lat_idx, lookups_used));
             MicroCache::empty_non_virgin()
         } else {
             let mut iobuffer = std::mem::take(&mut data_buffers.iobuffer);
@@ -318,27 +320,42 @@ impl OsmFile {
         (start_pos, (self.pos_idx[sub_idx] - start_pos).max(0) as usize)
     }
 
+    /// The cells next to this one in the square that this search has not loaded, to decode ahead.
+    fn neighbours<'a>(
+        &'a self,
+        lon_idx: i32,
+        lat_idx: i32,
+        lookups_used: &'a Arc<[bool]>,
+    ) -> impl Iterator<Item = Prefetch> + 'a {
+        let is = self.is.as_ref().expect("square with data");
+        [(-1, 0), (1, 0), (0, -1), (0, 1)].into_iter().filter_map(move |(dx, dy)| {
+            let (lon_idx, lat_idx) = (lon_idx + dx, lat_idx + dy);
+            let x = lon_idx - self.divisor * self.lon_degree;
+            let y = lat_idx - self.divisor * self.lat_degree;
+            if !(0..self.divisor).contains(&x) || !(0..self.divisor).contains(&y) {
+                return None;
+            }
+            let sub_idx = (y * self.divisor + x) as usize;
+            let (start_pos, len) = self.cell_range(sub_idx);
+            if len == 0 || self.micro_caches.as_ref()?[sub_idx].is_some() {
+                return None;
+            }
+            Some(Prefetch {
+                key: CellKey { file: is.id, tile: self.tile_index as u32, lon_idx, lat_idx },
+                file: is.clone(),
+                pos: (self.file_offset + i64::from(start_pos)) as u64,
+                len,
+                divisor: self.divisor,
+                lookups_used: lookups_used.clone(),
+            })
+        })
+    }
+
     /// Reads a non-empty cell into `ab` and checks its footer.
     fn read_cell<'a>(&self, sub_idx: usize, ab: &'a mut Vec<u8>) -> IoResult<&'a [u8]> {
         let (start_pos, asize) = self.cell_range(sub_idx);
-        ab.resize(asize, 0);
         let is = self.is.as_ref().expect("square with data");
-        read_fully(&is.ra, (self.file_offset + i64::from(start_pos)) as u64, ab)?;
-
-        // Java checks the footer CRC after decoding, and only if the decoder did not consume exactly
-        // the cell's data, so a damaged cell fails with one of these messages. Checking first gives the
-        // same errors without running the decoder on damaged data, where Java throws inside the decoder
-        // and this check replaces that exception, but Rust would panic. Only damaged data that decodes
-        // to exactly the right length, which Java accepts, is now rejected.
-        if asize < 4 {
-            return Err("checkum error".into());
-        }
-        let crc_data = crc(ab, 0, asize - 4);
-        let crc_footer = ByteDataReader::with_offset(ab, asize - 4).read_int();
-        if (crc_data ^ 2) != crc_footer {
-            return Err(if crc_data == crc_footer { "old, unsupported data-format" } else { "checkum error" }.into());
-        }
-        Ok(ab)
+        read_cell(is, (self.file_offset + i64::from(start_pos)) as u64, asize, ab)
     }
 
     /// Puts the virgin caches into ghost state and drops the others; returns the ghosted data size.
@@ -383,4 +400,25 @@ impl OsmFile {
             }
         }
     }
+}
+
+/// Reads the non-empty cell of `asize` bytes at `pos` into `ab` and checks its footer.
+pub(crate) fn read_cell<'a>(file: &PhysicalFile, pos: u64, asize: usize, ab: &'a mut Vec<u8>) -> IoResult<&'a [u8]> {
+    ab.resize(asize, 0);
+    read_fully(&file.ra, pos, ab)?;
+
+    // Java checks the footer CRC after decoding, and only if the decoder did not consume exactly
+    // the cell's data, so a damaged cell fails with one of these messages. Checking first gives the
+    // same errors without running the decoder on damaged data, where Java throws inside the decoder
+    // and this check replaces that exception, but Rust would panic. Only damaged data that decodes
+    // to exactly the right length, which Java accepts, is now rejected.
+    if asize < 4 {
+        return Err("checkum error".into());
+    }
+    let crc_data = crc(ab, 0, asize - 4);
+    let crc_footer = ByteDataReader::with_offset(ab, asize - 4).read_int();
+    if (crc_data ^ 2) != crc_footer {
+        return Err(if crc_data == crc_footer { "old, unsupported data-format" } else { "checkum error" }.into());
+    }
+    Ok(ab)
 }

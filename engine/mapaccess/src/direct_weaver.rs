@@ -141,15 +141,9 @@ pub(crate) struct WeaveBuffers {
 }
 
 impl DecodedCell {
-    /// Decodes the cell. The validator is only asked which lookups it uses, to re-encode the way tag
-    /// sets for it right away.
-    pub(crate) fn decode(
-        ab: &[u8],
-        lon_idx: i32,
-        lat_idx: i32,
-        divisor: i32,
-        validator: &dyn TagValueValidator,
-    ) -> Self {
+    /// Decodes the cell, with the way tag sets re-encoded right away for the lookups `used` says the
+    /// profile uses.
+    pub(crate) fn decode(ab: &[u8], lon_idx: i32, lat_idx: i32, divisor: i32, used: &dyn Fn(usize) -> bool) -> Self {
         let bc = &mut StatCoderContext::new(ab);
         let cellsize = 1_000_000 / divisor;
         let base = (lon_idx.wrapping_mul(cellsize), lat_idx.wrapping_mul(cellsize));
@@ -157,8 +151,7 @@ impl DecodedCell {
         let way_tree = TagTree::decode(bc);
         let way_tree_bytes = ab[..(bc.reading_bit_position() as usize).div_ceil(8)].into();
         let way_lookups = way_tree.lookup_indices();
-        let mut used = Vec::new();
-        used_lookups(&way_lookups, validator, &mut used);
+        let used = way_lookups.iter().map(|&inum| used(inum as usize)).collect();
         let filtered_way_tags = FilteredTags::new(&way_tree, &way_lookups, used);
         let node_tree = TagTree::decode(bc);
         let node_idx_diff = NoisyDiffCoder::new(bc);
@@ -415,35 +408,7 @@ pub(crate) fn weave(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use brouter_util::{BitWriter, ByteArrayUnifier};
-
-    /// A validator that only answers which lookups it uses.
-    struct Lookups(fn(usize) -> bool);
-
-    impl ByteArrayUnifier for Lookups {
-        fn unify(&mut self, _: &[u8], _: usize, _: usize) -> Description {
-            unreachable!()
-        }
-    }
-
-    impl TagValueValidator for Lookups {
-        fn access_type(&mut self, _: &[u8]) -> i32 {
-            unreachable!()
-        }
-        fn is_lookup_idx_used(&self, idx: usize) -> bool {
-            (self.0)(idx)
-        }
-        fn set_decode_forbidden(&mut self, _: bool) {}
-        fn check_start_way(&mut self, _: &[u8]) -> bool {
-            unreachable!()
-        }
-        fn lookup_version(&self) -> i16 {
-            0
-        }
-        fn lookup_minor_version(&self) -> i16 {
-            0
-        }
-    }
+    use brouter_util::BitWriter;
 
     /// A cell without nodes whose way tree is node(node(leaf, leaf), leaf).
     fn cell_without_nodes() -> Vec<u8> {
@@ -475,7 +440,7 @@ mod tests {
     #[test]
     fn another_profile_reads_the_way_tree_again() {
         let ab = cell_without_nodes();
-        let cell = DecodedCell::decode(&ab, 0, 0, 32, &Lookups(|idx| idx != 3));
+        let cell = DecodedCell::decode(&ab, 0, 0, 32, &|idx| idx != 3);
         let tree = TagTree::decode(&mut BitCoderContext::new(&ab));
         assert_eq!(cell.way_lookups, [1, 3, 4, 9, 12]);
         for used in [[true, false, true, true, true], [false, true, false, false, true], [false; 5]] {

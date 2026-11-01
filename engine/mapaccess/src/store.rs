@@ -6,14 +6,18 @@
 //! involved. Weaving it into a search's graph replays the validator and matcher calls Java makes
 //! while decoding, in the same order, so the profile's caches and the graph end up exactly as if the
 //! cell had been decoded from the file.
+//!
+//! The same makes decoding ahead safe: a thread of the store decodes the cells next to each cell a search
+//! weaves (`SegmentStore::prefetch`), so a long search finds most of its cells decoded, and only its
+//! speed depends on whether it did.
 
 use crate::direct_weaver::DecodedCell;
-use crate::files::{FileStamp, IoResult, PhysicalFile};
-use std::collections::HashMap;
+use crate::files::{FileStamp, IoResult, PhysicalFile, read_cell};
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 
 /// A cell of an open segment file, as asked for: the cell index within the degree square follows
 /// from the position, and so does the corner the decoder puts the nodes at. (Near lon -180 and lat
@@ -43,7 +47,38 @@ pub struct SegmentStore {
     files: Mutex<Lru<FileName, Arc<PhysicalFile>>>,
     cells: Mutex<Lru<CellKey, Arc<DecodedCell>>>,
     next_file_id: AtomicU64,
+    prefetcher: Arc<Prefetcher>,
 }
+
+/// A cell to decode ahead of a search, on the prefetcher's thread: the cells around each cell a search
+/// weaves are likely next. The search then finds them in the store instead of decoding them itself.
+pub(crate) struct Prefetch {
+    pub(crate) key: CellKey,
+    pub(crate) file: Arc<PhysicalFile>,
+    pub(crate) pos: u64,
+    pub(crate) len: usize,
+    pub(crate) divisor: i32,
+    /// Per lookup index: does the search's profile use it? (`DecodedCell::decode`)
+    pub(crate) lookups_used: Arc<[bool]>,
+}
+
+/// The cells waiting to be decoded ahead, newest last, and the thread that decodes them. Off with a
+/// single processor, where it would only slow the search down, and without a cell cache.
+struct Prefetcher {
+    on: bool,
+    jobs: Mutex<PrefetchJobs>,
+    wake: Condvar,
+}
+
+#[derive(Default)]
+struct PrefetchJobs {
+    queue: VecDeque<Prefetch>,
+    started: bool,
+    closed: bool,
+}
+
+/// Older requests than this are dropped: the search has moved on.
+const MAX_PREFETCHES: usize = 64;
 
 /// How many segment files stay open (Java closes them after each request). A search needs a few.
 const MAX_OPEN_FILES: usize = 32;
@@ -76,6 +111,11 @@ impl SegmentStore {
             files: Mutex::new(Lru::new(MAX_OPEN_FILES)),
             cells: Mutex::new(Lru::new(cell_cache_bytes)),
             next_file_id: AtomicU64::new(0),
+            prefetcher: Arc::new(Prefetcher {
+                on: cell_cache_bytes > 0 && std::thread::available_parallelism().is_ok_and(|n| n.get() > 1),
+                jobs: Mutex::default(),
+                wake: Condvar::new(),
+            }),
         }
     }
 
@@ -120,10 +160,80 @@ impl SegmentStore {
         Ok(cell)
     }
 
+    /// Queues these cells for decoding ahead, unless cached or queued already.
+    pub(crate) fn prefetch(self: &Arc<Self>, cells: impl Iterator<Item = Prefetch>) {
+        if !self.prefetcher.on {
+            return;
+        }
+        let mut jobs = lock(&self.prefetcher.jobs);
+        let cached = lock(&self.cells);
+        let mut added = false;
+        for cell in cells {
+            if cached.entries.contains_key(&cell.key) || jobs.queue.iter().any(|job| job.key == cell.key) {
+                continue;
+            }
+            if jobs.queue.len() == MAX_PREFETCHES {
+                jobs.queue.pop_front();
+            }
+            jobs.queue.push_back(cell);
+            added = true;
+        }
+        drop(cached);
+        if !added {
+            return;
+        }
+        if !jobs.started {
+            jobs.started = true;
+            let (store, prefetcher) = (Arc::downgrade(self), self.prefetcher.clone());
+            // without the thread, the searches decode their cells themselves
+            let _ = std::thread::Builder::new()
+                .name("cell prefetch".into())
+                .spawn(move || prefetch_cells(&store, &prefetcher));
+        }
+        self.prefetcher.wake.notify_one();
+    }
+
     /// Accounts for a cached cell that grew by `bytes` (or shrank).
     pub(crate) fn charge(&self, key: CellKey, cell: &Arc<DecodedCell>, bytes: isize) {
         if bytes != 0 {
             lock(&self.cells).charge(key, |cached| Arc::ptr_eq(cached, cell), bytes);
+        }
+    }
+}
+
+impl Drop for SegmentStore {
+    fn drop(&mut self) {
+        lock(&self.prefetcher.jobs).closed = true;
+        self.prefetcher.wake.notify_all();
+    }
+}
+
+/// The prefetcher's thread: decodes the newest queued cell into the store, until the store is dropped.
+/// A cell that fails to read is left to the search, which reports the error.
+fn prefetch_cells(store: &Weak<SegmentStore>, prefetcher: &Prefetcher) {
+    let mut iobuffer = Vec::new();
+    loop {
+        let job = {
+            let mut jobs = lock(&prefetcher.jobs);
+            loop {
+                if jobs.closed {
+                    return;
+                }
+                if let Some(job) = jobs.queue.pop_back() {
+                    break job;
+                }
+                jobs = prefetcher.wake.wait(jobs).unwrap_or_else(PoisonError::into_inner);
+            }
+        };
+        let Some(store) = store.upgrade() else { return };
+        if lock(&store.cells).entries.contains_key(&job.key) {
+            continue;
+        }
+        let used = |i: usize| job.lookups_used.get(i).copied().unwrap_or(false);
+        if let Ok(ab) = read_cell(&job.file, job.pos, job.len, &mut iobuffer) {
+            let cell = DecodedCell::decode(ab, job.key.lon_idx, job.key.lat_idx, job.divisor, &used);
+            let bytes = cell.heap_bytes();
+            lock(&store.cells).insert(job.key, Arc::new(cell), bytes);
         }
     }
 }

@@ -74,6 +74,10 @@ Speed work keeps every answer identical; `parity/bench.sh` measures it (see `par
   profile's result cache holds the same entries in the same order. Skipping calls would change what it
   holds, and with it the results of a profile that reads a variable before assigning it. Queries
   without side effects (`isLookupIdxUsed`) may be asked differently.
+- **Decode ahead.** A thread of the store decodes the four cells next to each cell a search weaves
+  (the newest first, unless cached), so the search mostly finds its cells decoded. A decoded cell is the
+  same whoever decodes it, and weaving makes the same calls either way. It costs a second core and some
+  cells nobody asks for; with a single processor or without a cell cache it is off.
 - **Per-search checks stay per search.** Each search checks the files as Java opens them (missing
   file, replaced file, lookup table version), so the same errors come up at the same time.
 - **No new identities.** Shared data must not make two things identical that Java keeps apart: a
