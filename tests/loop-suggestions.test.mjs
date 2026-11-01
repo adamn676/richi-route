@@ -86,7 +86,9 @@ test('turn points lie half the distance out along the paved way, or at its end',
   assert.equal(turns.length, 1, 'The same road gives one turn');
   assert.ok(distanceMeters(turns[0], east(20)) < 50, String(turns[0]));
   assert.ok(distanceMeters(turnPoints([valleyLoop()], 100000)[0], east(30)) < 1, 'A paved way shorter than half the distance turns at its end');
-  assert.deepEqual(turnPoints([valleyLoop()], 200000), [], 'A turn less than a sixth of the distance out is none');
+  assert.deepEqual(turnPoints([valleyLoop()], 130000), [], 'A turn less than a quarter of the distance out is none');
+  const fan = Array.from({ length: 30 }, (_, i) => line(Array.from({ length: 31 }, (_, km) => east(km, i * 2)), [{ fromIndex: 0, toIndex: 30, surface: 'paved' }], 0));
+  assert.equal(turnPoints(fan, 40000).length, 24, 'At most 24');
 });
 
 test('where no loop stays paved, a ride out and back along the valley road', async () => {

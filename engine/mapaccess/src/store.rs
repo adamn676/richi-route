@@ -16,7 +16,7 @@ use crate::files::{FileStamp, IoResult, PhysicalFile, read_cell};
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 
 /// A cell of an open segment file, as asked for: the cell index within the degree square follows
@@ -63,9 +63,10 @@ pub(crate) struct Prefetch {
 }
 
 /// The cells waiting to be decoded ahead, newest last, and the thread that decodes them. Off with a
-/// single processor, where it would only slow the search down, and without a cell cache.
+/// single processor, where it would only slow the search down, without a cell cache, and when the
+/// thread cannot start.
 struct Prefetcher {
-    on: bool,
+    on: AtomicBool,
     jobs: Mutex<PrefetchJobs>,
     wake: Condvar,
 }
@@ -112,7 +113,9 @@ impl SegmentStore {
             cells: Mutex::new(Lru::new(cell_cache_bytes)),
             next_file_id: AtomicU64::new(0),
             prefetcher: Arc::new(Prefetcher {
-                on: cell_cache_bytes > 0 && std::thread::available_parallelism().is_ok_and(|n| n.get() > 1),
+                on: AtomicBool::new(
+                    cell_cache_bytes > 0 && std::thread::available_parallelism().is_ok_and(|n| n.get() > 1),
+                ),
                 jobs: Mutex::default(),
                 wake: Condvar::new(),
             }),
@@ -162,7 +165,7 @@ impl SegmentStore {
 
     /// Queues these cells for decoding ahead, unless cached or queued already.
     pub(crate) fn prefetch(self: &Arc<Self>, cells: impl Iterator<Item = Prefetch>) {
-        if !self.prefetcher.on {
+        if !self.prefetcher.on.load(Ordering::Relaxed) {
             return;
         }
         let mut jobs = lock(&self.prefetcher.jobs);
@@ -186,9 +189,14 @@ impl SegmentStore {
             jobs.started = true;
             let (store, prefetcher) = (Arc::downgrade(self), self.prefetcher.clone());
             // without the thread, the searches decode their cells themselves
-            let _ = std::thread::Builder::new()
+            let spawned = std::thread::Builder::new()
                 .name("cell prefetch".into())
                 .spawn(move || prefetch_cells(&store, &prefetcher));
+            if spawned.is_err() {
+                self.prefetcher.on.store(false, Ordering::Relaxed);
+                jobs.queue.clear();
+                return;
+            }
         }
         self.prefetcher.wake.notify_one();
     }

@@ -15,7 +15,8 @@ active development and tested around Graz and Styria, Austria.
 **Plan**
 
 - Get three round-trip suggestions from your start for a distance (10 to 1,000 km) and climbing target, each shown
-  with its shape, distance and climbing; pick one to see it as a route and keep it.
+  with its shape, distance and climbing; pick one to see it as a route and keep it. Suggestions stay on paved roads;
+  where no paved loop exists, as in a valley closed by mountains, they ride out and back.
 - Plan a route through any number of stops; set them by address or on the map.
 - Drag the route onto the road you prefer and reorder stops in the list, with undo and redo.
 

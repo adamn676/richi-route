@@ -86,13 +86,13 @@ async function record(engine, name = engine) {
     return answer.error ? new Response(answer.error, { status: 400 }) : new Response(answer.geojson, { status: 200 });
   };
   // Warm up (JIT, caches) with one loop set that is not recorded.
-  await suggestLoops(cases[0].start, cases[0].target, new AbortController().signal, undefined, async () => undefined);
+  await suggestLoops(cases[0].start, cases[0].target, new AbortController().signal, { town: async () => undefined, random: () => 0 });
   const results = [];
   for (const { name, start, target } of cases) {
     answers = [];
     const began = performance.now();
     let picks, failure;
-    try { picks = await suggestLoops(start, target, new AbortController().signal, undefined, async () => undefined); }
+    try { picks = await suggestLoops(start, target, new AbortController().signal, { town: async () => undefined, random: () => 0 }); }
     catch (error) { failure = String(error?.message ?? error); }
     const ms = Math.round(performance.now() - began);
     answers.sort((a, b) => a.query.localeCompare(b.query));

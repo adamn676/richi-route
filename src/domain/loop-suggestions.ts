@@ -108,10 +108,11 @@ export function loopQuality({ leg, points }: LoopCandidate, target: LoopTarget):
 export const wantsOutAndBack = (picks: LoopCandidate[], target: LoopTarget, count = 3) =>
   picks.length < count || picks.some(pick => loopQuality(pick, target) > outAndBack);
 
-// Only rideable loops within half the distance. Among those nearly as good as the best and with hardly more unpaved road, those on roads
-// suggested lately (`seen`, from 0 to 1) come last, so the suggestions change from one search to the next; a worse loop
-// never wins by being new, it only fills in. Of these, loops heading at least 60° apart, so the suggestions differ;
-// rides out and back share the valley road with others, so they need only differ in more than half their squares (`cells`).
+// Only rideable loops within half the distance. Among those nearly as good as the best and with hardly more unpaved
+// road, those on roads suggested lately (`seen`, from 0 to 1) come last, so the suggestions change from one search to
+// the next; a worse loop never wins by being new, it only fills in. Of these, loops heading at least 60° apart, so the
+// suggestions differ; rides out and back share the valley road with others, so they need only share no more than half
+// the squares of either (`cells`).
 export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count = 3,
   seen: (candidate: LoopCandidate) => number = () => 0, cells?: (candidate: LoopCandidate) => string[]): LoopCandidate[] {
   candidates = candidates.filter(({ leg }) => rideable(leg) && Math.abs(leg.distanceMeters - target.meters) <= target.meters / 2);
@@ -124,8 +125,9 @@ export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count
     const asGood = own <= qualities.get(best)! + .25 && unpavedShare(candidate.leg) <= unpavedAtBest + .005;
     return [candidate, asGood ? own + seen(candidate) : 100 + own];
   }));
+  const shared = (a: LoopCandidate, b: LoopCandidate) => seenShare(cells!(a), [{ cells: cells!(b), weight: 1 }]);
   const differ = (a: LoopCandidate, b: LoopCandidate) => cells && (a.points === 1 || b.points === 1)
-    ? seenShare(cells(a), [{ cells: cells(b), weight: 1 }]) <= .5 : apart(a.direction, b.direction) >= 60;
+    ? Math.max(shared(a, b), shared(b, a)) <= .5 : apart(a.direction, b.direction) >= 60;
   const picks: LoopCandidate[] = [];
   for (const candidate of [...candidates].sort((a, b) => scores.get(a)! - scores.get(b)!)) {
     if (picks.every(pick => differ(candidate, pick))) picks.push(candidate);
@@ -134,21 +136,22 @@ export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count
   return picks;
 }
 
-// Where a ride out and back could turn: on each loop's paved way out, and its way home ridden backwards, half the
-// distance from home; a paved way ending before that, at least a sixth of it out, turns at its end. Turns within 1 km of
-// another are one.
-export function turnPoints(legs: LegGeometry[], meters: number): Coord[] {
-  const turns: Coord[] = [];
+// Where a ride out and back could turn, at most `count`: on each loop's paved way out, and its way home ridden
+// backwards, half the distance from home. Paved ways ending before that, but at least a quarter of it out, turn at
+// their end; they come last, as those rides fall short. Turns within 1 km of another are one.
+export function turnPoints(legs: LegGeometry[], meters: number, count = 24): Coord[] {
+  const halfway: Coord[] = [], ends: Coord[] = [], half = meters / 2;
   for (const leg of legs) for (const way of [pavedWay(leg, false), pavedWay(leg, true)]) {
-    const length = way.along.at(-1)!, half = meters / 2;
-    if (length < meters / 6) continue;
     const i = way.along.findIndex(along => along >= half);
-    let turn = way.coordinates.at(-1)!;
     if (i > 0) {
       const share = (half - way.along[i - 1]) / (way.along[i] - way.along[i - 1]), [a, b] = [way.coordinates[i - 1], way.coordinates[i]];
-      turn = [a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share];
-    }
+      halfway.push([a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share]);
+    } else if (way.along.at(-1)! >= meters / 4) ends.push(way.coordinates.at(-1)!);
+  }
+  const turns: Coord[] = [];
+  for (const turn of [...halfway, ...ends]) {
     if (turns.every(other => distanceMeters(other, turn) >= 1000)) turns.push(turn);
+    if (turns.length === count) break;
   }
   return turns;
 }
