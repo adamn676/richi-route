@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compassName, correctedRadius, firstRadius, loopCells, loopSections, pickLoops, pointsAlong, refinedRadius, seenShare, twiceShare,
-  unpavedShare, withoutSpurs }
+import { compassName, correctedRadius, firstRadius, loopCells, loopSections, pickLoops, pointsAlong, refinedRadius, rideable, seenShare,
+  turnPoints, twiceShare, unpavedShare, withoutSpurs }
   from '../src/domain/loop-suggestions.ts';
 import { suggestLoops } from '../src/services/loop-suggestions.service.ts';
 import { distanceMeters } from '../src/domain/route-model.ts';
@@ -46,6 +46,8 @@ test('picks fit distance first, then climbing, and head apart', () => {
     candidate(180, loop(70, 500)), candidate(270, loop(52, 900)), candidate(300, loop(40, 500)),
   ], target);
   assert.deepEqual(picks.map(pick => pick.direction), [0, 90, 270], '30° is too close to 0°; 70 km and 40 km miss by more than 15%');
+  assert.deepEqual(pickLoops([candidate(0, loop(40, 500)), candidate(180, loop(24, 500))], target).map(pick => pick.direction), [0],
+    'Never a loop missing the distance by more than half');
 });
 
 test('unpaved roads count heavily against a loop', () => {
@@ -56,6 +58,51 @@ test('unpaved roads count heavily against a loop', () => {
   assert.ok(Math.abs(unpavedShare(dirt) - .1) < .01, String(unpavedShare(dirt)));
   assert.equal(unpavedShare(paved), 0);
   assert.deepEqual(pickLoops([candidate(120, dirt), candidate(0, paved)], target, 1).map(pick => pick.direction), [0]);
+  assert.deepEqual(pickLoops([candidate(120, dirt)], target), [], 'Never a loop with 3 km unpaved, not even to fill in');
+});
+
+test('a suggestion leaves paved roads for at most 500 m, or 1 % of a long one; unknown surfaces count', () => {
+  const leg = (km, kind, steps) => ({ ...circle(km * 1000 / 6.2, 0), surfaces: [{ fromIndex: 0, toIndex: 200 - steps, surface: 'paved' },
+    { fromIndex: 200 - steps, toIndex: 200, surface: kind }] });
+  assert.ok(rideable(leg(30, 'unpaved', 3)), '450 m');
+  assert.ok(!rideable(leg(30, 'unknown', 4)), '600 m of path');
+  assert.ok(rideable(leg(200, 'unpaved', 1)), '1 km of 200 km');
+  assert.ok(!rideable(leg(200, 'unpaved', 3)));
+});
+
+// A valley closed by mountains: every loop heads out east on a paved road for 30 km, then climbs north over gravel
+// and comes home down another gravel track.
+const kx = 111320 * Math.cos(start[1] * Math.PI / 180), east = (km, north = 0) => [start[0] + km * 1000 / kx, start[1] + north * 1000 / 110540];
+function line(coordinates, surfaces, ascentMeters) {
+  let distance = 0;
+  for (let i = 1; i < coordinates.length; i++) distance += distanceMeters(coordinates[i - 1], coordinates[i]);
+  return { coordinates, distanceMeters: distance, ascentMeters, elevations: null, surfaces };
+}
+const valleyLoop = () => line([...Array.from({ length: 31 }, (_, km) => east(km)), east(30, 5), east(5, 5), east(0, 1), start],
+  [{ fromIndex: 0, toIndex: 30, surface: 'paved' }, { fromIndex: 30, toIndex: 34, surface: 'unpaved' }], 2400);
+
+test('turn points lie half the distance out along the paved way, or at its end', () => {
+  const turns = turnPoints([valleyLoop(), valleyLoop()], 40000);
+  assert.equal(turns.length, 1, 'The same road gives one turn');
+  assert.ok(distanceMeters(turns[0], east(20)) < 50, String(turns[0]));
+  assert.ok(distanceMeters(turnPoints([valleyLoop()], 100000)[0], east(30)) < 1, 'A paved way shorter than half the distance turns at its end');
+  assert.deepEqual(turnPoints([valleyLoop()], 200000), [], 'A turn less than a sixth of the distance out is none');
+});
+
+test('where no loop stays paved, a ride out and back along the valley road', async () => {
+  const turns = [];
+  const thereAndBack = async (from, turn) => {
+    turns.push(turn);
+    const out = Array.from({ length: 21 }, (_, i) => [from[0] + (turn[0] - from[0]) * i / 20, from[1] + (turn[1] - from[1]) * i / 20]);
+    return line([...out, ...out.slice(0, -1).reverse()], [{ fromIndex: 0, toIndex: 40, surface: 'paved' }], 700);
+  };
+  const town = async coord => distanceMeters(coord, east(20)) < 2000 ? 'Talort' : undefined;
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal,
+    { trace: async () => valleyLoop(), thereAndBack, town, random: () => 0 });
+  assert.equal(turns.length, 1);
+  assert.equal(loops.length, 1, 'No gravel loop fills in');
+  assert.ok(loops[0].back && loops[0].place === 'Talort', JSON.stringify({ back: loops[0].back, place: loops[0].place }));
+  assert.ok(Math.abs(loops[0].leg.distanceMeters - 40000) < 100);
 });
 
 test('points along a loop, compass names and sections that keep the totals', () => {
@@ -88,7 +135,8 @@ test('suggestions: three passes, three named loops, failed directions left out',
     const bearing = (Math.atan2((lon - start[0]) * Math.cos(start[1] * Math.PI / 180), lat - start[1]) * 180 / Math.PI + 360) % 360;
     return towns[Math.round(bearing / 90) % 4 * 90];
   };
-  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, town, { random: () => 0 });
+  const thereAndBack = () => assert.fail('Good loops need no ride out and back');
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, { trace, thereAndBack, town, random: () => 0 });
   assert.equal(calls.length, 12 + 11 + 11, 'The direction without a loop is not tried again');
   assert.equal(loops.length, 3);
   assert.ok(loops.every(loop => Math.abs(loop.leg.distanceMeters - 40000) < 4000), loops.map(loop => loop.leg.distanceMeters).join());
@@ -102,20 +150,20 @@ test('each search turns the directions by chance and gives each a shape it keeps
   const tries = [];
   const trace = async (_, radius, direction, signal, points) => { tries.push([direction, points]); return circle(radius, direction); };
   const dice = [.5, ...Array.from({ length: 12 }, (_, i) => i % 3 / 3 + .1)];
-  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, async () => undefined,
-    { random: () => dice.shift() });
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal,
+    { trace, town: async () => undefined, random: () => dice.shift() });
   assert.deepEqual(tries.slice(0, 12).map(([direction]) => direction), Array.from({ length: 12 }, (_, i) => 15 + i * 30));
   assert.deepEqual(new Set(tries.map(([, points]) => points)), new Set([4, 5, 6]));
   // Each direction keeps its shape while its distance is tried again.
   const shapes = new Map(tries.slice(0, 12));
   assert.ok(tries.every(([direction, points]) => shapes.get(direction) === points));
-  assert.ok(loops.every(loop => loop.heading && loop.cells.length));
+  assert.ok(loops.every(loop => loop.heading && loop.cells.length && !loop.back));
 });
 
 test('roads suggested lately count against a loop, so asking again brings others', async () => {
   const trace = async (_, radius, direction) => circle(radius, direction);
-  const ask = earlier => suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal, trace, async () => undefined,
-    { random: () => 0, earlier });
+  const ask = earlier => suggestLoops(start, { meters: 40000, ascent: 800 }, new AbortController().signal,
+    { trace, town: async () => undefined, random: () => 0, earlier });
   const first = await ask([]), again = await ask(first.map(loop => ({ cells: loop.cells, weight: 1 })));
   // Each new loop shares less than half its roads beyond home with any loop shown before.
   const shared = again.map(loop => seenShare(loop.cells, first.map(({ cells }) => ({ cells, weight: 1 }))));
@@ -135,13 +183,14 @@ test('the squares a loop passes leave out those near home; older suggestions wei
 
 test('a routing service that fails everywhere reports why; a cancelled search stops', async () => {
   const signal = new AbortController().signal;
-  await assert.rejects(suggestLoops(start, { meters: 40000, ascent: 300 }, signal, async () => { throw new Error('Der lokale Routing-Dienst ist nicht erreichbar.'); }, async () => undefined),
+  await assert.rejects(suggestLoops(start, { meters: 40000, ascent: 300 }, signal,
+    { trace: async () => { throw new Error('Der lokale Routing-Dienst ist nicht erreichbar.'); }, town: async () => undefined }),
     /nicht erreichbar/);
   const controller = new AbortController();
   let calls = 0;
-  await assert.rejects(suggestLoops(start, { meters: 40000, ascent: 300 }, controller.signal, async () => {
+  await assert.rejects(suggestLoops(start, { meters: 40000, ascent: 300 }, controller.signal, { trace: async () => {
     calls++; controller.abort(); throw new DOMException('Aborted', 'AbortError');
-  }, async () => undefined), error => error.name === 'AbortError');
+  }, town: async () => undefined }), error => error.name === 'AbortError');
   assert.ok(calls <= 12);
 });
 

@@ -22,7 +22,7 @@
     </form>
     <p v-if="!start" class="text-body-small text-medium-emphasis">Runden beginnen am Start; zuerst einen Start setzen.</p>
     <v-alert v-if="loops.error" type="error">{{ loops.error }}</v-alert>
-    <p v-else-if="loops.suggestions && !loops.suggestions.length" class="text-body-small text-medium-emphasis" role="status">Von hier ließ sich keine Runde berechnen.</p>
+    <p v-else-if="loops.suggestions && !loops.suggestions.length" class="text-body-small text-medium-emphasis" role="status">Von hier ließ sich keine Runde auf befestigten Straßen finden.</p>
     <!-- A selected loop is the route below, with its profile and surfaces, and the map zooms to it; the others stay faint.
          Selecting it again shows all three. -->
     <div v-else-if="loops.suggestions" class="loops__cards" role="group" aria-label="Vorschläge">
@@ -36,8 +36,8 @@
             <circle :cx="shapes[index].start[0]" :cy="shapes[index].start[1]" r="3" />
           </svg>
           <span class="loop-card__text">
-            <span class="loop-card__name">{{ loop.place ? `Über ${loop.place}` : `Nach ${loop.heading}` }}</span>
-            <span class="loop-card__figures">{{ formatKm(loop.leg.distanceMeters, 1, true) }}&nbsp;<small>km</small> · {{ formatWhole(loop.leg.ascentMeters ?? 0) }}&nbsp;<small>m</small></span>
+            <span class="loop-card__name">{{ loop.place && !loop.back ? `Über ${loop.place}` : `Nach ${loop.place ?? loop.heading}` }}</span>
+            <span class="loop-card__figures">{{ formatKm(loop.leg.distanceMeters, 1, true) }}&nbsp;<small>km</small> · {{ formatWhole(loop.leg.ascentMeters ?? 0) }}&nbsp;<small>m</small><template v-if="loop.back"> · <small>hin und zurück</small></template></span>
           </span>
         </button>
         <v-btn v-if="loops.selected === index" variant="flat" block @click="loops.keep()">Runde übernehmen</v-btn>

@@ -39,7 +39,7 @@ export const useLoopSuggestionsStore = defineStore('loop-suggestions', () => {
     try {
       const history = readHistory(), place = placeOf(start), searches = history[place] ?? [];
       const earlier = searches.flatMap((loops, i) => loops.map(cells => ({ cells, weight: recency[i] })));
-      const found = await suggestLoops(start, target, current.signal, undefined, undefined, { earlier });
+      const found = await suggestLoops(start, target, current.signal, { earlier });
       if (controller !== current) return;
       suggestions.value = found.map(suggestion => ({ ...suggestion, leg: markRaw(suggestion.leg) }));
       delete history[place];

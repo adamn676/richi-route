@@ -4,7 +4,8 @@ import { clipSpans, sectionCuts } from './gpx-route.ts';
 import { routingPolicyVersion } from '../config/routing-policy.ts';
 
 export interface LoopTarget { meters: number; ascent: number }
-// `points` is how many points on its arc BRouter routes a loop through: fewer make it narrower, more rounder.
+// `points` is how many points on its arc BRouter routes a loop through: fewer make it narrower, more rounder. With one
+// point it is a ride out and back, `direction` the bearing and `radius` the distance to where it turns.
 export interface LoopCandidate { direction: number; radius: number; points: number; leg: LegGeometry }
 
 // BRouter builds a loop through points on an arc around the start; with five it comes out about 6.2 times the radius.
@@ -75,31 +76,47 @@ export function twiceShare({ coordinates }: LegGeometry): number {
   return total ? twice / total : 0;
 }
 
+const metersOn = ({ coordinates, surfaces }: LegGeometry, kinds: SurfaceSpan['surface'][]) => surfaces
+  .reduce((sum, span) => kinds.includes(span.surface) ? sum + pathMeters(coordinates.slice(span.fromIndex, span.toIndex + 1)) : sum, 0);
+
 // The share of a loop on unpaved roads.
-export function unpavedShare({ coordinates, surfaces }: LegGeometry): number {
-  let unpaved = 0;
-  for (const span of surfaces) if (span.surface === 'unpaved') unpaved += pathMeters(coordinates.slice(span.fromIndex, span.toIndex + 1));
-  const total = pathMeters(coordinates);
-  return total ? unpaved / total : 0;
+export function unpavedShare(leg: LegGeometry): number {
+  const total = pathMeters(leg.coordinates);
+  return total ? metersOn(leg, ['unpaved']) / total : 0;
+}
+
+// A road bike stays on paved roads: a suggestion leaves them for at most 500 m, or 1 % of a long one. Ways of unknown
+// surface count as unpaved here; most are paths and tracks.
+export function rideable(leg: LegGeometry): boolean {
+  return metersOn(leg, ['unpaved', 'unknown']) <= Math.max(500, pathMeters(leg.coordinates) * .01);
 }
 
 const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+// A ride out and back weighs as much as missing the distance by half: worse than a good loop, better than a poor one.
+const outAndBack = 1;
 
 // Distance counts most, and a loop more than 15% off only fills in; then climbing. Roads ridden twice make a loop
 // worse, and unpaved roads, which a loop meets where BRouter snaps a circle point to a track, much worse: 10 % of a
-// loop unpaved weighs as much as missing the distance by 15 %. Among the loops nearly as good as the best and with
-// hardly more unpaved road, those on roads suggested lately (`seen`, from 0 to 1) come last, so the suggestions change
-// from one search to the next; a worse loop never wins by being new, it only fills in. Of these, those heading at least 60° apart, so the
-// suggestions differ.
+// loop unpaved weighs as much as missing the distance by 15 %. A ride out and back counts as `outAndBack`.
+export function loopQuality({ leg, points }: LoopCandidate, target: LoopTarget): number {
+  const distance = Math.abs(leg.distanceMeters - target.meters) / target.meters;
+  return 2 * distance + (distance > .15 ? 1 : 0) + Math.abs((leg.ascentMeters ?? 0) - target.ascent) / Math.max(target.ascent, 200) +
+    (points === 1 ? outAndBack : 4 * twiceShare(leg)) + 10 * unpavedShare(leg);
+}
+
+// Rides out and back are worth trying where the loops found fall short of one.
+export const wantsOutAndBack = (picks: LoopCandidate[], target: LoopTarget, count = 3) =>
+  picks.length < count || picks.some(pick => loopQuality(pick, target) > outAndBack);
+
+// Only rideable loops within half the distance. Among those nearly as good as the best and with hardly more unpaved road, those on roads
+// suggested lately (`seen`, from 0 to 1) come last, so the suggestions change from one search to the next; a worse loop
+// never wins by being new, it only fills in. Of these, loops heading at least 60° apart, so the suggestions differ;
+// rides out and back share the valley road with others, so they need only differ in more than half their squares (`cells`).
 export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count = 3,
-  seen: (candidate: LoopCandidate) => number = () => 0): LoopCandidate[] {
-  const quality = ({ leg }: LoopCandidate) => {
-    const distance = Math.abs(leg.distanceMeters - target.meters) / target.meters;
-    return 2 * distance + (distance > .15 ? 1 : 0) + Math.abs((leg.ascentMeters ?? 0) - target.ascent) / Math.max(target.ascent, 200) +
-      4 * twiceShare(leg) + 10 * unpavedShare(leg);
-  };
+  seen: (candidate: LoopCandidate) => number = () => 0, cells?: (candidate: LoopCandidate) => string[]): LoopCandidate[] {
+  candidates = candidates.filter(({ leg }) => rideable(leg) && Math.abs(leg.distanceMeters - target.meters) <= target.meters / 2);
   if (!candidates.length) return [];
-  const qualities = new Map(candidates.map(candidate => [candidate, quality(candidate)]));
+  const qualities = new Map(candidates.map(candidate => [candidate, loopQuality(candidate, target)]));
   const best = candidates.reduce((a, b) => qualities.get(b)! < qualities.get(a)! ? b : a);
   const unpavedAtBest = unpavedShare(best.leg);
   const scores = new Map(candidates.map(candidate => {
@@ -107,12 +124,52 @@ export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count
     const asGood = own <= qualities.get(best)! + .25 && unpavedShare(candidate.leg) <= unpavedAtBest + .005;
     return [candidate, asGood ? own + seen(candidate) : 100 + own];
   }));
+  const differ = (a: LoopCandidate, b: LoopCandidate) => cells && (a.points === 1 || b.points === 1)
+    ? seenShare(cells(a), [{ cells: cells(b), weight: 1 }]) <= .5 : apart(a.direction, b.direction) >= 60;
   const picks: LoopCandidate[] = [];
   for (const candidate of [...candidates].sort((a, b) => scores.get(a)! - scores.get(b)!)) {
-    if (picks.every(pick => apart(pick.direction, candidate.direction) >= 60)) picks.push(candidate);
+    if (picks.every(pick => differ(candidate, pick))) picks.push(candidate);
     if (picks.length === count) break;
   }
   return picks;
+}
+
+// Where a ride out and back could turn: on each loop's paved way out, and its way home ridden backwards, half the
+// distance from home; a paved way ending before that, at least a sixth of it out, turns at its end. Turns within 1 km of
+// another are one.
+export function turnPoints(legs: LegGeometry[], meters: number): Coord[] {
+  const turns: Coord[] = [];
+  for (const leg of legs) for (const way of [pavedWay(leg, false), pavedWay(leg, true)]) {
+    const length = way.along.at(-1)!, half = meters / 2;
+    if (length < meters / 6) continue;
+    const i = way.along.findIndex(along => along >= half);
+    let turn = way.coordinates.at(-1)!;
+    if (i > 0) {
+      const share = (half - way.along[i - 1]) / (way.along[i] - way.along[i - 1]), [a, b] = [way.coordinates[i - 1], way.coordinates[i]];
+      turn = [a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share];
+    }
+    if (turns.every(other => distanceMeters(other, turn) >= 1000)) turns.push(turn);
+  }
+  return turns;
+}
+
+// The start of a loop, or of its way home ridden backwards (`backwards`), as far as it stays on paved roads: it ends
+// before the first stretch of more than 200 m unpaved or of unknown surface.
+function pavedWay(leg: LegGeometry, backwards: boolean): { coordinates: Coord[]; along: number[] } {
+  const steps = leg.coordinates.length - 1, rough: boolean[] = [];
+  for (const span of leg.surfaces) for (let k = span.fromIndex; k < span.toIndex; k++) rough[k] = span.surface === 'unpaved' || span.surface === 'unknown';
+  const coordinates = [backwards ? leg.coordinates[steps] : leg.coordinates[0]], along = [0];
+  let off = 0, end = 1;
+  for (let j = 0; j < steps; j++) {
+    const k = backwards ? steps - 1 - j : j, to = leg.coordinates[backwards ? k : k + 1];
+    const step = distanceMeters(coordinates.at(-1)!, to);
+    off = rough[k] ? off + step : 0;
+    if (off > 200) break;
+    coordinates.push(to);
+    along.push(along.at(-1)! + step);
+    if (!rough[k]) end = coordinates.length;
+  }
+  return { coordinates: coordinates.slice(0, end), along: along.slice(0, end) };
 }
 
 // The squares of about 250 m a loop passes through, counted every 100 m, leaving out those within `near` metres of the

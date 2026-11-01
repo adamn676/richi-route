@@ -79,6 +79,10 @@ export async function traceRoundTrip(start: Coord, radiusMeters: number, directi
     { engineMode: '4', roundTripDistance: String(Math.round(radiusMeters)), direction: String(direction), roundTripPoints: String(points) }));
 }
 
+export async function traceThereAndBack(start: Coord, turn: Coord, signal: AbortSignal) {
+  return parseBRouterLeg(await request([start, turn, start], signal));
+}
+
 function checkSnap(requested: Coord, snapped: Coord): void {
   if (distanceMeters(requested, snapped) > maxSnapDistance) {
     throw new PlacementError('Kein geeigneter Radweg innerhalb von 250\u00a0m. Bitte den Punkt näher an eine Straße setzen.');

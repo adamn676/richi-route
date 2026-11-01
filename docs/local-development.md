@@ -806,7 +806,21 @@ more per direction with the radius corrected towards the distance (36 requests,
 locally about 2–4 s for 50 km, 9 s for 500 km and 33 s for 1,000 km). Direction decides most of the climbing: from Graz, loops to
 the north climb far more than those to the south. Of all loops, it prefers those
 within 15% of the distance, then the closest climbing, and avoids roads ridden
-both ways and unpaved roads; the three it shows head at least 60° apart.
+both ways and unpaved roads; the three it shows head at least 60° apart. It never
+shows a loop that leaves paved roads for more than 500 m (or 1% of a long one),
+counting ways of unknown surface, mostly paths and tracks, as unpaved, nor one
+missing the distance by more than half: fewer cards rather than useless ones.
+
+Where the loops fall short, as in a valley closed by mountains like Virgen, it
+also tries rides out and back. They follow the paved roads the loops head out on
+(and come home on), turning half the distance out, or where such a road ends
+before. A ride out and back weighs as much as missing the distance by half:
+worse than a good loop, better than a poor one. It needs only differ from the
+other suggestions in more than half its roads beyond home, since rides out of one
+valley share its road. Its card is named after the town it turns in and says
+**hin und zurück**. From Virgen, 60 km and 1,000 m bring Defereggen, Kals and
+the Isel valley towards Lienz, all paved, in about 1–2 s; where loops are good,
+as around Graz, nothing more is asked.
 
 Asking again brings other loops. Each search turns the twelve directions by a
 random angle and gives each direction a random shape (four, five or six arc
@@ -818,7 +832,7 @@ search counting most, so each search shows something new until the good roads
 around are used up and older loops come back. A clearly worse loop never wins just
 by being new. Each card is named after
 the town the loop passes most (sampled at eight points, not the start's town or
-another card's), otherwise by its compass direction; its small outline shows where
+another card's), or the town a ride out and back turns in, otherwise by its compass direction; its small outline shows where
 it goes. Climbing uses the planner's
 filter for router heights, so it matches the route once taken.
 
