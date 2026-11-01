@@ -85,17 +85,17 @@ try {
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
   assert.match(await start.inputValue(), /Hauptplatz/);
 
-  // An address starts on its own street: Georgigasse 95 lies nearer a park path to the south than its street.
-  await start.fill('Georgigasse 95');
+  // An address starts on its own street: Idlhofgasse 74, a hotel, lies nearer a service road beside it than its street, 115 m east.
+  await start.fill('Idlhofgasse 74');
   await page.getByRole('option').first().waitFor();
   await start.press('ArrowDown');
   await start.press('Enter');
   await page.waitForFunction(() => {
     const stop = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route').waypoints[0];
-    return stop.address?.startsWith('Georgigasse 95') && !stop.snapPending;
+    return stop.address?.startsWith('Idlhofgasse 74') && !stop.snapPending;
   }, {}, { timeout: 30000 });
   const house = (await points())[0].coord;
-  assert.ok(house[1] > 47.0768, `On Georgigasse, north of the house, not in the park: ${house}`);
+  assert.ok(house[0] > 15.4237 && Math.abs(house[1] - 47.0654) < 0.0003, `On Idlhofgasse, east of the hotel, not on the service road: ${house}`);
   // Typing is no undo step, so the field keeps the text; the start itself returns.
   await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
   assert.deepEqual((await points())[0].coord, placed[0].coord);

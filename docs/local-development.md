@@ -824,9 +824,9 @@ unavailable local search never falls back to an online service.
 
 An address with a house number starts on its own street: the planner takes the
 nearest point on the road of that name from its map tiles (within 150 m), since
-a building's centre can lie nearer a path behind it. Georgigasse 95 in Graz, for
-example, is nearer a footpath in the paid-entry Schlosspark Eggenberg than its
-street; the park's paths carry no bicycle restriction in OpenStreetMap.
+a building's centre can lie nearer a path behind it. A house beside a park, for
+example, can lie nearer a footpath in the park than its street, and park paths
+often carry no bicycle restriction in OpenStreetMap.
 
 A stop placed or moved on the map, and the start and end of an imported GPX
 track, get the street they lie on from `/geocoding/reverse` once snapped, such as

@@ -81,8 +81,8 @@ test('reverse lookup names the street and town, with the house number only when 
   assert.equal(await reverseGeocode(at, signal()), 'Hahnhofweg, 8010 Graz');
   assert.equal(request.pathname, '/geocoding/reverse');
   assert.deepEqual([request.searchParams.get('lat'), request.searchParams.get('lon'), request.searchParams.get('radius')], ['47.0908', '15.4743', '0.3']);
-  body = result({ type: 'house', street: 'Georgigasse', housenumber: '89', postcode: '8020', city: 'Graz' }, [15.4744, 47.0908]);
-  assert.equal(await reverseGeocode(at, signal()), 'Georgigasse 89, 8020 Graz');
+  body = result({ type: 'house', street: 'Musterweg', housenumber: '12', postcode: '8020', city: 'Graz' }, [15.4744, 47.0908]);
+  assert.equal(await reverseGeocode(at, signal()), 'Musterweg 12, 8020 Graz');
   body = result({ type: 'house', street: 'Deckerweg', housenumber: '31', postcode: '8063', city: 'Eggersdorf bei Graz' }, [15.4755, 47.0908]);
   assert.equal(await reverseGeocode(at, signal()), 'Deckerweg, 8063 Eggersdorf bei Graz', 'A house 90 m away does not lend its number');
   body = result({ type: 'house', name: 'Wegkreuz', street: 'Roseggerweg', postcode: '8044', city: 'Graz' });
@@ -98,14 +98,14 @@ test('reverse lookup names the street and town, with the house number only when 
 test('an address knows its street; a street result does not need one', async t => {
   let body;
   t.mock.method(globalThis, 'fetch', async () => Response.json(body));
-  body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.39296, 47.07651] },
-    properties: { type: 'house', osm_value: 'apartments', street: 'Georgigasse', housenumber: '95', postcode: '8020', city: 'Graz' } }] };
-  const [house] = await forwardGeocode('Georgigasse 95', signal());
-  assert.equal(house.street, 'Georgigasse');
-  assert.equal(house.label, 'Georgigasse 95, 8020 Graz');
+  body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.42235, 47.06525] },
+    properties: { type: 'house', osm_value: 'apartments', street: 'Musterweg', housenumber: '7', postcode: '8020', city: 'Graz' } }] };
+  const [house] = await forwardGeocode('Musterweg 7', signal());
+  assert.equal(house.street, 'Musterweg');
+  assert.equal(house.label, 'Musterweg 7, 8020 Graz');
   body = { features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [15.393, 47.0769] },
-    properties: { type: 'street', name: 'Georgigasse', postcode: '8020', city: 'Graz' } }] };
-  assert.equal((await forwardGeocode('Georgigasse', signal()))[0].street, undefined);
+    properties: { type: 'street', name: 'Musterweg', postcode: '8020', city: 'Graz' } }] };
+  assert.equal((await forwardGeocode('Musterweg', signal()))[0].street, undefined);
 });
 
 test('one query, in the service\'s order; clutter goes, while halts and buildings that are destinations stay', async t => {

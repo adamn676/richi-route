@@ -153,7 +153,7 @@ try {
 
   routing = 'fail';
   await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
-  await page.getByRole('alert').filter({ hasText: 'nicht erreichbar' }).waitFor();
+  await page.getByRole('alert').filter({ hasText: 'Routing-Dienst' }).waitFor();
   routing = 'loops';
 
   // A new route keeps no copy of a start alone, nor of a loop only being looked at.
