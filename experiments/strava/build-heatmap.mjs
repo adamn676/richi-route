@@ -13,7 +13,11 @@ import { countRide, roadLines, tileLines } from './heat.mjs';
 // "Richi Fahrten" (.cache/strava/rides.pmtiles): layer "rides", lines with the number of rides on them.
 const [minZoom, maxZoom] = [6, 14];
 const counts = new Map();
-for await (const line of readline.createInterface({ input: createReadStream(path.join(strava, 'ridden.ndjson')) })) countRide(counts, JSON.parse(line).sections);
+// Paved roads only: unpaved ones and those of unknown surface (forest paths) are not where the road bike goes.
+for await (const line of readline.createInterface({ input: createReadStream(path.join(strava, 'ridden.ndjson')) })) {
+  const { sections, unpaved } = JSON.parse(line), dirt = new Set(unpaved);
+  countRide(counts, sections.filter(section => !dirt.has(section)));
+}
 const lines = roadLines(counts).filter(line => line.points.every(inRoutingArea));
 counts.clear();
 

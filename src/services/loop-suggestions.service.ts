@@ -17,7 +17,7 @@ export async function suggestLoops(start: Coord, target: LoopTarget, signal: Abo
   };
   const loops = async (tries: [number, number][]) => (await Promise.all(tries.map(([direction, radius]) => attempt(direction, radius))))
     .filter((candidate): candidate is LoopCandidate => candidate !== null);
-  const first = await loops(loopDirections.map(direction => [direction, firstRadius(target.meters)]));
+  const first = await loops(loopDirections(target.turn).map(direction => [direction, firstRadius(target.meters)]));
   // Without a single loop the routing service itself failed; its message says why.
   if (!first.length) throw failure;
   const second = await loops(first.map(candidate => [candidate.direction, correctedRadius(candidate, target.meters)]));

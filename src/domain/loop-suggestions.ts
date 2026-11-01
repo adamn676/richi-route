@@ -3,12 +3,13 @@ import { bearing } from './gpx-inspection.ts';
 import { clipSpans, sectionCuts } from './gpx-route.ts';
 import { routingPolicyVersion } from '../config/routing-policy.ts';
 
-export interface LoopTarget { meters: number; ascent: number }
+// `turn` turns the compass directions the loops head in, so that asking again finds other loops.
+export interface LoopTarget { meters: number; ascent: number; turn?: number }
 export interface LoopCandidate { direction: number; radius: number; leg: LegGeometry }
 
 // BRouter builds a loop through five points on a circle; it comes out about 6.2 times the circle's radius.
 // Twelve directions give loops through different country, so climbing differs much more than distance.
-export const loopDirections = Array.from({ length: 12 }, (_, i) => i * 30);
+export const loopDirections = (turn = 0) => Array.from({ length: 12 }, (_, i) => i * 30 + turn);
 export const firstRadius = (meters: number) => meters / 6.2;
 // The second try in each direction scales the radius by how far the first missed the distance; the third aims
 // between both tries, as distance grows with the radius but not in proportion.
@@ -72,15 +73,25 @@ export function twiceShare({ coordinates }: LegGeometry): number {
   return total ? twice / total : 0;
 }
 
+// The share of a loop on unpaved roads.
+export function unpavedShare({ coordinates, surfaces }: LegGeometry): number {
+  let unpaved = 0;
+  for (const span of surfaces) if (span.surface === 'unpaved') unpaved += pathMeters(coordinates.slice(span.fromIndex, span.toIndex + 1));
+  const total = pathMeters(coordinates);
+  return total ? unpaved / total : 0;
+}
+
 const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
 // Distance counts most, and a loop more than 15% off only fills in; then climbing. Roads ridden twice make a loop
-// worse. Of the best, those heading at least 60° apart, so the suggestions differ.
+// worse, and unpaved roads, which a loop meets where BRouter snaps a circle point to a track, much worse: 10 % of a
+// loop unpaved weighs as much as missing the distance by 15 %. Of the best, those heading at least 60° apart, so the
+// suggestions differ.
 export function pickLoops(candidates: LoopCandidate[], target: LoopTarget, count = 3): LoopCandidate[] {
   const score = ({ leg }: LoopCandidate) => {
     const distance = Math.abs(leg.distanceMeters - target.meters) / target.meters;
     return 2 * distance + (distance > .15 ? 1 : 0) + Math.abs((leg.ascentMeters ?? 0) - target.ascent) / Math.max(target.ascent, 200) +
-      4 * twiceShare(leg);
+      4 * twiceShare(leg) + 10 * unpavedShare(leg);
   };
   const scores = new Map(candidates.map(candidate => [candidate, score(candidate)]));
   const picks: LoopCandidate[] = [];

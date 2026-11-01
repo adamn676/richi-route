@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compassName, correctedRadius, firstRadius, loopSections, pickLoops, pointsAlong, refinedRadius, twiceShare, withoutSpurs }
+import { compassName, correctedRadius, firstRadius, loopSections, pickLoops, pointsAlong, refinedRadius, twiceShare, unpavedShare, withoutSpurs }
   from '../src/domain/loop-suggestions.ts';
 import { suggestLoops } from '../src/services/loop-suggestions.service.ts';
 import { distanceMeters } from '../src/domain/route-model.ts';
@@ -47,6 +47,16 @@ test('picks fit distance first, then climbing, and head apart', () => {
   assert.deepEqual(picks.map(pick => pick.direction), [0, 90, 270], '30° is too close to 0°; 70 km and 40 km miss by more than 15%');
 });
 
+test('unpaved roads count heavily against a loop', () => {
+  const target = { meters: 30000, ascent: 500 };
+  const paved = circle(30000 / 6.2, 0, { ascent: 400 });
+  // A better fit on distance and climbing, but with a tenth of it on a forest track.
+  const dirt = { ...circle(30000 / 6.2, 120, { ascent: 500 }), surfaces: [{ fromIndex: 0, toIndex: 180, surface: 'paved' }, { fromIndex: 180, toIndex: 200, surface: 'unpaved', surfaceTag: 'ground' }] };
+  assert.ok(Math.abs(unpavedShare(dirt) - .1) < .01, String(unpavedShare(dirt)));
+  assert.equal(unpavedShare(paved), 0);
+  assert.deepEqual(pickLoops([candidate(120, dirt), candidate(0, paved)], target, 1).map(pick => pick.direction), [0]);
+});
+
 test('points along a loop, compass names and sections that keep the totals', () => {
   const leg = circle(5000, 90, { steps: 400 });
   const points = pointsAlong(leg, 8);
@@ -85,6 +95,14 @@ test('suggestions: three passes, three named loops, failed directions left out',
   assert.ok(loops.every(loop => loop.place !== 'Graz'), 'The start town names none');
   const misses = loops.map(loop => Math.abs(loop.leg.ascentMeters - 800));
   assert.equal(misses[0], Math.min(...misses), 'With distances alike, the closest climbing comes first');
+});
+
+test('asking again turns the directions, so the loops run elsewhere', async () => {
+  const directions = [];
+  const trace = async (_, radius, direction) => { directions.push(direction); return circle(radius, direction); };
+  const loops = await suggestLoops(start, { meters: 40000, ascent: 800, turn: 10 }, new AbortController().signal, trace, async () => undefined);
+  assert.deepEqual(directions.slice(0, 12), [10, 40, 70, 100, 130, 160, 190, 220, 250, 280, 310, 340]);
+  assert.ok(loops.every(loop => loop.heading));
 });
 
 test('a routing service that fails everywhere reports why; a cancelled search stops', async () => {

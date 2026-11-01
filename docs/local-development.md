@@ -1068,7 +1068,10 @@ npm run strava:learn
 
 This takes the outdoor rides on road bikes (not virtual rides or mountain
 bikes) inside the routing area and traces them onto the roads as an opened GPX
-track is traced. For every road section it then counts how often you took it
+track is traced. A ride more than a tenth on unpaved roads counts as a
+mountain-bike ride logged with a road bike and is left out; on the others,
+unpaved roads and those of unknown surface (forest paths) are neither learned
+nor shown. For every road section it then counts how often you took it
 when it came up, that is when you rode it or the planner offered it between two
 points of the same ride, however seldom you were there. The engine makes a
 section cheaper the more often you took it, down to half its cost

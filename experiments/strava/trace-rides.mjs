@@ -4,13 +4,17 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { gpxSurfacePortions, matchGpxSurfaces, splitGpxPortion } from '../../src/domain/gpx-surfaces.ts';
 import { buildGpxTrack } from '../../src/domain/gpx-track.ts';
-import { sectionLine, sections, shareOn } from './compare.mjs';
+import { distanceMeters } from '../../src/domain/route-model.ts';
+import { positionKey, sectionLine, sections, shareOn } from './compare.mjs';
 import { slots, startEngine, strava } from './engine.mjs';
 
 // The road sections each ride took (.cache/strava/ridden.ndjson), traced as the planner traces an opened GPX track:
 // pieces of about 2 km through a point every 100 m, kept where the trace follows the ride within 12 m, split and traced
 // again where it does not. Pieces that never match leave their sections out. A ride mostly away from the roads a road bike
-// can take (a trainer session with drifting GPS, a ride off-road) is left out.
+// can take (a trainer session with drifting GPS, a ride off-road) is left out. Sections on unpaved roads, or of unknown
+// surface (paths, tracks without a grade), are listed apart, so that riding them never teaches the routing to take them;
+// with the share of the ride on unpaved roads: a ride over a tenth of it unpaved is left out too, as a mountain-bike ride
+// logged with a road bike (2019–2020 had 18, at 10–65 %; road rides stay under 7 %).
 
 // The compact tracks keep no points along straight stretches; the tracer wants one every few dozen metres.
 function densify(points, spacing = 50) {
@@ -26,6 +30,7 @@ function densify(points, spacing = 50) {
 const engine = startEngine();
 const output = createWriteStream(path.join(strava, 'ridden.ndjson.part'));
 let rides = 0, traced = 0, total = 0, offRoad = 0;
+const mostUnpaved = .1;
 for await (const line of readline.createInterface({ input: createReadStream(path.join(strava, 'rides.ndjson')) })) {
   const ride = JSON.parse(line);
   const points = densify(ride.points);
@@ -40,7 +45,7 @@ for await (const line of readline.createInterface({ input: createReadStream(path
       // The trace's surfaces don't matter here, only whether it follows the ride: within 12 m rather than the
       // planner's 8 m, as GPS strays further between steep slopes.
       if (!answer.error && matchGpxSurfaces(track, portion, { coordinates: answer.coordinates, surfaces: [] }, 12)) {
-        matched.push({ ...portion, coordinates: answer.coordinates });
+        matched.push({ ...portion, coordinates: answer.coordinates, surfaces: answer.surfaces });
         traced += length(portion);
       } else queue.push(...splitGpxPortion(track, portion));
     });
@@ -57,11 +62,24 @@ for await (const line of readline.createInterface({ input: createReadStream(path
     last.vias = [...last.vias, ...piece.points];
   }
   for (const { coordinates, vias } of joined) for (const section of sections(coordinates, vias)) taken.add(section);
-  if (shareOn(ride.points, [...taken].map(sectionLine)).share < .5) offRoad++;
-  else output.write(`${JSON.stringify({ id: ride.id, sections: [...taken] })}\n`);
+  // The surface of the road leaving each traced point, and how much of the ride was on unpaved roads.
+  const surfaceAt = new Map();
+  let unpavedMeters = 0, tracedMeters = 0;
+  for (const { coordinates, surfaces } of matched) {
+    for (const span of surfaces) {
+      for (let i = span.fromIndex; i < span.toIndex; i++) {
+        surfaceAt.set(positionKey(coordinates[i]), span.surface);
+        if (span.surface === 'unpaved') unpavedMeters += distanceMeters(coordinates[i], coordinates[i + 1]);
+      }
+    }
+    for (let i = 1; i < coordinates.length; i++) tracedMeters += distanceMeters(coordinates[i - 1], coordinates[i]);
+  }
+  const unpaved = [...taken].filter(section => !['paved', 'likelyPaved', 'rough'].includes(surfaceAt.get(section.split(',').slice(0, 2).join())));
+  if (shareOn(ride.points, [...taken].map(sectionLine)).share < .5 || unpavedMeters > mostUnpaved * tracedMeters) offRoad++;
+  else output.write(`${JSON.stringify({ id: ride.id, unpavedShare: +(tracedMeters ? unpavedMeters / tracedMeters : 0).toFixed(3), sections: [...taken], unpaved })}\n`);
   if (++rides % 100 === 0) console.log(`${rides} rides, ${Math.round(traced / total * 100)} % of their length traced`);
 }
 await engine.close();
 await new Promise(resolve => output.end(resolve));
 await rename(path.join(strava, 'ridden.ndjson.part'), path.join(strava, 'ridden.ndjson'));
-console.log(`${rides} rides: ${Math.round(traced / 1000)} of ${Math.round(total / 1000)} km traced onto the roads; ${offRoad} rides mostly off them left out.`);
+console.log(`${rides} rides: ${Math.round(traced / 1000)} of ${Math.round(total / 1000)} km traced onto the roads; ${offRoad} rides mostly off them or unpaved left out.`);

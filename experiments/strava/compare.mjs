@@ -102,9 +102,10 @@ export function sections(coordinates, vias = []) {
     }
     if (!same(point, points.at(-1))) points.push(point);
   }
-  const key = ([lon, lat]) => `${Math.round(lon * 1e6) + 180_000_000},${Math.round(lat * 1e6) + 90_000_000}`;
-  return points.slice(1, -2).map((point, i) => `${key(point)},${key(points[i + 2])}`);
+  return points.slice(1, -2).map((point, i) => `${positionKey(point)},${positionKey(points[i + 2])}`);
 }
+// A position as the engine writes it.
+export const positionKey = ([lon, lat]) => `${Math.round(lon * 1e6) + 180_000_000},${Math.round(lat * 1e6) + 90_000_000}`;
 
 // How many rides passed through the area of each point, about 2 km across; a leg's familiarity is its median point's.
 const area = ([lon, lat]) => `${Math.floor(lon / .03)},${Math.floor(lat / .02)}`;

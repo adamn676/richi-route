@@ -16,14 +16,20 @@ export const useLoopSuggestionsStore = defineStore('loop-suggestions', () => {
   const loading = ref(false);
   const error = ref('');
   let controller: AbortController | undefined, searchedFrom = '', undoDepth = 0;
+  // Asking again from the same start for the same loop turns the directions by 10°, so the loops run through other
+  // points: three turns give different loops before they repeat.
+  let lastSearch = '', turn = 0;
 
   async function suggest(start: Coord, target: LoopTarget) {
     discard();
     searchedFrom = String(start);
+    const search = `${start}|${target.meters}|${target.ascent}`;
+    turn = search === lastSearch ? (turn + 10) % 30 : 0;
+    lastSearch = search;
     const current = controller = new AbortController();
     loading.value = true;
     try {
-      const found = await suggestLoops(start, target, current.signal);
+      const found = await suggestLoops(start, { ...target, turn }, current.signal);
       if (controller !== current) return;
       suggestions.value = found.map(suggestion => ({ ...suggestion, leg: markRaw(suggestion.leg) }));
     } catch (cause) {

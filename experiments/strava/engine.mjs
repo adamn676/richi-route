@@ -3,6 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { routingParameters, routingProfile } from '../../src/config/routing-policy.ts';
+import { parseBRouterLeg } from '../../src/domain/route-response.ts';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 export const strava = path.join(root, '.cache/strava');
@@ -10,7 +11,7 @@ const rules = path.join(root, 'experiments/routing/.local/local-routing-rules');
 
 // The routing engine without a port (`richi-engine lines`), with the planner's profile, local rules and surface
 // corrections, and the rider's road `preferences` file if given. `route` asks as the planner does (`extra` as its round
-// trips) and answers with the route's [lon, lat] points, or an error.
+// trips) and answers with the route as the planner reads it ([lon, lat] points, surfaces), or an error.
 export function startEngine({ threads = 6, preferences } = {}) {
   const env = { ...process.env, RICHIROUTE_RULES: path.join(rules, 'rules.tsv'), RICHIROUTE_SURFACES: path.join(rules, 'surfaces.tsv') };
   // Only the preferences asked for, never ones the shell happens to have.
@@ -26,8 +27,9 @@ export function startEngine({ threads = 6, preferences } = {}) {
     const answer = JSON.parse(line), resolve = waiting.get(answer.id);
     waiting.delete(answer.id);
     // The GeoJSON comes as text, as the planner's server sends it.
-    const coordinates = answer.geojson && JSON.parse(answer.geojson).features[0]?.geometry.coordinates.map(([lon, lat]) => [lon, lat]);
-    resolve(coordinates?.length ? { coordinates, ms: answer.ms } : { error: answer.error ?? 'no route', ms: answer.ms });
+    let leg;
+    try { leg = answer.geojson && parseBRouterLeg(JSON.parse(answer.geojson)); } catch { leg = null; }
+    resolve(leg ? { coordinates: leg.coordinates, surfaces: leg.surfaces, ms: answer.ms } : { error: answer.error ?? 'no route', ms: answer.ms });
   });
   return {
     route(points, extra = {}) {
