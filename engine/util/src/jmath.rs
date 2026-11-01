@@ -4,6 +4,9 @@
 //! - `Math.atan2` delegates to `StrictMath.atan2`, the fdlibm port in `java.lang.FdLibm`; the platform
 //!   `atan2` differs in the last bit for about one input in six.
 //! - `Double.compare` orders `-0.0` before `0.0` and all NaNs after everything.
+//! - `StrictMath.sin`, `cos` and `asin` (`FdLibm`), which are also JavaScript's in V8: the planner's
+//!   loop suggestions use them to match its TypeScript. Java's `Math.sin` and `Math.cos` are HotSpot's
+//!   intrinsics instead (`router/src/libm.rs`).
 
 use std::cmp::Ordering;
 
@@ -217,6 +220,235 @@ pub fn atan2(y: f64, x: f64) -> f64 {
     }
 }
 
+const S1: f64 = f64::from_bits(0xbfc5_5555_5555_5549);
+const S2: f64 = f64::from_bits(0x3f81_1111_1110_f8a6);
+const S3: f64 = f64::from_bits(0xbf2a_01a0_19c1_61d5);
+const S4: f64 = f64::from_bits(0x3ec7_1de3_57b1_fe7d);
+const S5: f64 = f64::from_bits(0xbe5a_e5e6_8a2b_9ceb);
+const S6: f64 = f64::from_bits(0x3de5_d93a_5acf_d57c);
+
+/// `FdLibm.Sin.__kernel_sin`: sin(x + y) for |x| ~< pi/4, `y` the tail of `x` unless `iy` is 0.
+fn kernel_sin(x: f64, y: f64, iy: i32) -> f64 {
+    if hi(x) & EXP_SIGNIF_BITS < 0x3e40_0000 {
+        return x; // |x| < 2^-27
+    }
+    let z = x * x;
+    let v = z * x;
+    let r = S2 + z * (S3 + z * (S4 + z * (S5 + z * S6)));
+    if iy == 0 { x + v * (S1 + z * r) } else { x - ((z * (0.5 * y - v * r) - y) - v * S1) }
+}
+
+const C1: f64 = f64::from_bits(0x3fa5_5555_5555_554c);
+const C2: f64 = f64::from_bits(0xbf56_c16c_16c1_5177);
+const C3: f64 = f64::from_bits(0x3efa_01a0_19cb_1590);
+const C4: f64 = f64::from_bits(0xbe92_7e4f_809c_52ad);
+const C5: f64 = f64::from_bits(0x3e21_ee9e_bdb4_b1c4);
+const C6: f64 = f64::from_bits(0xbda8_fae9_be88_38d4);
+
+/// `FdLibm.Cos.__kernel_cos`: cos(x + y) for |x| ~< pi/4.
+fn kernel_cos(x: f64, y: f64) -> f64 {
+    let ix = hi(x) & EXP_SIGNIF_BITS;
+    if ix < 0x3e40_0000 {
+        return 1.0; // |x| < 2^-27
+    }
+    let z = x * x;
+    let r = z * (C1 + z * (C2 + z * (C3 + z * (C4 + z * (C5 + z * C6)))));
+    if ix < 0x3fd3_3333 {
+        return 1.0 - (0.5 * z - (z * r - x * y)); // |x| < 0.3
+    }
+    let qx = if ix > 0x3fe9_0000 { 0.28125 } else { f64::from_bits(((ix - 0x0020_0000) as u64) << 32) };
+    let hz = 0.5 * z - qx;
+    let a = 1.0 - qx;
+    a - (hz - (z * r - x * y))
+}
+
+const NPIO2_HW: [i32; 32] = [
+    0x3ff9_21fb,
+    0x4009_21fb,
+    0x4012_d97c,
+    0x4019_21fb,
+    0x401f_6a7a,
+    0x4022_d97c,
+    0x4025_fdbb,
+    0x4029_21fb,
+    0x402c_463a,
+    0x402f_6a7a,
+    0x4031_475c,
+    0x4032_d97c,
+    0x4034_6b9c,
+    0x4035_fdbb,
+    0x4037_8fdb,
+    0x4039_21fb,
+    0x403a_b41b,
+    0x403c_463a,
+    0x403d_d85a,
+    0x403f_6a7a,
+    0x4040_7e4c,
+    0x4041_475c,
+    0x4042_106c,
+    0x4042_d97c,
+    0x4043_a28c,
+    0x4044_6b9c,
+    0x4045_34ac,
+    0x4045_fdbb,
+    0x4046_c6cb,
+    0x4047_8fdb,
+    0x4048_58eb,
+    0x4049_21fb,
+];
+const INVPIO2: f64 = f64::from_bits(0x3fe4_5f30_6dc9_c883);
+const PIO2_1: f64 = f64::from_bits(0x3ff9_21fb_5440_0000);
+const PIO2_1T: f64 = f64::from_bits(0x3dd0_b461_1a62_6331);
+const PIO2_2: f64 = f64::from_bits(0x3dd0_b461_1a60_0000);
+const PIO2_2T: f64 = f64::from_bits(0x3ba3_198a_2e03_7073);
+const PIO2_3: f64 = f64::from_bits(0x3ba3_198a_2e00_0000);
+const PIO2_3T: f64 = f64::from_bits(0x397b_839a_2520_49c1);
+
+/// `FdLibm.RemPio2.__ieee754_rem_pio2` for pi/4 < |x| <= 2^20 pi/2: n with x = n pi/2 + y0 + y1.
+fn rem_pio2(x: f64) -> (i32, f64, f64) {
+    let hx = hi(x);
+    let ix = hx & EXP_SIGNIF_BITS;
+    if ix < 0x4002_d97c {
+        // |x| < 3pi/4: n = +-1, near pi/2 with 33 + 33 + 53 bits of pi (x - -p is x + p, as in Java)
+        let s = if hx > 0 { 1.0 } else { -1.0 };
+        let mut z = x - s * PIO2_1;
+        let tail = if ix == 0x3ff9_21fb {
+            z -= s * PIO2_2;
+            PIO2_2T
+        } else {
+            PIO2_1T
+        };
+        let y0 = z - s * tail;
+        return (s as i32, y0, (z - y0) - s * tail);
+    }
+    let t = x.abs();
+    let n = (t * INVPIO2 + 0.5) as i32;
+    let f = f64::from(n);
+    let mut r = t - f * PIO2_1;
+    let mut w = f * PIO2_1T; // good to 85 bits
+    let mut y0 = r - w;
+    if n >= 32 || ix == NPIO2_HW[n as usize - 1] {
+        let j = ix >> 20;
+        if j - ((hi(y0) >> 20) & 0x7ff) > 16 {
+            // a second iteration, good to 118 bits
+            let t = r;
+            w = f * PIO2_2;
+            r = t - w;
+            w = f * PIO2_2T - ((t - r) - w);
+            y0 = r - w;
+            if j - ((hi(y0) >> 20) & 0x7ff) > 49 {
+                // a third, 151 bits
+                let t = r;
+                w = f * PIO2_3;
+                r = t - w;
+                w = f * PIO2_3T - ((t - r) - w);
+                y0 = r - w;
+            }
+        }
+    }
+    let y1 = (r - y0) - w;
+    if hx < 0 { (-n, -y0, -y1) } else { (n, y0, y1) }
+}
+
+/// Whether `x` is beyond `rem_pio2`'s range. No angle in degrees gets there; the platform's
+/// function answers those.
+fn huge(x: f64) -> bool {
+    hi(x) & EXP_SIGNIF_BITS > 0x4139_21fb
+}
+
+/// `StrictMath.sin` (`FdLibm.Sin`) up to 2^20 pi/2.
+pub fn sin(x: f64) -> f64 {
+    let ix = hi(x) & EXP_SIGNIF_BITS;
+    if ix <= 0x3fe9_21fb {
+        return kernel_sin(x, 0.0, 0);
+    }
+    if ix >= EXP_BITS {
+        return f64::NAN; // inf or NaN
+    }
+    if huge(x) {
+        return x.sin();
+    }
+    let (n, y0, y1) = rem_pio2(x);
+    match n & 3 {
+        0 => kernel_sin(y0, y1, 1),
+        1 => kernel_cos(y0, y1),
+        2 => -kernel_sin(y0, y1, 1),
+        _ => -kernel_cos(y0, y1),
+    }
+}
+
+/// `StrictMath.cos` (`FdLibm.Cos`) up to 2^20 pi/2.
+pub fn cos(x: f64) -> f64 {
+    let ix = hi(x) & EXP_SIGNIF_BITS;
+    if ix <= 0x3fe9_21fb {
+        return kernel_cos(x, 0.0);
+    }
+    if ix >= EXP_BITS {
+        return f64::NAN; // inf or NaN
+    }
+    if huge(x) {
+        return x.cos();
+    }
+    let (n, y0, y1) = rem_pio2(x);
+    match n & 3 {
+        0 => kernel_cos(y0, y1),
+        1 => -kernel_sin(y0, y1, 1),
+        2 => -kernel_cos(y0, y1),
+        _ => kernel_sin(y0, y1, 1),
+    }
+}
+
+const PIO2_LO: f64 = f64::from_bits(0x3c91_a626_3314_5c07);
+const PS0: f64 = f64::from_bits(0x3fc5_5555_5555_5555);
+const PS1: f64 = f64::from_bits(0xbfd4_d612_03eb_6f7d);
+const PS2: f64 = f64::from_bits(0x3fc9_c155_0e88_4455);
+const PS3: f64 = f64::from_bits(0xbfa4_8228_b568_8f3b);
+const PS4: f64 = f64::from_bits(0x3f49_efe0_7501_b288);
+const PS5: f64 = f64::from_bits(0x3f02_3de1_0dfd_f709);
+const QS1: f64 = f64::from_bits(0xc003_3a27_1c8a_2d4b);
+const QS2: f64 = f64::from_bits(0x4000_2ae5_9c59_8ac8);
+const QS3: f64 = f64::from_bits(0xbfe6_066c_1b8d_0159);
+const QS4: f64 = f64::from_bits(0x3fb3_b8c5_b12e_9282);
+
+/// `StrictMath.asin` (`FdLibm.Asin`).
+pub fn asin(x: f64) -> f64 {
+    let hx = hi(x);
+    let ix = hx & EXP_SIGNIF_BITS;
+    let rational = |t: f64| {
+        let p = t * (PS0 + t * (PS1 + t * (PS2 + t * (PS3 + t * (PS4 + t * PS5)))));
+        let q = 1.0 + t * (QS1 + t * (QS2 + t * (QS3 + t * QS4)));
+        (p, q)
+    };
+    if ix >= 0x3ff0_0000 {
+        if ((ix - 0x3ff0_0000) | lo(x)) == 0 {
+            return x * PI_O_2 + x * PIO2_LO; // asin(+-1) = +-pi/2
+        }
+        return f64::NAN; // |x| > 1
+    }
+    if ix < 0x3fe0_0000 {
+        // |x| < 0.5
+        if ix < 0x3e40_0000 {
+            return x; // |x| < 2^-27
+        }
+        let (p, q) = rational(x * x);
+        return x + x * (p / q);
+    }
+    let t = (1.0 - x.abs()) * 0.5;
+    let (p, q) = rational(t);
+    let s = t.sqrt();
+    let t = if ix >= 0x3fef_3333 {
+        // |x| > 0.975
+        PI_O_2 - (2.0 * (s + s * (p / q)) - PIO2_LO)
+    } else {
+        let w = f64::from_bits(s.to_bits() & 0xffff_ffff_0000_0000);
+        let c = (t - w * w) / (s + w);
+        let p = 2.0 * s * (p / q) - (PIO2_LO - 2.0 * c);
+        let q = PI_O_4 - 2.0 * w;
+        PI_O_4 - (p - q)
+    };
+    if hx > 0 { t } else { -t }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,6 +473,23 @@ mod tests {
         assert_eq!(atan2(0.0, -1.0), PI);
         assert_eq!(atan2(-0.0, 1.0).to_bits(), (-0.0f64).to_bits());
         assert_eq!(atan2(1.0, 0.0).to_bits(), PI_O_2.to_bits());
+    }
+
+    #[test]
+    fn sin_cos_asin_match_fdlibm_values() {
+        // Values printed by JavaScript (V8) and Java's StrictMath; where noted, glibc's differ.
+        assert_eq!(sin(1.0).to_bits(), 0x3fea_ed54_8f09_0cee);
+        assert_eq!(sin(-2.5).to_bits(), 0xbfe3_26af_0dcf_cab0, "glibc: …cab1");
+        assert_eq!(sin(100.0).to_bits(), 0xbfe0_3425_b78c_4db8);
+        assert_eq!(sin(PI_O_2), 1.0);
+        assert_eq!(cos(0.631_852_088_206_240_6).to_bits(), 0x3fe9_d269_4bf6_6e46, "glibc differs");
+        assert_eq!(cos(PI_O_2).to_bits(), 0x3c91_a626_3314_5c07);
+        assert_eq!(cos(-40.0).to_bits(), 0xbfe5_578e_7d68_218f);
+        assert_eq!(asin(0.3).to_bits(), 0x3fd3_8015_9e14_f6ff);
+        assert_eq!(asin(0.914_109_173_655_385_9).to_bits(), 0x3ff2_73f0_6214_a4fc, "glibc differs");
+        assert_eq!(asin(0.99).to_bits(), 0x3ff6_de3c_6f33_d51d);
+        assert_eq!(asin(1.0), PI_O_2);
+        assert!(sin(f64::INFINITY).is_nan() && cos(f64::NAN).is_nan() && asin(1.5).is_nan());
     }
 
     #[test]

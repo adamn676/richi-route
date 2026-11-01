@@ -5,8 +5,13 @@
 //! search stops instead when its client goes away), never compresses, and answers GeoJSON whatever
 //! `format` asks for (`trackname` names only the file). It sends no `Access-Control-Allow-Origin`: the
 //! planner reaches it through its own server, so other web pages cannot read its answers.
+//!
+//! `POST /loops` with a JSON body (`richi_planner::LoopRequest`, `Content-Type: application/json`)
+//! answers the planner's loop suggestions as JSON (`richi_planner::suggestions_json`); where no
+//! direction has a loop, the first direction's failure as `/brouter` would answer it, 400 for a
+//! malformed request, 405 and 415 for another method or content type.
 
-use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -14,9 +19,13 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
+use richi_planner::{Failure, LoopRequest, Stop, suggestions_json};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
+
+/// The largest request body: the squares of the loops suggested lately take a few megabytes at most.
+const MAX_BODY: usize = 8 << 20;
 
 /// Answers the connections to `listener`, each search ending after `max_running_time` ms.
 pub fn serve(listener: &TcpListener, pool: RouterPool, max_running_time: i64) -> ! {
@@ -36,14 +45,44 @@ pub fn serve(listener: &TcpListener, pool: RouterPool, max_running_time: i64) ->
 
 /// `RouteServer.run` for one connection.
 fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
-    // a client that stops sending before the headers end is dropped
+    // a client that stops sending before the headers (and the body) end is dropped
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
-    let mut lines = BufReader::new(&stream).lines();
+    let mut reader = BufReader::new(&stream);
+    let mut lines = reader.by_ref().lines();
     let request = lines.next().and_then(Result::ok);
-    if !lines.by_ref().map_while(Result::ok).any(|line| line.is_empty()) {
-        return send(stream, "400 Bad Request", "");
+    let (mut length, mut json) = (0, false);
+    loop {
+        match lines.next() {
+            Some(Ok(line)) if line.is_empty() => break,
+            Some(Ok(line)) => match line.split_once(':') {
+                Some((name, value)) if name.eq_ignore_ascii_case("content-length") => {
+                    length = value.trim().parse().unwrap_or(usize::MAX);
+                }
+                Some((name, value)) if name.eq_ignore_ascii_case("content-type") => {
+                    let mime = value.split(';').next().unwrap_or_default().trim();
+                    json = mime.eq_ignore_ascii_case("application/json");
+                }
+                _ => {}
+            },
+            _ => return send(stream, "400 Bad Request", ""),
+        }
     }
-    let target = request.as_deref().and_then(|r| r.split(' ').nth(1)).unwrap_or_default();
+    let mut request = request.as_deref().unwrap_or_default().split(' ');
+    let (method, target) = (request.next().unwrap_or_default(), request.next().unwrap_or_default());
+    if target == "/loops" {
+        // only what a web page cannot send to another site without asking first (no CORS preflight)
+        if method != "POST" {
+            return send(stream, "405 Method Not Allowed", "");
+        }
+        if !json {
+            return send(stream, "415 Unsupported Media Type", "");
+        }
+        let mut body = Vec::new();
+        if length > MAX_BODY || !reader.take(length as u64).read_to_end(&mut body).is_ok_and(|read| read == length) {
+            return send(stream, "400 Bad Request", "");
+        }
+        return loops(stream, &String::from_utf8_lossy(&body), pool, max_running_time);
+    }
     let query = target.split_once('?').map_or("", |(_, query)| query).to_string();
     let file_name = match get_url_params(&format!("/brouter?{query}")) {
         Ok(params) if params.contains_key("lonlats") && params.contains_key("profile") => file_name(&params),
@@ -64,6 +103,11 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
             Err(_) => return terminated.store(true, Relaxed),
         }
     };
+    answer(stream, outcome, file_name);
+}
+
+/// The answer to a routing request's `outcome`, with the file name for a route.
+fn answer(stream: TcpStream, outcome: Outcome, file_name: Option<String>) {
     match outcome {
         Ok(Ok(Answer::GeoJson(geojson))) => {
             let disposition = file_name.map(|name| format!("Content-Disposition: attachment; filename=\"{name}\"\r\n"));
@@ -81,6 +125,20 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
         }
         Ok(Err(exception)) => internal_error(stream, exception),
         Err(panic) => internal_error(stream, panic_message(&*panic)),
+    }
+}
+
+/// `POST /loops`.
+fn loops(stream: TcpStream, body: &str, pool: &RouterPool, max_running_time: i64) {
+    let request = match LoopRequest::parse(body) {
+        Ok(request) => request,
+        Err(reason) => return send(stream, "400 Bad Request", &format!("{reason}\n")),
+    };
+    match request.suggest(pool, max_running_time, || client_gone(&stream)) {
+        Ok(suggestions) => send_body(stream, "200 OK", "application/json", "", &suggestions_json(&suggestions)),
+        Err(Stop::Failed(Failure::Engine(outcome))) => answer(stream, outcome, None),
+        Err(Stop::Failed(Failure::Internal(reason))) => internal_error(stream, reason),
+        Err(Stop::Aborted) => {}
     }
 }
 

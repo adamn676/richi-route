@@ -1,4 +1,5 @@
-import { distanceMeters, PlacementError, routingConcurrency, SectionError, type Coord, type RoutingEngine } from '../domain/route-model.ts';
+import { distanceMeters, PlacementError, routingConcurrency, SectionError, type Coord, type LegGeometry, type RoutingEngine } from '../domain/route-model.ts';
+import type { LoopTarget } from '../domain/loop-suggestions.ts';
 import { parseBRouterLeg, parseBRouterLine } from '../domain/route-response.ts';
 import { routingProfile, routingParameters, routingPolicyVersion } from '../config/routing-policy.ts';
 
@@ -39,48 +40,59 @@ function withSlot<T>(signal: AbortSignal, work: () => Promise<T>, background = f
   });
 }
 
-async function request(points: Coord[], signal: AbortSignal, background = false, extra: Record<string, string> = {}): Promise<unknown> {
-  const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0', ...extra });
+// The routing service's answer as JSON, or the error to show for it.
+async function answer(fetching: () => Promise<Response>, signal: AbortSignal): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetching();
+  } catch (error) {
+    if (signal.aborted) throw error;
+    if (error instanceof Error && error.name === 'TimeoutError') throw new SectionError(timeoutMessage, { cause: error });
+    throw new Error(navigator.onLine === false ? offlineMessage : unavailableMessage, { cause: error });
+  }
+  if (!response.ok) {
+    const detail = (await response.text()).trim();
+    if (detail === 'local routing rules version mismatch') throw new Error('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.');
+    const missingTile = /^datafile ([EW]\d+_[NS]\d+\.rd5) not found$/.exec(detail);
+    if (missingTile) throw new Error(`Für diese Gegend fehlen lokale Kartendaten (${missingTile[1]}). Bitte die Kartendaten ergänzen und den Routing-Dienst neu starten.`);
+    if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new SectionError(timeoutMessage);
+    if (detail === 'memory limit reached') throw new SectionError('Die Routenberechnung hat das Speicherlimit erreicht, der Abschnitt ist zu weit. Bitte einen Zwischenstopp dazwischen setzen.');
+    if (/^no track found\b|position not mapped in existing datafile/.test(detail)) throw new PlacementError('Keine passende Fahrradverbindung gefunden. Bitte Start, Ziel oder Zwischenpunkte verschieben.');
+    if (response.status === 502 || response.status === 503) throw new Error(unavailableMessage);
+    throw new Error(`Die Route konnte nicht berechnet werden (HTTP ${response.status}). Bitte erneut versuchen.`);
+  }
+  return response.json();
+}
+
+async function request(points: Coord[], signal: AbortSignal, background = false): Promise<unknown> {
+  const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0' });
   // Guide the initial search and its refinement; road costs stay in the profile.
   for (const [name, value] of Object.entries(routingParameters)) params.set(`profile:${name}`, String(value));
-  return withSlot(signal, async () => {
-    let response: Response;
-    try {
-      response = await fetch('/routing/brouter?' + params, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]),
-      });
-    } catch (error) {
-      if (signal.aborted) throw error;
-      if (error instanceof Error && error.name === 'TimeoutError') throw new SectionError(timeoutMessage, { cause: error });
-      throw new Error(navigator.onLine === false ? offlineMessage : unavailableMessage, { cause: error });
-    }
-    if (!response.ok) {
-      const detail = (await response.text()).trim();
-      if (detail === 'local routing rules version mismatch') throw new Error('Die lokalen Routing-Regeln wurden geändert. Bitte den Routing-Dienst neu starten.');
-      const missingTile = /^datafile ([EW]\d+_[NS]\d+\.rd5) not found$/.exec(detail);
-      if (missingTile) throw new Error(`Für diese Gegend fehlen lokale Kartendaten (${missingTile[1]}). Bitte die Kartendaten ergänzen und den Routing-Dienst neu starten.`);
-      if (/timeout after \d+ seconds|operation killed by thread-priority-watchdog/.test(detail)) throw new SectionError(timeoutMessage);
-      if (detail === 'memory limit reached') throw new SectionError('Die Routenberechnung hat das Speicherlimit erreicht, der Abschnitt ist zu weit. Bitte einen Zwischenstopp dazwischen setzen.');
-      if (/^no track found\b|position not mapped in existing datafile/.test(detail)) throw new PlacementError('Keine passende Fahrradverbindung gefunden. Bitte Start, Ziel oder Zwischenpunkte verschieben.');
-      if (response.status === 502 || response.status === 503) throw new Error(unavailableMessage);
-      throw new Error(`Die Route konnte nicht berechnet werden (HTTP ${response.status}). Bitte erneut versuchen.`);
-    }
-    return response.json();
-  }, background);
+  return withSlot(signal, () => answer(() => fetch('/routing/brouter?' + params, {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]),
+  }), signal), background);
 }
 
 export async function traceGpxPortion(points: Coord[], signal: AbortSignal) {
   return parseBRouterLeg(await request(points, signal, true));
 }
 
-// BRouter's round trip: a loop from the start through five points on a circle of this radius, centred in this direction.
-export async function traceRoundTrip(start: Coord, radiusMeters: number, direction: number, signal: AbortSignal, points = 5) {
-  return parseBRouterLeg(await request([start], signal, false,
-    { engineMode: '4', roundTripDistance: String(Math.round(radiusMeters)), direction: String(direction), roundTripPoints: String(points) }));
-}
+// A loop suggested by the routing service, with the points whose towns name it (`along`).
+export interface LoopFound { leg: LegGeometry; heading: string; cells: string[]; back: boolean; along: Coord[] }
 
-export async function traceThereAndBack(start: Coord, turn: Coord, signal: AbortSignal) {
-  return parseBRouterLeg(await request([start, turn, start], signal));
+// A whole loop search on the engine's twelve threads: three rounds of twelve round trips and up to 24 rides out and
+// back, five turns of searches of at most a minute each.
+const loopsTimeout = 5 * 60_000 + 10_000;
+
+// The routing service's loop suggestions (its /loops): the dice turn and shape its round trips, `earlier` are the
+// squares of loops suggested before from there with their weights. Its round trips take turns with other requests
+// within the service, so this takes no routing slot.
+export async function traceLoops(start: Coord, target: LoopTarget, dice: number[], earlier: { cells: string[]; weight: number }[],
+  signal: AbortSignal): Promise<LoopFound[]> {
+  const parameters = Object.fromEntries(Object.entries(routingParameters).map(([name, value]) => [name, String(value)]));
+  const body = JSON.stringify({ profile: routingProfile, parameters, start, target, random: dice, earlier });
+  return await answer(() => fetch('/routing/loops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(loopsTimeout)]) }), signal) as LoopFound[];
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {

@@ -11,19 +11,20 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1000
 const errors = [], external = [];
 let routing = 'loops';
 const start = [15.44, 47.07], rad = Math.PI / 180, kx = 111320 * Math.cos(start[1] * rad), ky = 110540;
-// A circular loop in the requested direction, about 6.2 times the radius long, climbing more towards the north.
-function loop(radius, direction) {
-  const steps = 240, climb = radius / 8 * (1 + Math.cos(direction * rad));
+// The routing service's suggestions: circular loops of the requested distance to the east, south and west, climbing
+// more towards the north, each with eight points along it to name it by.
+function loop(meters, direction) {
+  const steps = 240, radius = meters / 2 / Math.PI, climb = Math.round(radius / 8 * (1 + Math.cos(direction * rad)));
   const centre = [start[0] + Math.sin(direction * rad) * radius / kx, start[1] + Math.cos(direction * rad) * radius / ky];
   const coordinates = Array.from({ length: steps + 1 }, (_, i) => {
     const a = (direction + 180) * rad + i / steps * 2 * Math.PI;
     const [lon, lat] = i === 0 || i === steps ? start : [centre[0] + Math.sin(a) * radius / kx, centre[1] + Math.cos(a) * radius / ky];
-    return [+lon.toFixed(6), +lat.toFixed(6), 300 + climb / 2 * (1 - Math.cos(i / steps * 2 * Math.PI))];
+    return [+lon.toFixed(6), +lat.toFixed(6)];
   });
-  const end = coordinates.at(-1);
-  return { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates },
-    properties: { 'track-length': String(Math.round(radius * 2 * Math.PI)), messages: [['Longitude', 'Latitude', 'Distance', 'WayTags'],
-      [Math.round(end[0] * 1e6), Math.round(end[1] * 1e6), 1, 'highway=tertiary surface=asphalt']] } }] };
+  const leg = { coordinates, elevations: coordinates.map((_, i) => 300 + climb / 2 * (1 - Math.cos(i / steps * 2 * Math.PI))),
+    distanceMeters: meters, ascentMeters: climb, surfaces: [{ fromIndex: 0, toIndex: steps, surface: 'paved', surfaceTag: 'asphalt' }] };
+  const along = Array.from({ length: 8 }, (_, k) => coordinates[Math.round((k + 1) * steps / 9)]);
+  return { leg, heading: 'Norden', cells: [String(direction)], back: false, along };
 }
 await context.addInitScript(origin => { if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street'); }, origin);
 await context.route('**/*', route => {
@@ -33,12 +34,12 @@ await context.route('**/*', route => {
 });
 await context.route('**/tiles/**', route => route.fulfill({ status: 200, contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
 await context.route('**/routing/**', route => {
-  const params = new URL(route.request().url()).searchParams;
-  if (params.get('engineMode') === '4') {
-    return routing === 'fail' ? route.fulfill({ status: 503, body: 'unavailable' }) : route.fulfill({ json: loop(+params.get('roundTripDistance'), +params.get('direction')) });
+  if (new URL(route.request().url()).pathname === '/routing/loops') {
+    const { target } = route.request().postDataJSON();
+    return routing === 'fail' ? route.fulfill({ status: 503, body: 'unavailable' }) : route.fulfill({ json: [90, 180, 270].map(direction => loop(target.meters, direction)) });
   }
   // Snapping a stop: it stays where it is.
-  const [lon, lat] = params.get('lonlats').split('|')[0].split(',').map(Number);
+  const [lon, lat] = new URL(route.request().url()).searchParams.get('lonlats').split('|')[0].split(',').map(Number);
   return route.fulfill({ json: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[lon, lat], [lon, lat]] },
     properties: { 'track-length': '0', messages: [] } }] } });
 });

@@ -103,7 +103,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 | Folder | Contents |
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify 4, Pinia, MapLibre GL JS 6, TypeScript, built with Vite 8 |
-| `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)) |
+| `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)), and the loop suggestions on top of it (`engine/planner`), shared by planner and iPhone app |
 | `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, in its first test ([iPhone app](docs/local-development.md#iphone-app)) |
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |

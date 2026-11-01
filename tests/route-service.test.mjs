@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { routingEngine } from '../src/services/route.service.ts';
+import { routingEngine, traceLoops } from '../src/services/route.service.ts';
 import { PlacementError } from '../src/domain/route-model.ts';
 import { requestFor } from '../experiments/routing/engines.mjs';
 
@@ -86,4 +86,23 @@ test('foreground routing takes the next slot ahead of queued surface lookup', as
   assert.equal(started.at(-1), 10);
   releases.splice(0).forEach(release => release());
   await Promise.all([...running, background, foreground]);
+});
+
+test('loop suggestions are one request with the planner\'s profile, failing like a route', async t => {
+  let asked;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    asked = { url, method: init.method, type: init.headers['Content-Type'], body: JSON.parse(init.body) };
+    return Response.json([]);
+  });
+  const earlier = [{ cells: ['1,2'], weight: .5 }], dice = Array(13).fill(.25);
+  assert.deepEqual(await traceLoops(from, { meters: 60000, ascent: 600 }, dice, earlier, new AbortController().signal), []);
+  assert.equal(asked.url, '/routing/loops');
+  assert.deepEqual([asked.method, asked.type], ['POST', 'application/json'], 'Nothing another web page could send unasked');
+  const { parameters, ...rest } = asked.body;
+  assert.deepEqual(rest, { profile: 'richi-local-v1', start: from, target: { meters: 60000, ascent: 600 }, random: dice, earlier });
+  assert.equal(parameters.pass1coefficient, '2', 'Parameters go as the route service sends them');
+  t.mock.method(globalThis, 'fetch', async () => new Response('datafile E10_N45.rd5 not found\n', { status: 400 }));
+  await assert.rejects(traceLoops(from, { meters: 60000, ascent: 600 }, dice, [], new AbortController().signal), /Kartendaten \(E10_N45\.rd5\)/);
+  t.mock.method(globalThis, 'fetch', async () => { throw new DOMException('Timed out', 'TimeoutError'); });
+  await assert.rejects(traceLoops(from, { meters: 60000, ascent: 600 }, dice, [], new AbortController().signal), /Zeitlimit/);
 });

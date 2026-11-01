@@ -67,6 +67,11 @@ impl RouterPool {
         self.pool.0.work.notify_one();
     }
 
+    /// How many requests run at a time.
+    pub fn threads(&self) -> usize {
+        self.pool.threads()
+    }
+
     /// Answers the requests submitted so far, then stops the threads.
     pub fn finish(self) {
         self.pool.queue().closed = true;

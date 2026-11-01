@@ -89,9 +89,7 @@ reachable through BRouter's `disableExpressionCache` debug switch); the port kee
 ## Router (router, cli)
 
 ```sh
-cargo build --release -p richi-engine   # $CARGO_TARGET_DIR/release/richi-engine (default target/), which loops.mjs runs
-node parity/loops.mjs rust              # the planner's loop suggestions: 20 starts × 36 round trips, 6 workers
-node parity/loops.mjs compare java rust # every answer's sha256 against the recorded Java baseline
+cargo build --release -p richi-engine   # $CARGO_TARGET_DIR/release/richi-engine (default target/)
 parity/route.sh                         # routes and number formats, Java against Rust, byte for byte
 parity/route.sh routes                  # (or: formats) one part only
 ```
@@ -103,7 +101,6 @@ bundle's jar. `route.sh` then also routes at and across each rule, opted out, an
 
 ```sh
 RICHIROUTE_RULES=$PWD/../experiments/routing/.local/local-routing-rules/rules.tsv parity/route.sh routes
-RICHIROUTE_RULES=… node parity/loops.mjs java --as java-live   # likewise rust --as rust-live, then compare
 ```
 
 Use the Node at `../.cache/runtime/node/bin/node`. `richi-engine lines <segmentDir> <profileDir> <threads>
@@ -112,11 +109,11 @@ the socket): `id<TAB>query` lines in, one JSON line `{"id","ms","error"|"geojson
 completion order. The workers share decoded map cells up to `cellCacheMB` (default 64, 0 to decode every
 cell for every search as BRouter does); answers are the same either way.
 
-**Loops.** `loops.mjs` drives the planner's own loop-suggestion code against an engine process and records
-every answer in `target/parity/loops/<engine>.json`; `compare` counts different answers and suggestions and
-prints the time per start. `java.json` is the baseline of pristine 1.7.10; do not overwrite it. To time
-Java again under the current load, record under another name: `node parity/loops.mjs java --as java-now`,
-then `compare java-now rust`.
+**Loops.** Until the loop suggestions moved into the engine, the planner's TypeScript asked an engine process
+for each round trip, and the recordings in `target/parity/loops/` (`java.json`, `rust.json`, …) hold every
+answer. `java.json` is the baseline of pristine 1.7.10 and the workload of `bench.sh`; do not overwrite it.
+Java's round trips are compared through `route.sh`'s `roundtrip` groups; the suggestions themselves under
+[Planner](#planner-planner).
 
 **Routes.** `route.sh routes` builds the query set with `parity/route.mjs` (as the planner's route service
 builds queries, with the real `profile:` parameters from `RICHIROUTE_ROUTING_RULES` and
@@ -155,6 +152,26 @@ answering like Java: engine modes 2 and 3, round trips without `direction` (BRou
 turn instructions (`timode`/`turnInstructionMode` > 0), beeline segments (`d` waypoints, `straight`,
 `add_beeline`), nogos and pois (when the parameters hold any), kinematic models, `correctMisplacedViaPoints`
 and `continueStraight`. The output is always GeoJSON, whatever `format` asks for, as in `RouteReference`.
+
+## Planner (planner)
+
+The loop suggestions (`planner/`, the server's `/loops`) were ported from the planner's TypeScript and must
+suggest exactly what it did: the same operations in the same order, with V8's `Math.sin`, `cos`, `asin` and
+`atan2`, which are fdlibm's (`util/src/jmath.rs`, checked bit for bit on 3 million values against Node).
+
+```sh
+cargo build --release -p richi-engine
+node parity/loops.mjs planner           # 20 starts through the planner's client code and /loops, 6 threads
+node parity/loops.mjs planner --dice    # each start with its own fixed dice (turn and shapes)
+node parity/loops.mjs compare a b       # two recordings
+```
+
+`loops.mjs` starts `richi-engine serve` with the local rules on port 17796 (`RICHIROUTE_LOOPS_PORT`) and
+records to `target/parity/loops/<name>.json` (`planner`, or `--as <name>`). `compare` counts the starts whose
+suggestions differ in any pick's leg (coordinates, heights, surfaces, distance, climbing), heading, squares or
+out and back, or in the points looked up to name them, and prints the time per start. On the move, the
+TypeScript's suggestions (`ts.json`, `ts-dice.json`, recorded with `richi-engine lines` and the rules) and the
+engine's (`planner.json`, `planner-dice.json`) were the same for all 20 starts.
 
 ## Benchmark
 

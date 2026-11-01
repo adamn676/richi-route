@@ -66,7 +66,7 @@ builds the routing engine and the address search (`cargo build --release`, quick
 and prepares the shared local rules and their profile. It then starts the engine
 with twelve routing threads (the planner's six requests at a time, with room to run a request's sections
 side by side) and the rules (`richi-engine serve`, BRouter's server
-protocol), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
+protocol, and the loop suggestions at `/loops`), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
 at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
 `127.0.0.1:5173`. It checks readiness before opening
 the frontend. Ctrl+C stops the processes it started. Logs are
@@ -851,14 +851,16 @@ or tap selects it; while loops are offered, map clicks set no stops. **Runde üb
 closes the suggestions; the × beside the heading returns to the start alone. On a phone the sheet stays
 up while choosing. The last target is remembered in this browser.
 
-The loops come from BRouter's round-trip mode (`engineMode=4`) with the
+The routing engine suggests the loops (`engine/planner`, asked once at `/loops` with a JSON `POST`, which
+other web pages cannot send unasked; the iPhone app shares them); the planner names them. They come from BRouter's round-trip mode (`engineMode=4`) with the
 planner's profile: a loop through points on an arc around the start, which with
 five points comes out about 6.2 times the arc's radius. Where a circle point snaps onto a dead end, the loop
 rides in and back out; the planner cuts every stretch that returns to a point
 passed less than 1 km before, so dead ends and turning circles go while the road
 home a loop starts and ends on stays. It asks in twelve directions, then twice
-more per direction with the radius corrected towards the distance (36 requests,
-locally about 2–4 s for 50 km, 9 s for 500 km and 33 s for 1,000 km). Direction decides most of the climbing: from Graz, loops to
+more per direction with the radius corrected towards the distance (36 round trips, as many at a time as the engine
+has threads, so that routes asked meanwhile wait at most about one of them; locally about 2–4 s for 50 km, 9 s for
+500 km and 33 s for 1,000 km). Direction decides most of the climbing: from Graz, loops to
 the north climb far more than those to the south. Of all loops, it prefers those
 within 15% of the distance, then the closest climbing, and avoids roads ridden
 both ways and unpaved roads; the three it shows head at least 60° apart. It never
@@ -891,7 +893,7 @@ another card's), or the town a ride out and back turns in, otherwise by its comp
 it goes. Climbing uses the planner's
 filter for router heights, so it matches the route once taken.
 
-`node tests/browser-loops.mjs` checks the flow with mocked routing and address
+`node tests/browser-loops.mjs` checks the flow with mocked routing (`/loops`) and address
 services: start required, three distinct names, overview first, each loop shown
 exactly as the route with zoom, no extra undo steps, deselection back to all
 loops, discard, keep, a failed routing service and the phone layout.

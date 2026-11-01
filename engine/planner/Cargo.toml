@@ -1,0 +1,11 @@
+[package]
+name = "richi-planner"
+description = "RichiRoute's planner logic on top of the engine: loop suggestions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+brouter-util.workspace = true
+brouter-router.workspace = true
