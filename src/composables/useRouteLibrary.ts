@@ -251,11 +251,11 @@ export function useRouteLibrary() {
     });
   }
 
-  function saveFile(contents: Blob, extension: string) {
+  function saveFile(contents: Blob, extension: string, suffix = '') {
     const url = URL.createObjectURL(contents);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `richiroute-${new Date().toISOString().slice(0, 10)}.${extension}`;
+    link.download = `richiroute-${new Date().toISOString().slice(0, 10)}${suffix}.${extension}`;
     document.body.append(link);
     link.click();
     link.remove();
@@ -273,11 +273,18 @@ export function useRouteLibrary() {
     saveFile(new Blob([exportGpx(store, title.value)], { type: 'application/gpx+xml' }), 'gpx');
   }
 
-  // A FIT course, named as the route, comes from the routing service.
+  // A FIT course, named as the route, comes from the routing service; a long route in parts, a file each, a moment
+  // apart, as browsers drop downloads started at once. A browser may still ask before allowing the second one.
   async function downloadFit() {
     await run(async () => {
-      saveFile(await courseFit(title.value, routeTrack(store)), 'fit');
-      message.value = 'FIT-Datei heruntergeladen.';
+      const parts = await courseFit(title.value, routeTrack(store));
+      for (const [i, part] of parts.entries()) {
+        if (i) await new Promise(resolve => setTimeout(resolve, 500));
+        saveFile(part, 'fit', parts.length > 1 ? `-teil-${i + 1}` : '');
+      }
+      message.value = parts.length > 1
+        ? `${parts.length} FIT-Dateien heruntergeladen, eine je Teil. Fehlt eine, im Browser mehrere Downloads erlauben.`
+        : 'FIT-Datei heruntergeladen.';
     });
   }
 

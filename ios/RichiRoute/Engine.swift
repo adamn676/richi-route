@@ -39,10 +39,39 @@ struct Engine: Sendable {
         ] + extra + parameters
         var request = URLRequest(url: url.url!)
         request.timeoutInterval = 150
+        return try await ask(request)
+    }
+
+    /// The route of a `route` answer as FIT courses named `name`, in parts over 400 km: each part's name, as its
+    /// file has it, and file.
+    func fit(name: String, route geojson: Data) async throws -> [(name: String, fit: Data)] {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/fit")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "coordinates": Self.track(geojson)])
+        let answer = try JSONSerialization.jsonObject(with: try await ask(request)) as? [String: Any]
+        let parts = (answer?["parts"] as? [[String: String]] ?? []).compactMap { part in
+            part["name"].flatMap { name in part["fit"].flatMap { Data(base64Encoded: $0) }.map { (name: name, fit: $0) } }
+        }
+        guard !parts.isEmpty else { throw Failure(message: "Keine FIT-Datei in der Antwort") }
+        return parts
+    }
+
+    /// The track of a `route` answer: [longitude, latitude, height] per point.
+    static func track(_ geojson: Data) -> [[Double]] {
+        let json = try? JSONSerialization.jsonObject(with: geojson) as? [String: Any]
+        let geometry = (json?["features"] as? [[String: Any]])?.first?["geometry"] as? [String: Any]
+        return geometry?["coordinates"] as? [[Double]] ?? []
+    }
+
+    private func ask(_ request: URLRequest) async throws -> Data {
+        var request = request
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw Failure(message: String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            let detail = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw Failure(message: detail.isEmpty ? "HTTP \(status)" : detail)
         }
         return data
     }

@@ -38,21 +38,25 @@ struct ProofView: View {
     @State private var route: Data?
 
     var body: some View {
-        VStack(spacing: 0) {
-            RouteMap(route: route)
-            List {
-                if starting {
-                    Label("Routing-Engine startet …", systemImage: "hourglass")
-                } else if let engine {
-                    Text("Suche bis \(engine.searchMB) MB").font(.footnote).foregroundStyle(.secondary)
-                } else {
-                    Text("Die Routing-Engine startet nicht: Routing-Daten fehlen.").foregroundStyle(.red)
-                }
-                ForEach(cases) { item in
-                    Button { Task { await run(item) } } label: { row(item) }
-                        .disabled(engine == nil || running != nil)
+        NavigationStack {
+            VStack(spacing: 0) {
+                RouteMap(route: route)
+                List {
+                    NavigationLink("Garmin Edge: Route senden") { GarminView(engine: engine) }
+                    if starting {
+                        Label("Routing-Engine startet …", systemImage: "hourglass")
+                    } else if let engine {
+                        Text("Suche bis \(engine.searchMB) MB").font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text("Die Routing-Engine startet nicht: Routing-Daten fehlen.").foregroundStyle(.red)
+                    }
+                    ForEach(cases) { item in
+                        Button { Task { await run(item) } } label: { row(item) }
+                            .disabled(engine == nil || running != nil)
+                    }
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .task {
             engine = await Engine.start()

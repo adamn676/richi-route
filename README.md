@@ -34,7 +34,7 @@ active development and tested around Graz and Styria, Austria.
 
 - **Speichern** keeps a route in **Meine Routen** (the planner's second tab, where you reopen, rename and duplicate
   routes), or downloads it as GPX for your bike computer, as a FIT course for a Garmin (copied into its
-  `Garmin/NewFiles` folder) or as a RichiRoute file to keep it editable.
+  `Garmin/NewFiles` folder; over 400 km in parts) or as a RichiRoute file to keep it editable.
 - Open a GPX track or a RichiRoute file as the route, from the open button or by dropping it on the page; a GPX
   track keeps its exact path and heights.
 
@@ -106,6 +106,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 | `src/` | The planner: Vue 3, Vuetify 4, Pinia, MapLibre GL JS 6, TypeScript, built with Vite 8 |
 | `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)), and the loop suggestions and FIT courses on top of it (`engine/planner`), shared by planner and iPhone app |
 | `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, in its first test ([iPhone app](docs/local-development.md#iphone-app)) |
+| `garmin/` | A Connect IQ app for the Garmin Edge 840 that receives routes from the iPhone app over Bluetooth, in its first test ([Garmin Edge test](docs/local-development.md#garmin-edge-test)) |
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
 | `scripts/` | Setup and the local launcher (`start-local.sh`) |

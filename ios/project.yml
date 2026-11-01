@@ -20,6 +20,10 @@ packages:
   MapLibre:
     url: https://github.com/maplibre/maplibre-gl-native-distribution
     exactVersion: 7.0.0
+  # Garmin's Connect IQ Mobile SDK (binary framework), under the Connect IQ SDK license agreement
+  ConnectIQ:
+    url: https://github.com/garmin/connectiq-companion-app-sdk-ios
+    exactVersion: 1.8.0
 
 targets:
   RichiRoute:
@@ -40,6 +44,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: MapLibre
+      - package: ConnectIQ
     info:
       path: RichiRoute/Info.plist
       properties:
@@ -51,10 +56,17 @@ targets:
         # the app asks its own engine on 127.0.0.1
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        NSBluetoothAlwaysUsageDescription: RichiRoute sendet Routen über Bluetooth an Garmin-Geräte.
+        # Garmin Connect returns the chosen Edge to this scheme; the SDK checks for Garmin Connect by its own
+        CFBundleURLTypes:
+          - CFBundleURLName: com.adamn.RichiRoute.connectiq
+            CFBundleURLSchemes: [richiroute-ciq]
+        LSApplicationQueriesSchemes: [gcm-ciq]
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: RichiRoute/RichiEngine.h
-        OTHER_LDFLAGS: -lrichi_ios
+        # -ObjC: the Connect IQ SDK uses Objective-C categories
+        OTHER_LDFLAGS: -ObjC -lrichi_ios
         LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: $(PROJECT_DIR)/../engine/target/aarch64-apple-ios/release
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: $(PROJECT_DIR)/../engine/target/aarch64-apple-ios-sim/release
         # cargo writes into engine/target, outside the build's sandbox

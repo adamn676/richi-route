@@ -11,8 +11,8 @@
 //! direction has a loop, the first direction's failure as `/brouter` would answer it, 400 for a
 //! malformed request, 405 and 415 for another method or content type.
 //!
-//! `POST /fit` with a route as JSON (`richi_planner::Course`), under the same rules, answers it as a FIT
-//! course file.
+//! `POST /fit` with a route as JSON, under the same rules, answers its FIT courses, every part of a long
+//! one, as JSON with the files in base64 (`richi_planner::course_fits`).
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -22,7 +22,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, SystemTime};
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
-use richi_planner::{Course, Failure, LoopRequest, Stop, suggestions_json};
+use richi_planner::{Failure, LoopRequest, Stop, course_fits, suggestions_json};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
@@ -155,8 +155,8 @@ fn loops(stream: TcpStream, body: &str, pool: &RouterPool, max_running_time: i64
 
 /// `POST /fit`.
 fn fit(stream: TcpStream, body: &str) {
-    match Course::parse(body) {
-        Ok(course) => send_body(stream, "200 OK", "application/vnd.ant.fit", "", &course.fit(SystemTime::now())),
+    match course_fits(body, SystemTime::now()) {
+        Ok(parts) => send_body(stream, "200 OK", "application/json", "", parts.as_bytes()),
         Err(reason) => send(stream, "400 Bad Request", &format!("{reason}\n")),
     }
 }

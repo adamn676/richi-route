@@ -1,6 +1,6 @@
 //! The planner's own logic on top of the engine, one implementation for the web planner and the iPhone
 //! app: the loop suggestions, which the routing server answers at `/loops` (`LoopRequest`), and routes
-//! as FIT courses for Garmin bike computers, at `/fit` (`Course`). The routes the loops need run on the
+//! as FIT courses for Garmin bike computers, at `/fit` (`course_fits`). The routes the loops need run on the
 //! server's `RouterPool` side by side, as `/brouter` requests would.
 
 mod fit;
@@ -17,7 +17,7 @@ use std::time::Duration;
 use brouter_router::{Answer, Outcome, RouterPool};
 use brouter_util::jmath;
 
-pub use fit::Course;
+pub use fit::{Course, course_fits};
 use json::{Json, push_string};
 use leg::push_coords;
 pub use leg::{Coord, Leg};

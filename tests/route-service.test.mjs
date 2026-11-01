@@ -111,14 +111,26 @@ test('a FIT course is one JSON request to the routing service, failing with a me
   let asked;
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     asked = { url, method: init.method, type: init.headers['Content-Type'], body: JSON.parse(init.body) };
-    return new Response(new Uint8Array([14, 16]), { headers: { 'Content-Type': 'application/vnd.ant.fit' } });
+    return Response.json({ parts: [{ name: 'Graz → Lienz', fit: btoa(String.fromCharCode(14, 16, 255)) }] });
   });
-  const track = [[...from, 300], to];
+  const track = { coordinates: [[...from, 300], to], stops: [] };
   const fit = await courseFit('Graz → Lienz', track);
-  assert.deepEqual([...new Uint8Array(await fit.arrayBuffer())], [14, 16]);
-  assert.deepEqual(asked, { url: '/routing/fit', method: 'POST', type: 'application/json', body: { name: 'Graz → Lienz', coordinates: track } });
+  assert.equal(fit.length, 1);
+  assert.deepEqual([...new Uint8Array(await fit[0].arrayBuffer())], [14, 16, 255]);
+  assert.deepEqual(asked, { url: '/routing/fit', method: 'POST', type: 'application/json', body: { name: 'Graz → Lienz', ...track } });
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 502 }));
   await assert.rejects(courseFit('', track), /nicht erreichbar/);
   t.mock.method(globalThis, 'fetch', async () => new Response('coordinates must be a list\n', { status: 400 }));
   await assert.rejects(courseFit('', track), /FIT-Datei konnte nicht erstellt werden \(HTTP 400: coordinates must be a list\)/);
+});
+
+test('a long route comes as every part the routing service makes of it, in one answer', async t => {
+  let asked = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    asked++;
+    return Response.json({ parts: [1, 2, 3].map(i => ({ name: `Wien → Bregenz (Teil ${i}/3)`, fit: btoa(String.fromCharCode(i)) })) });
+  });
+  const parts = await courseFit('Wien → Bregenz', { coordinates: [[...from, 300], to, [...from, 310]], stops: [1] });
+  assert.deepEqual(await Promise.all(parts.map(async part => [...new Uint8Array(await part.arrayBuffer())])), [[1], [2], [3]]);
+  assert.equal(asked, 1);
 });

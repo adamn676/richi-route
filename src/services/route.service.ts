@@ -99,11 +99,11 @@ export async function traceLoops(start: Coord, target: LoopTarget, dice: number[
     signal: AbortSignal.any([signal, AbortSignal.timeout(loopsTimeout)]) }), signal) as LoopFound[];
 }
 
-// The route as a FIT course for Garmin bike computers, which the routing service writes (its /fit): the track as
-// `routeTrack` gives it.
-export async function courseFit(name: string, coordinates: number[][]): Promise<Blob> {
+// The route as FIT courses for Garmin bike computers, which the routing service writes (its /fit): the track as
+// `routeTrack` gives it, in as many parts as the service makes of it (one up to 400 km), all in one answer.
+export async function courseFit(name: string, track: { coordinates: number[][]; stops: number[] }): Promise<Blob[]> {
   const response = await reach(() => fetch('/routing/fit', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, coordinates }), signal: AbortSignal.timeout(60_000) }))
+    body: JSON.stringify({ name, ...track }), signal: AbortSignal.timeout(60_000) }))
     // a timeout here is no section's fault
     .catch((error: unknown) => {
       throw error instanceof SectionError ? new Error('Die FIT-Datei konnte nicht rechtzeitig erstellt werden.', { cause: error }) : error;
@@ -113,7 +113,8 @@ export async function courseFit(name: string, coordinates: number[][]): Promise<
     const detail = (await response.text()).trim();
     throw new Error(`Die FIT-Datei konnte nicht erstellt werden (HTTP ${response.status}${detail ? `: ${detail}` : ''}).`);
   }
-  return response.blob();
+  const { parts } = await response.json() as { parts: { name: string; fit: string }[] };
+  return parts.map(part => new Blob([Uint8Array.from(atob(part.fit), c => c.charCodeAt(0))], { type: 'application/vnd.ant.fit' }));
 }
 
 function checkSnap(requested: Coord, snapped: Coord): void {

@@ -426,6 +426,72 @@ same routes as the computer; Wien–Bregenz (661 km) 28 s and Graz–Mailand
 (839 km) ends with the memory limit. The app peaked at 1.46 GB of its roughly
 2.1 GB.
 
+### Garmin Edge test
+
+The iPhone app sends a route to a Garmin Edge 840 over Bluetooth, offline, with
+Garmin's official Connect IQ tools, in a test. On the iPhone, **Garmin Edge:
+Route senden** on the first screen (`ios/RichiRoute/GarminView.swift`) has the
+engine in the app make the route's FIT courses (`POST /fit`, in parts over
+400 km) and serves them on 127.0.0.1 (`FitServer.swift`). A short message tells
+the Edge app in `garmin/` (Monkey C) each part's name, size and address. The
+Edge asks Garmin Connect on the phone to fetch each part (`makeWebRequest` with
+a FIT response); Connect IQ stores it as a Garmin course. The Edge shows each
+part's time and speed, draws the route, and sends its results back to the
+phone's log. A tap opens the first part in Garmin's navigation, with turn
+prompts and ClimbPro; the others are among the Edge's courses.
+
+On 1 November 2026 Graz–Leibnitz arrived this way with the iPhone in flight
+mode (Bluetooth on): 6.2 KB fetched over plain `http://127.0.0.1` and stored as
+a course, which started Garmin's navigation. Sending the bytes themselves in
+chunks reached 749 B/s. Storing a FIT from bytes in the app
+(`DynamicResource`, Connect IQ 6.0.3) is not available on the Edge 840.
+
+The app uses Garmin's
+[Connect IQ Mobile SDK for iOS](https://github.com/garmin/connectiq-companion-app-sdk-ios)
+1.8.0, a Swift package with a binary framework under Garmin's Connect IQ SDK
+license. Garmin Connect is needed once, to choose the Edge, and has to run in
+the background to fetch the files; the app reaches the Edge over Bluetooth on
+its own.
+
+Building the Edge app needs the Connect IQ SDK 9.3.0 with the `edge840` device
+files (from Garmin's SDK Manager, in `~/.Garmin/ConnectIQ`), the Java runtime
+from `native:setup`, and a developer key outside git:
+
+```sh
+openssl genrsa 4096 | openssl pkcs8 -topk8 -outform DER -nocrypt -out ~/.Garmin/developer_key.der
+PATH="$PWD/.cache/runtime/java/bin:$PATH" "$(cat ~/.Garmin/ConnectIQ/current-sdk.cfg)/bin/monkeyc" \
+  -f garmin/monkey.jungle -d edge840 -r -y ~/.Garmin/developer_key.der -o garmin/bin/RichiRoute.prg
+```
+
+Copy `RichiRoute.prg` into `Garmin/Apps` on the
+Edge (it connects by MTP, so copy in the file manager). An empty
+`Garmin/Apps/Logs/RichiRoute.txt` collects the app's log.
+
+The simulator and the SDK Manager need WebKitGTK 4.0, which Ubuntu 26.04 no
+longer has. They run in a Docker image built from this Dockerfile:
+
+```dockerfile
+FROM ubuntu:22.04
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libwebkit2gtk-4.0-37 libsoup2.4-1 libjavascriptcoregtk-4.0-18 libusb-1.0-0 libsecret-1-0 \
+      libcurl4 libgtk-3-0 libsm6 libxext6 libxrender1 libxtst6 xvfb x11-utils imagemagick \
+      openjdk-17-jre-headless ca-certificates fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+```sh
+docker build -t connectiq:local <folder with the Dockerfile>
+docker run --rm --network host --user "$(id -u):$(id -g)" -e HOME="$HOME" -v "$HOME/.Garmin:$HOME/.Garmin" \
+  -v "$PWD:$PWD" -w "$PWD" connectiq:local sh -c 'Xvfb :99 & export DISPLAY=:99 SDK=$(cat ~/.Garmin/ConnectIQ/current-sdk.cfg)
+  sleep 2; $SDK/bin/simulator & sleep 8; $SDK/bin/monkeydo garmin/bin/RichiRoute.prg edge840 & sleep 20
+  import -window root garmin/bin/screen.png'
+```
+
+The simulator gets phone messages only from an Android phone over ADB, and
+without one it crashes on `Communications.transmit`. A FIT `makeWebRequest`
+there goes out over the computer's network, and the simulator stores the course
+and offers to start it.
+
 ## Online map choices
 
 The map menu offers two local maps (**Karte**, **Satellit**) and one online map,
@@ -951,9 +1017,18 @@ turn instructions.
 (`engine/planner`, asked at `/fit` with a JSON `POST`, as the loops are; the engine in the iPhone app has it too). Copied by USB
 into a Garmin Edge's `Garmin/NewFiles`, it should become a course with its climbs (ClimbPro) and elevation profile.
 The track is thinned to within 5 m of the route sideways and 2 m in height, keeping where each climb starts and
-ends, so its climbing stays the planner's; distances are those along the whole track, and times assume 20 km/h.
-Neusiedl am See–Feldkirch (756 km) takes 108 KB with 5,674 of its 22,125 points, 0.2 % shorter as drawn. Without
-the routing service, the sidebar says so. Neither export has been tried on a bike computer yet.
+ends, so its climbing stays the planner's; distances are those along the track, and times assume 20 km/h.
+A route over 400 km goes out in parts of at most 400 km, as even as they can be, each named as the route with
+"(Teil 1/2)" and so on and saved as `richiroute-<date>-teil-1.fit` and so on; each part begins where the one before
+ends. A cut goes to a stop when one lies within a tenth of a part from the even cut, otherwise to the track point there.
+An Edge 840 loads a 400 km course in about 75 s; on some longer ones it fails computing the turn guidance
+("Routenberechnungsfehler"), and 500 to 600 km take about 4 minutes. The planner sends the stops with the track
+(`stops`, indices into `coordinates`); one answer brings every part, `{"parts": [{"name", "fit"}, ...]}` with each
+file in base64 and its name as the file has it, so no client can miss a part, and a route up to 400 km is the same
+file as before. The planner saves the parts half a second apart, as browsers drop downloads started at once; a browser
+may still ask before allowing the second. Neusiedl am See–Feldkirch (756 km, 22,125 points) goes out as two parts of 378 km, 54 KB each with
+2,837 and 2,838 points, 0.2 % shorter as drawn. Without the routing service, the sidebar says so. The GPX export has
+not been tried on a bike computer yet.
 
 ## Inspect the route elevation profile
 

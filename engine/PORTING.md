@@ -30,7 +30,7 @@ differs is a bug in the port. Speed work comes later and must not change results
 ## Crates
 
 One crate per BRouter package, in dependency order: `util`, `codec`, `expressions`, `mapaccess`, then
-`router`. On top: `planner` (the planner's own logic: its loop suggestions and FIT courses), `server` (the
+`router`. On top: `planner` (the planner's own logic: its loop suggestions and FIT courses, long ones in parts), `server` (the
 planner's routing server, with the loops at `/loops` and FIT courses at `/fit`), the command-line binary `cli` and `ios`, the library the iPhone app
 starts the server from. `planner` is ported from the planner's TypeScript, not from Java: it must suggest
 exactly what the TypeScript did, so it follows JavaScript's doubles step by step, with V8's `Math.sin`, `cos`,

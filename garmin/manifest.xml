@@ -1,0 +1,15 @@
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application id="fdbb9fd4bea04b448a03f79fe08c8902" type="watch-app" name="@Strings.AppName" launcherIcon="@Drawables.LauncherIcon" entry="RichiApp" minApiLevel="4.0.0" version="0.1.0">
+        <iq:products>
+            <iq:product id="edge840"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+            <iq:uses-permission id="PersistedContent"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>deu</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

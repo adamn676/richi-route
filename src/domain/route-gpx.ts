@@ -40,7 +40,7 @@ export function exportGpx(route: ExportRoute, name = 'RichiRoute'): string {
     `<metadata><name>${xml(name)}</name><desc>Geplant mit RichiRoute. Kartendaten © OpenStreetMap-Mitwirkende.</desc></metadata>`,
     `<trk><name>${xml(name)}</name><trkseg>`,
   ];
-  trackSegments(route).forEach((segment, index) => {
+  trackSegments(route).segments.forEach((segment, index) => {
     if (index) lines.push('</trkseg><trkseg>');
     for (const [lon, lat, elevation] of segment) {
       lines.push(`<trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">${elevation === undefined ? '' : `<ele>${elevation.toFixed(2)}</ele>`}</trkpt>`);
@@ -50,29 +50,40 @@ export function exportGpx(route: ExportRoute, name = 'RichiRoute'): string {
   return lines.join('\n');
 }
 
-// The whole track as [longitude, latitude, height where known], as one line (a FIT course has no segments).
-export function routeTrack(route: ExportRoute): number[][] {
-  return trackSegments(route).flat();
+// The whole track as [longitude, latitude, height where known], as one line (a FIT course has no segments), and
+// where it passes the stops between start and end (indices into it), where a long course is best cut.
+export function routeTrack(route: ExportRoute): { coordinates: number[][]; stops: number[] } {
+  const { segments, stops } = trackSegments(route);
+  return { coordinates: segments.flat(), stops };
 }
 
 // The track in segments: a point two sections share once; a small gap where sections meet starts a new segment
-// rather than inventing a connector.
-function trackSegments(route: ExportRoute): number[][][] {
+// rather than inventing a connector. `stops` has the index in the whole track where each section after a stop
+// (not the start, not a shaping point) begins.
+function trackSegments(route: ExportRoute): { segments: number[][][]; stops: number[] } {
   const reason = gpxUnavailableReason(route);
   if (reason) throw new Error(reason);
   const segments: number[][][] = [[]];
+  const stops: number[] = [];
+  let count = 0;
   for (let i = 1; i < route.points.length; i++) {
     const leg = route.legs[legId(route.points[i - 1].id, route.points[i].id)];
+    const afterStop = i > 1 && route.points[i - 1].type === 'stop';
     leg.coordinates.forEach(([lon, lat], index) => {
       const elevation = leg.elevations?.[index];
       const previous = segments.at(-1)!.at(-1);
       if (index === 0 && previous) {
         const sameCoord = previous[0] === lon && previous[1] === lat;
-        if (sameCoord && previous[2] === elevation) return;
+        if (sameCoord && previous[2] === elevation) {
+          if (afterStop) stops.push(count - 1);
+          return;
+        }
         if (!sameCoord) segments.push([]);
       }
+      if (index === 0 && afterStop) stops.push(count);
       segments.at(-1)!.push(elevation === undefined ? [lon, lat] : [lon, lat, elevation]);
+      count++;
     });
   }
-  return segments;
+  return { segments, stops };
 }

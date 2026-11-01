@@ -153,9 +153,23 @@ test('a shared join retains known elevation when the preceding leg has none', ()
 
 test('the track for a FIT course has each point once, with its height where known', () => {
   const route = fixture();
-  assert.deepEqual(routeTrack(route), [[15.4, 47.1, 300], [15.401, 47.101, 305], [15.402, 47.102, 310], [15.401, 47.101, 305], [15.4, 47.1, 300]]);
+  assert.deepEqual(routeTrack(route), {
+    coordinates: [[15.4, 47.1, 300], [15.401, 47.101, 305], [15.402, 47.102, 310], [15.401, 47.101, 305], [15.4, 47.1, 300]],
+    stops: [],
+  });
   route.legs['shape-b:stop-c'].elevations = null;
-  assert.deepEqual(routeTrack(route).slice(2), [[15.402, 47.102, 310], [15.402, 47.102], [15.401, 47.101], [15.4, 47.1]]);
+  assert.deepEqual(routeTrack(route).coordinates.slice(2), [[15.402, 47.102, 310], [15.402, 47.102], [15.401, 47.101], [15.4, 47.1]]);
   route.pendingLegCount = 1;
   assert.throws(() => routeTrack(route), /noch berechnet/);
+});
+
+test('the track for a FIT course knows where it passes the stops, not the shaping points', () => {
+  const route = fixture();
+  route.points[1] = { id: 'shape-b', type: 'stop', kind: 'via', coord: [15.402, 47.102], address: null, userInput: '', isGeocoding: false };
+  assert.deepEqual(routeTrack(route).stops, [2], 'the point both sections share');
+  route.legs['shape-b:stop-c'].elevations = null;
+  const { coordinates, stops } = routeTrack(route);
+  assert.deepEqual([stops, coordinates[3]], [[3], [15.402, 47.102]], 'a stop without a height of its own: where the second section begins');
+  route.legs['shape-b:stop-c'].coordinates[0] = [15.40201, 47.102];
+  assert.deepEqual(routeTrack(route).stops, [3], 'across a small gap');
 });

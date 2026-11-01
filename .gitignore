@@ -43,3 +43,6 @@ ios/RichiRoute/Map
 ios/Routing
 ios/Areas
 ios/build
+
+# Edge app build output
+garmin/bin

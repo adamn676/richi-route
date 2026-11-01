@@ -1,18 +1,26 @@
 //! A route as a FIT course, the file Garmin bike computers take as a course (with its climbs and elevation
 //! profile) when it is copied into `Garmin/NewFiles`. Field numbers and types are those of Garmin's FIT
-//! profile (`@garmin/fitsdk`'s `profile.js`).
+//! profile (`@garmin/fitsdk`'s `profile.js`). A long route goes out in parts (`MAX_COURSE_METERS`).
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::json::Json;
+use crate::json::{Json, push_string};
 use crate::leg::{CLIMB_THRESHOLD, Coord, ascent, distance};
 
-/// A route by its track, at least two points: `[longitude, latitude]` with the height where known.
+/// A route by its track, at least two points: `[longitude, latitude]` with the height where known, and the
+/// points where it passes its stops.
 pub struct Course {
     name: String,
     coordinates: Vec<Coord>,
     elevations: Vec<Option<f64>>,
+    stops: Vec<usize>,
 }
+
+/// The longest course in one file. A Garmin Edge 840 loads 400 km in about 75 s; on some longer courses it
+/// fails computing the turn guidance, and 500 to 600 km take about 4 minutes.
+const MAX_COURSE_METERS: f64 = 400_000.0;
+/// How far from the even cut a stop may lie to take its place, as a share of the even part.
+const STOP_REACH: f64 = 0.1;
 
 /// How far the thinned track may leave the route, sideways and in height: a pixel or two on a bike
 /// computer's map at riding zoom. With 2 m and 1 m, a 750 km route would take 180 KB instead of 110.
@@ -24,8 +32,24 @@ const MAX_NAME_BYTES: usize = 64;
 /// Seconds from 1970 to FIT's epoch, 31 December 1989.
 const FIT_EPOCH: u64 = 631_065_600;
 
+/// `POST /fit`: every part of the course (`Course::split`) in one answer, so no client misses one,
+/// `{"parts": [{"name", "fit": the FIT file in base64}, ...]}`, the name as the file has it.
+pub fn course_fits(body: &str, created: SystemTime) -> Result<String, String> {
+    let mut out = String::from(r#"{"parts":["#);
+    for (i, part) in Course::parse(body)?.split().iter().enumerate() {
+        out.push_str(if i == 0 { r#"{"name":"# } else { r#",{"name":"# });
+        push_string(&mut out, truncate(&part.name, MAX_NAME_BYTES));
+        out.push_str(r#","fit":""#);
+        push_base64(&mut out, &part.fit(created));
+        out.push_str(r#""}"#);
+    }
+    out.push_str("]}");
+    Ok(out)
+}
+
 impl Course {
-    /// `{"name", "coordinates": [[lon, lat, height or null or left out], ...]}`, at least two points.
+    /// `{"name", "coordinates": [[lon, lat, height or null or left out], ...], "stops": [index into coordinates,
+    /// ...]}`, at least two points; `stops` may be left out.
     pub fn parse(body: &str) -> Result<Self, String> {
         let json = Json::parse(body)?;
         let name = match json.get("name") {
@@ -49,7 +73,43 @@ impl Course {
                 Some(_) => Some(finite(2).ok_or("a height must be a number")?),
             });
         }
-        Ok(Course { name, coordinates, elevations })
+        let stops = match json.get("stops") {
+            None => &[][..],
+            Some(stops) => stops.array().ok_or("stops must be a list")?,
+        };
+        let stops = stops
+            .iter()
+            .map(|stop| {
+                let index = stop.number().filter(|&i| i.fract() == 0.0 && i >= 0.0 && i < coordinates.len() as f64);
+                index.map(|i| i as usize).ok_or("a stop must be the index of a point")
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(Course { name, coordinates, elevations, stops })
+    }
+
+    /// The course in parts of at most `MAX_COURSE_METERS` (`cuts`), each named "<name> (Teil 1/2)" and
+    /// beginning where the one before ends; a shorter course stays as it is.
+    pub fn split(self) -> Vec<Course> {
+        let along = along(&self.coordinates);
+        let cuts = cuts(&along, &self.stops);
+        if cuts.is_empty() {
+            return vec![self];
+        }
+        // the heights each part misses come from the whole route, not just from its own
+        let heights = fill_heights(&self.elevations, &along);
+        let ends: Vec<usize> = [0].into_iter().chain(cuts).chain([along.len() - 1]).collect();
+        let count = ends.len() - 1;
+        let parts = ends.windows(2).enumerate().map(|(i, pair)| {
+            let (from, to) = (pair[0], pair[1]);
+            let suffix = format!(" (Teil {}/{count})", i + 1);
+            Course {
+                name: format!("{}{suffix}", truncate(&self.name, MAX_NAME_BYTES - suffix.len())),
+                coordinates: self.coordinates[from..=to].to_vec(),
+                elevations: (from..=to).map(|point| heights.as_ref().map(|heights| heights[point])).collect(),
+                stops: Vec::new(),
+            }
+        });
+        parts.collect()
     }
 
     /// A number of the course's name and points (FNV-1a), never 0.
@@ -62,12 +122,8 @@ impl Course {
     /// The course as a FIT file, created at `created`, its times from then on at `SPEED`. The track is
     /// thinned (`thin`); distances are those along the whole track.
     pub fn fit(&self, created: SystemTime) -> Vec<u8> {
-        let mut along = Vec::with_capacity(self.coordinates.len());
-        let mut meters = 0.0;
-        for (i, &coord) in self.coordinates.iter().enumerate() {
-            meters += i.checked_sub(1).map_or(0.0, |previous| distance(self.coordinates[previous], coord));
-            along.push(meters);
-        }
+        let along = along(&self.coordinates);
+        let meters = along[along.len() - 1];
         let heights = fill_heights(&self.elevations, &along);
         let kept = thin(&self.coordinates, heights.as_deref(), &along);
         let start =
@@ -121,6 +177,55 @@ impl Course {
         }
         fit.message(3, 21, &[(253, U32(end)), (0, Enum(0)), (1, Enum(9))]); // event: timer stop_disable_all
         fit.finish()
+    }
+}
+
+/// The meters along the track to each point.
+fn along(coordinates: &[Coord]) -> Vec<f64> {
+    let mut meters = 0.0;
+    let mut along = Vec::with_capacity(coordinates.len());
+    for (i, &coord) in coordinates.iter().enumerate() {
+        meters += i.checked_sub(1).map_or(0.0, |previous| distance(coordinates[previous], coord));
+        along.push(meters);
+    }
+    along
+}
+
+/// Where a track of `along` meters is cut into the fewest parts of at most `MAX_COURSE_METERS`, as even as
+/// they can be: one cut after the other, each at the stop nearest the even cut of what is left (within
+/// `STOP_REACH`), otherwise at the point nearest it, never so that this part or the rest would need more.
+fn cuts(along: &[f64], stops: &[usize]) -> Vec<usize> {
+    let (last, total) = (along.len() - 1, along[along.len() - 1]);
+    let mut cuts = Vec::new();
+    let mut from = 0;
+    while total - along[from] > MAX_COURSE_METERS && from + 1 < last {
+        let parts = ((total - along[from]) / MAX_COURSE_METERS).ceil();
+        let even = (total - along[from]) / parts;
+        let ideal = along[from] + even;
+        let (low, high) = (total - MAX_COURSE_METERS * (parts - 1.0), along[from] + MAX_COURSE_METERS);
+        let fits = |i: &usize| *i > from && *i < last && (low..=high).contains(&along[*i]);
+        let off = |i: &usize| (along[*i] - ideal).abs();
+        let nearest = |a: &usize, b: &usize| off(a).total_cmp(&off(b));
+        let stop = stops.iter().copied().filter(|i| fits(i) && off(i) <= STOP_REACH * even).min_by(nearest);
+        let reached = along.partition_point(|&meters| meters < ideal);
+        let point = [reached - 1, reached].into_iter().filter(fits).min_by(nearest);
+        // without a point between `low` and `high` (a segment longer than the slack), as far as allowed
+        let farthest = (along.partition_point(|&meters| meters <= high) - 1).max(from + 1);
+        from = stop.or(point).unwrap_or(farthest);
+        cuts.push(from);
+    }
+    cuts
+}
+
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// Base64 with padding (RFC 4648).
+fn push_base64(out: &mut String, bytes: &[u8]) {
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, &byte)| n | u32::from(byte) << (16 - 8 * i));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() { char::from(BASE64[(n >> (18 - 6 * i) & 63) as usize]) } else { '=' });
+        }
     }
 }
 
@@ -373,6 +478,36 @@ mod tests {
         out
     }
 
+    fn unbase64(text: &str) -> Vec<u8> {
+        let digits: Vec<u32> =
+            text.bytes().filter(|&c| c != b'=').map(|c| BASE64.iter().position(|&d| d == c).unwrap() as u32).collect();
+        let bytes = digits.chunks(4).flat_map(|chunk| {
+            let n = chunk.iter().enumerate().fold(0, |n, (i, &digit)| n | digit << (18 - 6 * i));
+            (0..chunk.len() - 1).map(move |i| (n >> (16 - 8 * i)) as u8)
+        });
+        bytes.collect()
+    }
+
+    /// The parts of a `course_fits` answer: name and FIT file.
+    fn answer_parts(body: &str, created: SystemTime) -> Result<Vec<(String, Vec<u8>)>, String> {
+        let answer = Json::parse(&course_fits(body, created)?).unwrap();
+        let parts = answer.get("parts").and_then(Json::array).unwrap();
+        let text = |part: &Json, key: &str| part.get(key).and_then(Json::str).unwrap().to_string();
+        Ok(parts.iter().map(|part| (text(part, "name"), unbase64(&text(part, "fit")))).collect())
+    }
+
+    #[test]
+    fn base64_is_rfc_4648_with_padding() {
+        for (bytes, text) in
+            [(&b""[..], ""), (b"M", "TQ=="), (b"Ma", "TWE="), (b"Man", "TWFu"), (&[0xFB, 0xFF], "+/8=")]
+        {
+            let mut out = String::new();
+            push_base64(&mut out, bytes);
+            assert_eq!(out, text);
+            assert_eq!(unbase64(text), bytes);
+        }
+    }
+
     fn field(message: &[(u8, Vec<u8>)], number: u8) -> u64 {
         let bytes = &message.iter().find(|(n, _)| *n == number).unwrap().1;
         bytes.iter().rev().fold(0, |value, &byte| value << 8 | u64::from(byte))
@@ -455,6 +590,121 @@ mod tests {
         let filled = fill_heights(&[None, Some(100.0), Some(90.0), None, Some(130.0), None], &along).unwrap();
         assert_eq!(filled, [100.0, 100.0, 90.0, 110.0, 130.0, 130.0], "a point where the last one was keeps its own");
         assert_eq!(fill_heights(&[None, None], &along[..2]), None);
+    }
+
+    /// A course straight north from 40° N, a point every 500 m climbing 0.5 m, with stops at these meters.
+    fn line(meters: f64, stops: &[f64]) -> Course {
+        let points = (meters / 500.0).round() as usize;
+        let degrees = 500.0 / (6_371_008.8 * std::f64::consts::PI / 180.0);
+        Course {
+            name: "Wien → Bregenz".into(),
+            coordinates: (0..=points).map(|i| [15.0, 40.0 + i as f64 * degrees]).collect(),
+            elevations: (0..=points).map(|i| Some(i as f64 * 0.5)).collect(),
+            stops: stops.iter().map(|meters| (meters / 500.0).round() as usize).collect(),
+        }
+    }
+
+    fn length(course: &Course) -> f64 {
+        *along(&course.coordinates).last().unwrap()
+    }
+
+    /// The meters along the whole course where its parts begin, after the first.
+    fn cut_at(course: Course) -> Vec<f64> {
+        let parts = course.split();
+        parts[..parts.len() - 1]
+            .iter()
+            .scan(0.0, |meters, part| {
+                *meters += length(part);
+                Some(meters.round())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn courses_up_to_the_limit_stay_one_file_as_before() {
+        let created = UNIX_EPOCH + Duration::from_secs(FIT_EPOCH + 1_000_000);
+        let course = line(MAX_COURSE_METERS, &[200_000.0]);
+        assert!((length(&course) - MAX_COURSE_METERS).abs() < 1.0);
+        let points: Vec<String> = course.coordinates.iter().map(|[lon, lat]| format!("[{lon},{lat},300]")).collect();
+        let body = format!(r#"{{"name": "Wien → Bregenz", "coordinates": [{}]}}"#, points.join(","));
+        let alone = vec![("Wien → Bregenz".to_string(), Course::parse(&body).unwrap().fit(created))];
+        assert_eq!(answer_parts(&body, created).unwrap(), alone);
+        let with_stops = body.replace(r#""coordinates""#, r#""stops": [400], "coordinates""#);
+        assert_eq!(answer_parts(&with_stops, created).unwrap(), alone, "byte for byte");
+    }
+
+    #[test]
+    fn longer_courses_go_out_in_the_fewest_even_parts_that_join() {
+        for km in [401.0, 756.0, 799.0, 1_201.0, 1_990.0] {
+            let course = line(km * 1000.0, &[]);
+            let (total, ascent) = (length(&course), course.elevations.last().unwrap().unwrap());
+            let parts = course.split();
+            let count = (km / 400.0).ceil() as usize;
+            assert_eq!(parts.len(), count, "{km} km: {:?}", parts.iter().map(length).collect::<Vec<_>>());
+            for (i, part) in parts.iter().enumerate() {
+                assert_eq!(part.name, format!("Wien → Bregenz (Teil {}/{count})", i + 1));
+                assert!(length(part) <= MAX_COURSE_METERS, "{km} km: {}", length(part));
+                assert!((length(part) - total / count as f64).abs() <= 500.0, "{km} km: {}", length(part));
+            }
+            for pair in parts.windows(2) {
+                assert_eq!(pair[0].coordinates.last(), pair[1].coordinates.first());
+                assert_eq!(pair[0].elevations.last(), pair[1].elevations.first());
+            }
+            assert!((parts.iter().map(length).sum::<f64>() - total).abs() < 0.01);
+            let climbed: f64 =
+                parts.iter().map(|part| part.elevations.last().unwrap().unwrap() - part.elevations[0].unwrap()).sum();
+            assert!((climbed - ascent).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_stop_near_the_even_cut_takes_its_place() {
+        assert_eq!(cut_at(line(756_000.0, &[])), [378_000.0]);
+        assert_eq!(cut_at(line(756_000.0, &[100_000.0, 360_000.0, 700_000.0])), [360_000.0]);
+        assert_eq!(cut_at(line(756_000.0, &[350_000.0, 370_000.0, 390_000.0])), [370_000.0], "the nearest");
+        assert_eq!(cut_at(line(756_000.0, &[300_000.0, 401_000.0])), [378_000.0], "too far, or a part too long");
+        assert_eq!(cut_at(line(756_000.0, &[355_000.0])), [378_000.0], "the rest would be too long");
+        // the rest is shared evenly again after a stop
+        assert_eq!(cut_at(line(1_100_000.0, &[340_000.0])), [340_000.0, 720_000.0]);
+    }
+
+    #[test]
+    fn parts_get_their_heights_from_the_whole_route_and_names_of_their_own() {
+        let mut course = line(790_000.0, &[]);
+        course.name = "x".repeat(70);
+        let middle = course.elevations.len() / 2;
+        course.elevations[middle - 5..middle + 5].fill(None);
+        let parts = course.split();
+        assert!((parts[1].elevations[0].unwrap() - middle as f64 * 0.5).abs() < 1e-9);
+        assert_eq!(parts[0].name, format!("{} (Teil 1/2)", "x".repeat(53)));
+        let created = UNIX_EPOCH + Duration::from_secs(FIT_EPOCH + 1_000_000);
+        let fits: Vec<Vec<Message>> = parts.iter().map(|part| messages(&part.fit(created))).collect();
+        assert_ne!(field(&fits[0][0].1, 3), field(&fits[1][0].1, 3), "a serial number each");
+        assert_eq!(fits[1][1].1[0].1, format!("{} (Teil 2/2)\0", "x".repeat(53)).into_bytes());
+    }
+
+    #[test]
+    fn every_part_comes_in_one_answer() {
+        let points: Vec<String> = (0..=9).map(|i| format!("[15, {}]", 40 + i)).collect();
+        let body = format!(r#"{{"name": "Nord", "stops": [4], "coordinates": [{}]}}"#, points.join(","));
+        let created = UNIX_EPOCH;
+        let parts = Course::parse(&body).unwrap().split();
+        assert_eq!(parts.iter().map(|part| part.coordinates.len()).collect::<Vec<_>>(), [4, 4, 4]);
+        let expected: Vec<_> = parts.iter().map(|part| (part.name.clone(), part.fit(created))).collect();
+        assert_eq!(answer_parts(&body, created).unwrap(), expected);
+        assert_eq!(expected[2].0, "Nord (Teil 3/3)");
+        for bad in [r#""stops": [9.5]"#, r#""stops": [10]"#, r#""stops": 4"#] {
+            assert!(course_fits(&body.replace(r#""stops": [4]"#, bad), created).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_segment_longer_than_a_part_still_ends_the_split() {
+        // the route's points are 445 km apart: no cut keeps the parts within the limit, but each has a length
+        let course = Course::parse(r#"{"coordinates": [[15, 40], [15, 40.001], [15, 44], [15, 48]]}"#).unwrap();
+        let parts = course.split();
+        assert!(parts.iter().all(|part| part.coordinates.len() >= 2 && length(part) > 0.0));
+        assert_eq!(parts.last().unwrap().coordinates.last(), Some(&[15.0, 48.0]));
     }
 
     #[test]

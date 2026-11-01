@@ -131,10 +131,24 @@ try {
   const sent = request.postDataJSON();
   assert.deepEqual(sent.coordinates.map(([lon, lat]) => [lon, lat]), expected);
   assert.ok(sent.name && sent.coordinates.every(point => point.length === 3));
+  assert.deepEqual(sent.stops, [], 'a shaping point is no stop');
   const bytes = await fs.readFile(await fit.path());
   assert.equal(bytes.toString('latin1', 8, 12), '.FIT');
   assert.equal(bytes.length, 14 + bytes.readUInt32LE(4) + 2);
   await page.getByText('FIT-Datei heruntergeladen.').waitFor();
+  // A route the service splits comes as a file for each part.
+  await context.route('**/routing/fit', async route => {
+    const { parts } = await (await route.fetch()).json();
+    await route.fulfill({ json: { parts: [parts[0], { ...parts[0], name: 'Teil 2' }] } });
+  });
+  const names = [];
+  page.on('download', download => names.push(download.suggestedFilename()));
+  await closeSaveMenu(page);
+  await (await saveEntry(page, 'FIT (Garmin)')).click();
+  await page.getByText(/2 FIT-Dateien heruntergeladen, eine je Teil/).waitFor();
+  for (let i = 0; names.length < 2 && i < 50; i++) await page.waitForTimeout(100);
+  assert.deepEqual(names.map(name => name.replace(/\d{4}-\d{2}-\d{2}/, 'date')), ['richiroute-date-teil-1.fit', 'richiroute-date-teil-2.fit']);
+  await context.unroute('**/routing/fit');
   await page.screenshot({ path: 'experiments/routing/.local/editor-saved-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Speichern', exact: true }).scrollIntoViewIfNeeded();
@@ -196,7 +210,7 @@ try {
   assert.equal(await gpxReady(quotaPage), false);
   await quota.close();
   assert.deepEqual(errors, []);
-  console.log('Passed: browser reopening without routing, exact GPX geometry/elevation, FIT through the routing service, mobile export, cross-tab protection, malformed draft, quota recovery, exit flush.');
+  console.log('Passed: browser reopening without routing, exact GPX geometry/elevation, FIT through the routing service (also in parts), mobile export, cross-tab protection, malformed draft, quota recovery, exit flush.');
 } finally {
   await browser.close();
 }
