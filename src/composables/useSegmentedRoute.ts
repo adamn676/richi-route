@@ -1,5 +1,5 @@
 import type { Map as MaplibreMap, ExpressionSpecification, GeoJSONSource, LineLayerSpecification } from 'maplibre-gl';
-import type { Feature, LineString } from 'geojson';
+import type { Feature, LineString, Position } from 'geojson';
 import {
   MAP_LABELS_ANCHOR,
   SEGMENTS_AIR_LAYER,
@@ -9,6 +9,8 @@ import {
   SEGMENTS_FORMER_LAYER,
   SEGMENTS_FORMER_OUTLINE_LAYER,
   SEGMENTS_FORMER_SOURCE_ID,
+  SEGMENTS_LIGHT_LAYER,
+  SEGMENTS_LIGHT_SOURCE_ID,
   SEGMENTS_OUTLINE_LAYER,
   SEGMENTS_ROUTE_LAYER,
   SEGMENTS_SOURCE_ID,
@@ -17,6 +19,7 @@ import {
 import { routeStyle } from '@/config/mapStyle';
 import type { EditorRoute, RouteFeature } from '@/stores/route.store';
 import { getSegments } from '@/utils/geometry';
+import { animateDashes, animateLight, flowingDashes, reducedMotion, runningLight } from '@/utils/line-flow';
 
 // While a surface section is shown (SurfaceFocusLayer), the rest of the route fades.
 const faded: ExpressionSpecification = ['boolean', ['global-state', 'surfaceFocus'], false];
@@ -27,13 +30,10 @@ const arriving: ExpressionSpecification = ['boolean', ['get', 'arriving'], false
 const waiting: ExpressionSpecification = ['boolean', ['get', 'waiting'], false];
 
 // Legs still being calculated show running dots once the answer takes a moment, so that quick answers leave no flash;
-// a calculated leg then fades in. Each pattern moves the dots one step along; its units are line widths.
+// a calculated leg then fades in.
 const waitingDelay = 300, fadeIn = 220;
-const dot = 1, gap = 1.6, period = dot + gap, steps = 13;
-const runningDots = Array.from({ length: steps }, (_, step) => {
-  const offset = step * period / steps;
-  return offset + dot <= period ? [0, offset, dot, period - offset - dot] : [offset + dot - period, period - dot, period - offset];
-});
+const dot = 1, gap = 1.6;
+const runningDots = flowingDashes(dot, gap, 13);
 
 export function useSegmentedRoute() {
   // Segment ids per drawn leg feature, so that an edit only sends the changed legs to the map.
@@ -44,8 +44,9 @@ export function useSegmentedRoute() {
   const arrivals = new Set<RouteFeature>();
   let settling: ReturnType<typeof setTimeout> | undefined, appearing: ReturnType<typeof setTimeout> | undefined;
   let forgetting: ReturnType<typeof setTimeout> | undefined, drawnFormer: RouteFeature[] | undefined;
-  let dotsShown = false, frame = 0;
-  const motion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let dotsShown = false, stopDots = () => {};
+  let lit: RouteFeature[] = [], stopLight: (() => void) | undefined;
+  const motion = !reducedMotion();
 
   function segmentsOf(feature: RouteFeature, arrives: boolean, add: Feature<LineString>[]): number[] {
     return getSegments(feature).map(segment => {
@@ -62,12 +63,16 @@ export function useSegmentedRoute() {
         MAP_LABELS_ANCHOR);
     map.addSource(SEGMENTS_FORMER_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addSource(SEGMENTS_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: add } });
+    map.addSource(SEGMENTS_LIGHT_SOURCE_ID, { type: 'geojson', lineMetrics: true, data: { type: 'FeatureCollection', features: [] } });
     // The route an edit replaced, faded beneath the new one until that is calculated.
     line(SEGMENTS_FORMER_OUTLINE_LAYER, SEGMENTS_FORMER_SOURCE_ID, undefined, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': .35 });
     line(SEGMENTS_FORMER_LAYER, SEGMENTS_FORMER_SOURCE_ID, undefined, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': .35 });
     const settled: ExpressionSpecification = ['all', routed, ['!', arriving]], arrivingRoute: ExpressionSpecification = ['all', routed, arriving];
     line(SEGMENTS_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': ['case', faded, .35, .95] });
     line(SEGMENTS_ROUTE_LAYER, SEGMENTS_SOURCE_ID, settled, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': ['case', faded, .35, 1] });
+    // A light runs inside the calculated route in riding direction, a brighter shade of each surface it passes.
+    line(SEGMENTS_LIGHT_LAYER, SEGMENTS_LIGHT_SOURCE_ID, undefined, { 'line-width': 7, 'line-blur': 2, 'line-gradient': runningLight(1),
+      'line-opacity': ['case', faded, 0, 1] });
     line(SEGMENTS_ARRIVING_OUTLINE_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': routeStyle.outlineColor, 'line-width': 9, 'line-opacity': 0 });
     line(SEGMENTS_ARRIVING_LAYER, SEGMENTS_SOURCE_ID, arrivingRoute, { 'line-color': surfaceColor, 'line-width': 5, 'line-opacity': 0 });
     // A leg that failed, or leads to a stop without a street, stays a red dashed line.
@@ -113,30 +118,39 @@ export function useSegmentedRoute() {
     settling = setTimeout(() => settle(map), fadeIn + 50);
   }
 
-  function runDots(map: MaplibreMap, step = 0, last = 0): void {
-    frame = requestAnimationFrame(time => {
-      if (!dotsShown || !map.getLayer(SEGMENTS_WAITING_LAYER)) return;
-      if (time - last >= 45) {
-        map.setPaintProperty(SEGMENTS_WAITING_LAYER, 'line-dasharray', runningDots[step]);
-        runDots(map, (step + 1) % steps, time);
-      } else runDots(map, step, last);
-    });
-  }
-
   function showWaiting(map: MaplibreMap, any: boolean): void {
     if (any) {
       appearing ??= setTimeout(() => {
         dotsShown = true;
         map.setPaintProperty(SEGMENTS_WAITING_LAYER, 'line-opacity', .9);
-        if (motion) runDots(map);
+        stopDots = animateDashes(map, SEGMENTS_WAITING_LAYER, runningDots, 45);
       }, waitingDelay);
       return;
     }
     clearTimeout(appearing);
     appearing = undefined;
-    cancelAnimationFrame(frame);
+    stopDots();
     if (dotsShown && map.getLayer(SEGMENTS_WAITING_LAYER)) map.setPaintProperty(SEGMENTS_WAITING_LAYER, 'line-opacity', 0);
     dotsShown = false;
+  }
+
+  // The light runs along each stretch of calculated legs as one line from its start, and only while there is one.
+  function showLight(map: MaplibreMap, features: RouteFeature[], fresh: boolean): void {
+    const routed = features.filter(feature => feature.properties.status === 'routed');
+    if (!fresh && routed.length === lit.length && routed.every((feature, i) => feature === lit[i])) return;
+    const stretches: Position[][] = [];
+    let previous: RouteFeature | undefined;
+    for (const feature of features) {
+      const coordinates = feature.geometry.coordinates;
+      if (feature.properties.status !== 'routed') previous = undefined;
+      else if (previous) stretches.at(-1)!.push(...coordinates.slice(1));
+      else { stretches.push([...coordinates]); previous = feature; }
+    }
+    map.getSource<GeoJSONSource>(SEGMENTS_LIGHT_SOURCE_ID)?.setData({ type: 'FeatureCollection',
+      features: stretches.map(coordinates => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })) });
+    lit = routed;
+    if (routed.length) stopLight ??= animateLight(map, SEGMENTS_LIGHT_LAYER, 4, 1);
+    else { stopLight?.(); stopLight = undefined; }
   }
 
   function renderSegments(map: MaplibreMap, route: EditorRoute | null, former: RouteFeature[] = []): void {
@@ -171,6 +185,7 @@ export function useSegmentedRoute() {
       if (add.length || remove.length) source.updateData({ removeAll: !drawn.size, remove, add });
     }
     drawn = next;
+    showLight(map, features, !source);
     if (arrived) fade(map);
     showWaiting(map, waitingLegs.size > 0);
     if (former !== drawnFormer || !source) {
@@ -188,7 +203,8 @@ export function useSegmentedRoute() {
     clearTimeout(settling);
     clearTimeout(appearing);
     clearTimeout(forgetting);
-    cancelAnimationFrame(frame);
+    stopDots();
+    stopLight?.();
   }
 
   return { renderSegments, dispose };
