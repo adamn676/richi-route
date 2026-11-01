@@ -2,15 +2,15 @@ import { nextTick } from 'vue';
 import { vuetify } from './vuetify';
 
 // When tooltips show. With a mouse, after half a second's rest on a control, so that passing over icons shows nothing;
-// for a moment after one has shown, its neighbours show at once. A tap only acts: a long press shows the label instead,
+// for a moment after one has shown, its neighbours show sooner, yet not while the mouse only sweeps across them. A tap only acts: a long press shows the label instead,
 // for a second and a half, and does not act. Vuetify opens a tooltip on its control's mouseenter, which a tap also causes.
-const wait = 500, warmth = 300, press = 500, shown = 1500;
+const wait = 500, warm = 150, warmth = 300, press = 500, shown = 1500;
 const control = '[aria-describedby^="v-tooltip-"]';
 const tooltip = vuetify.defaults.value!.VTooltip!;
 
 let cooling: ReturnType<typeof setTimeout> | undefined;
-function warmUp() {
-  tooltip.openDelay = 0;
+function warmUp(delay = warm) {
+  tooltip.openDelay = delay;
   clearTimeout(cooling);
   cooling = setTimeout(() => { tooltip.openDelay = wait; }, warmth);
 }
@@ -40,7 +40,7 @@ document.addEventListener('touchstart', event => {
   if (!target || event.touches.length > 1) return;
   const { clientX: x, clientY: y } = event.touches[0];
   pressing = { target, x, y, timer: setTimeout(() => {
-    warmUp();
+    warmUp(0);
     held = target;
     // Vue passes the shorter delay on to the tooltips with its next update.
     void nextTick(() => target.dispatchEvent(new MouseEvent('mouseenter')));
