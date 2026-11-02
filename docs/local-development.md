@@ -378,8 +378,10 @@ designs. So far it plans a route by tapping the offline map, as the planner
 does: Start, Ziel, a Zwischenstopp by tapping the route, each snapped to the
 nearest road and named by street and town (the engine's `/name`, over each
 offline area's `search.index`); the legs come from the engine's `/leg`, drawn
-in their surface colours, with undo and redo, the route's figures and its
-surfaces. Tapping a stop's row opens its search: places from the offline areas
+in their surface colours, with undo and redo, the route's figures, its
+elevation profile (the engine's `/profile`, `engine/planner/src/profile.rs`;
+`node engine/parity/profile.mjs <engine origin>` compares it with the planner's
+on real routes) and its surfaces. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own
 street with `/street`), the rider's position, or a tap on the map; holding a
 marker drags it. The first

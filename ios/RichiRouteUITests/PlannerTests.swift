@@ -20,6 +20,12 @@ final class PlannerTests: XCTestCase {
         let figures = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' km'")).firstMatch
         XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route between the two taps")
         shot(app, "2-route")
+        // the profile, below the stops in the raised panel
+        let grabber = app.buttons["Sheet Grabber"]
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        XCTAssertTrue(app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Höhenprofil'")).firstMatch.waitForExistence(timeout: 20))
+        shot(app, "2b-profile")
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
 
         app.buttons["Rückgängig"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 10))

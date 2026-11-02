@@ -6,6 +6,7 @@ struct RouteSheet: View {
     /// Folds the panel, so the map is free for picking a point.
     let fold: () -> Void
     @State private var searching: Searching?
+    @State private var profile: Profile?
 
     /// The stop whose search is open.
     private struct Searching: Identifiable {
@@ -28,7 +29,14 @@ struct RouteSheet: View {
                 stops
             }
             if planner.isComplete {
-                Section("Untergrund") { surfaces }
+                if let profile {
+                    Section { ElevationProfile(profile: profile).padding(.vertical, 4) }
+                }
+                Section {
+                    // a row, as "Wegpunkte": one heading style in the panel
+                    Text("Untergrund").font(.headline).foregroundStyle(Self.ink).listRowSeparator(.hidden)
+                    surfaces
+                }
             }
             // the map's credits, once, at the very end
             Text("© OpenStreetMap · Österr. Adressregister")
@@ -39,6 +47,12 @@ struct RouteSheet: View {
         }
         .listStyle(.plain)
         .tint(Self.ink)
+        // the profile of the route as it stands: asked again whenever a leg changes
+        .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
+            guard planner.isComplete, let engine = planner.engine else { return profile = nil }
+            let legs = planner.routedLegs.compactMap { $0 }
+            profile = try? await engine.profile(legs)
+        }
         .sheet(item: $searching) { stop in
             StopSearch(title: Planner.label(at: stop.index, of: planner.stops.count), engine: planner.engine, near: planner.focus) { coord, name in
                 planner.choose(stop.id, at: coord, name: name)

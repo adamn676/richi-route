@@ -20,7 +20,8 @@
 //! malformed request, 405 and 415 for another method or content type.
 //!
 //! `POST /fit` with a route as JSON, under the same rules, answers its FIT courses, every part of a long
-//! one, as JSON with the files in base64 (`richi_planner::course_fits`).
+//! one, as JSON with the files in base64 (`richi_planner::course_fits`), and `POST /profile` with the route's legs its
+//! elevation profile as the planner draws it (`richi_planner::profile_request`).
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -33,7 +34,7 @@ use std::time::{Duration, SystemTime};
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
 use richi_planner::{
     Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, leg_json, nearest_on_lines, place_name, places, places_json,
-    push_number, push_string, suggestions_json,
+    profile_request, push_number, push_string, suggestions_json,
 };
 use richi_search::index::Index;
 use richi_search::photon;
@@ -187,7 +188,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
     }
     let mut request = request.as_deref().unwrap_or_default().split(' ');
     let (method, target) = (request.next().unwrap_or_default(), request.next().unwrap_or_default());
-    if target == "/loops" || target == "/fit" {
+    if matches!(target, "/loops" | "/fit" | "/profile") {
         // only what a web page cannot send to another site without asking first (no CORS preflight)
         if method != "POST" {
             return send(stream, "405 Method Not Allowed", "");
@@ -200,7 +201,11 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
             return send(stream, "400 Bad Request", "");
         }
         let body = String::from_utf8_lossy(&body);
-        return if target == "/fit" { fit(stream, &body) } else { loops(stream, &body, pool, max_running_time) };
+        return match target {
+            "/fit" => fit(stream, &body),
+            "/profile" => profile(stream, &body),
+            _ => loops(stream, &body, pool, max_running_time),
+        };
     }
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     match path {
@@ -239,6 +244,15 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
             Err(reason) => internal_error(stream, reason),
         },
         outcome => answer(stream, outcome, file_name),
+    }
+}
+
+/// `POST /profile` with the route's legs: its elevation profile as the planner draws it
+/// (`richi_planner::profile_request`), 400 for a body that is no list of legs.
+fn profile(stream: TcpStream, body: &str) {
+    match profile_request(body) {
+        Ok(json) => send_body(stream, "200 OK", "application/json; charset=utf-8", "", json.as_bytes()),
+        Err(reason) => send(stream, "400 Bad Request", &format!("{reason}\n")),
     }
 }
 

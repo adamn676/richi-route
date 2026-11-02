@@ -1,13 +1,15 @@
 //! The planner's own logic on top of the engine, one implementation for the web planner and the iPhone
 //! app: its routed legs, which the routing server answers at `/leg` (`leg_json`), the loop suggestions, at
 //! `/loops` (`LoopRequest`), and routes as FIT courses for Garmin bike computers, at `/fit` (`course_fits`).
-//! The routes the loops need run on the server's `RouterPool` side by side, as `/brouter` requests would.
+//! The routes the loops need run on the server's `RouterPool` side by side, as `/brouter` requests would. Also the
+//! names and suggestions of places (`place`) and the route's elevation profile (`profile`).
 
 mod fit;
 mod json;
 mod leg;
 mod loops;
 mod place;
+mod profile;
 
 use std::fmt::Write;
 use std::sync::Arc;
@@ -26,6 +28,7 @@ pub use leg::{Coord, Leg};
 pub use loops::{Earlier, Stop, Suggestion, Target};
 use loops::{Routed, Trip, suggest_loops};
 pub use place::{Category, Place, SEARCH_LIMIT, nearest_on_lines, place_name, places, places_json};
+pub use profile::profile_request;
 
 /// Why a route failed: the engine's outcome (its error, an exception or a panic), or an internal error
 /// (an answer the planner cannot read, a reply lost).
