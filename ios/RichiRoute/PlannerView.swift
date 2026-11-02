@@ -40,7 +40,7 @@ struct PlannerView: View {
             .padding(.top, 8)
         }
         .sheet(isPresented: .constant(true)) {
-            RouteSheet(planner: planner) { detent = .height(Self.peek) }
+            RouteSheet(planner: planner, folded: detent == .height(Self.peek)) { detent = .height(Self.peek) }
                 // no full height: iOS swaps the glass for white there, abruptly
                 .presentationDetents([.height(Self.peek), .medium, .fraction(0.9)], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.9)))

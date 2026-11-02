@@ -3,6 +3,8 @@ import SwiftUI
 /// The route panel: its figures, its stops and its surfaces, each shown once, as the web planner's Route tab.
 struct RouteSheet: View {
     @Bindable var planner: Planner
+    /// Whether the panel is folded down, where it shows the route's name and figures.
+    let folded: Bool
     /// Folds the panel, so the map is free for picking a point.
     let fold: () -> Void
     @State private var searching: Searching?
@@ -15,11 +17,13 @@ struct RouteSheet: View {
     }
 
     private static let ink = Color(MapStyle.ink)
+    private static let top = "summary"
     private static let danger = Color(MapStyle.danger)
 
     var body: some View {
+        ScrollViewReader { scroller in
         List {
-            Section { summary }
+            Section { summary.id(Self.top) }
             if let problem = planner.problem {
                 Section { problemView(problem) }
             }
@@ -47,6 +51,11 @@ struct RouteSheet: View {
         }
         .listStyle(.plain)
         .tint(Self.ink)
+        // folded, the panel shows its start again, not wherever it was scrolled to
+        .onChange(of: folded) { if folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
+        // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
+        .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
+        }
         // the profile of the route as it stands: asked again whenever a leg changes
         .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
             guard planner.isComplete, let engine = planner.engine else { return profile = nil }

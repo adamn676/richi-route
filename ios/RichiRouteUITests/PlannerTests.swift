@@ -7,7 +7,13 @@ final class PlannerTests: XCTestCase {
     func testTapsPlanARoute() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        // the app opens with the route it closed with: start a new one, as a rider would
+        let tip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch
+        if !tip.waitForExistence(timeout: 20) {
+            app.buttons["Weitere Aktionen"].tap()
+            app.buttons["Neue Route"].tap()
+        }
+        XCTAssertTrue(tip.waitForExistence(timeout: 60))
         shot(app, "1-empty")
 
         // a point on a road gets its street and town ("Körösistraße 2, 8010 Graz")
@@ -61,6 +67,17 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(hint.waitForNonExistence(timeout: 5))
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
         shot(app, "6-picked")
+
+        // the route stays when the app is closed and opened again
+        let routeName = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' → '")).firstMatch
+        XCTAssertTrue(routeName.waitForExistence(timeout: 15))
+        let title = routeName.label
+        sleep(1)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 60), "\(title) not restored")
+        XCTAssertTrue(figures.waitForExistence(timeout: 60))
+        shot(app, "7-restored")
     }
 
     @MainActor

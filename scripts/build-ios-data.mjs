@@ -2,7 +2,7 @@
 //   ios/Routing/profiles/, rules.tsv, surfaces.tsv   in the app bundle, as the local engine uses them (start-local.sh)
 //   ios/Routing/preferences.tsv     with --personal: the rider's own road preferences, for test builds on the rider's phone,
 //                                   never in a build for others
-//   ios/Routing/parameters.json     the profile and search parameters the planner sends
+//   ios/Routing/parameters.json     the profile and search parameters the planner sends, and their version for saved legs
 //   ios/Data/segments/*.rd5         the routing data, and
 //   ios/Data/Areas/<id>/map.pmtiles, terrain.pmtiles, search.index   offline areas (scripts/build-offline-packages.mjs): copied once
 //                                   into the app's data container, where they stay from one install to the next
@@ -11,7 +11,7 @@
 import { mkdir, readdir, rm, symlink, writeFile, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { routingProfile, routingParameters } from '../src/config/routing-policy.ts';
+import { routingProfile, routingParameters, routingPolicyVersion } from '../src/config/routing-policy.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const target = path.join(root, 'ios/Routing'), data = path.join(root, 'ios/Data'), areas = path.join(data, 'Areas');
@@ -37,7 +37,7 @@ if (process.argv.includes('--personal')) {
   if (!await exists(preferences)) throw new Error(`--personal: no road preferences prepared at ${preferences}`);
   await symlink(preferences, path.join(target, 'preferences.tsv'));
 }
-await writeFile(path.join(target, 'parameters.json'), JSON.stringify({ profile: routingProfile, parameters: routingParameters }, null, 1));
+await writeFile(path.join(target, 'parameters.json'), JSON.stringify({ profile: routingProfile, parameters: routingParameters, routingPolicy: routingPolicyVersion }, null, 1));
 for (const id of areaIds) {
   await mkdir(path.join(areas, id), { recursive: true });
   for (const file of ['map.pmtiles', 'terrain.pmtiles', 'search.index']) await symlink(path.join(packages, id, file), path.join(areas, id, file));

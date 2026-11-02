@@ -9,8 +9,8 @@ final class Planner {
         let id: UUID
         var coord: [Double]?
 
-        init(_ coord: [Double]? = nil) {
-            id = UUID()
+        init(_ coord: [Double]? = nil, id: UUID = UUID()) {
+            self.id = id
             self.coord = coord
         }
     }
@@ -50,6 +50,7 @@ final class Planner {
     private(set) var picking: UUID?
     /// What the phone lets the rider feel, a new value each time (`PlannerView`).
     private(set) var feedback = Feedback(kind: .tap, count: 0)
+    @ObservationIgnored private var saving: Task<Void, Never>?
     private var undos: [[Stop]] = []
     private var redos: [[Stop]] = []
 
@@ -59,7 +60,70 @@ final class Planner {
     func start() async {
         engine = await Engine.start()
         engineMissing = engine == nil
+        // the route as it was when the app last closed
+        if let saved = RouteStore.current() { open(saved, remembering: false) }
         for stop in stops where stop.coord != nil { snap(stop.id) }
+        update()
+    }
+
+    // MARK: Saving, in the planner's file format
+
+    /// The route as the planner saves it, with its stops' names and the legs routed so far.
+    func file(named name: String) -> RouteFile {
+        let points = stops.enumerated().map { index, stop in
+            let address = stop.coord.flatMap { names[$0] }
+            return RouteFile.Point(id: RouteFile.stopID(stop.id), type: "stop",
+                                   kind: index == 0 ? "start" : index == stops.count - 1 ? "end" : "via",
+                                   coord: stop.coord, address: address, userInput: address ?? "")
+        }
+        var saved: [String: RouteFile.SavedLeg] = [:]
+        for pair in pairs {
+            guard case .routed(let leg) = legs[pair.key] else { continue }
+            let (from, to) = (RouteFile.stopID(pair.from.id), RouteFile.stopID(pair.to.id))
+            saved["\(from):\(to)"] = RouteFile.SavedLeg(
+                id: "\(from):\(to)", fromId: from, toId: to, fromCoord: pair.from.coord!, toCoord: pair.to.coord!,
+                coordinates: leg.coordinates, elevations: leg.elevations, surfaces: leg.surfaces,
+                distanceMeters: leg.distanceMeters, ascentMeters: leg.ascentMeters, status: "routed", routingPolicy: engine?.policy)
+        }
+        return RouteFile(name: name, draft: RouteFile.Draft(points: points, legs: saved))
+    }
+
+    /// Opens a saved route in place of this one, one undo step unless it is the route the app closed with. Its stops keep
+    /// their names, and legs routed under the app's rules stay; the others are routed again.
+    func open(_ file: RouteFile, remembering: Bool = true) {
+        let saved = file.draft.points.filter { $0.type == "stop" }.map { point in
+            Stop(point.coord, id: UUID(uuidString: String(point.id.dropFirst("stop-".count))) ?? UUID())
+        }
+        guard saved.count >= 2 else { return }
+        if remembering {
+            undos.append(stops)
+            redos.removeAll()
+        }
+        stops = saved
+        stopErrors = [:]
+        snapping = [:]
+        for point in file.draft.points where point.type == "stop" {
+            guard let coord = point.coord else { continue }
+            onRoad.insert(coord)
+            if let address = point.address { names[coord] = address }
+        }
+        for leg in file.draft.legs.values where leg.status == "routed" && leg.routingPolicy != nil && leg.routingPolicy == engine?.policy {
+            legs[Self.key(leg.fromCoord, leg.toCoord)] = .routed(Leg(
+                coordinates: leg.coordinates, elevations: leg.elevations, distanceMeters: leg.distanceMeters,
+                ascentMeters: leg.ascentMeters, surfaces: leg.surfaces))
+        }
+        update()
+        frame()
+    }
+
+    /// Keeps the route as it stands, a moment after the last change, so the app opens with it again.
+    private func remember() {
+        saving?.cancel()
+        saving = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            RouteStore.keep(file(named: title ?? ""))
+        }
     }
 
     // MARK: Editing, each change one undo step
@@ -231,7 +295,11 @@ final class Planner {
                         names[snapped] = name
                     } else if names[snapped] == nil {
                         // beside the routing, which need not wait for it
-                        Task { if let name = await engine.name(snapped) { names[snapped] = name } }
+                        Task {
+                            guard let name = await engine.name(snapped) else { return }
+                            names[snapped] = name
+                            remember()
+                        }
                     }
                 case .failure(let failure):
                     stopErrors[id] = failure.message
@@ -252,6 +320,7 @@ final class Planner {
 
     /// Routes the legs the stops need and cancels the searches for those they no longer do.
     private func update() {
+        defer { remember() }
         let needed = pairs
         let keys = Set(needed.map(\.key))
         for (key, request) in requests where !keys.contains(key) {
@@ -270,6 +339,7 @@ final class Planner {
                 guard !Task.isCancelled else { return }
                 requests[pair.key] = nil
                 legs[pair.key] = state
+                remember()
                 if case .failed = state {
                     feel(.warning)
                 } else if started.duration(to: .now) > Self.longSearch, !isRouting {

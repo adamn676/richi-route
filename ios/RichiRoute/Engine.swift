@@ -7,6 +7,9 @@ struct Engine: Sendable {
     let port: UInt16
     let profile: String
     let parameters: [URLQueryItem]
+    /// The rules' revision and search coefficients a routed leg is kept with (`routingPolicyVersion`): a leg saved
+    /// under another is routed again.
+    let policy: String?
     /// Megabytes one search may take: what iOS leaves the app, less the rest of the app and a second,
     /// shorter search (long searches take turns).
     let searchMB: UInt32
@@ -23,7 +26,8 @@ struct Engine: Sendable {
             let searchMB = UInt32(max(Int(Memory.now().available >> 20) - 768, 512))
             let port = richi_engine_start(2, searchMB)
             return port == 0 ? nil : Engine(port: port, profile: profile, parameters: parameters.sorted { $0.key < $1.key }
-                .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, searchMB: searchMB)
+                .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, policy: json["routingPolicy"] as? String,
+                searchMB: searchMB)
         }.value
     }
 

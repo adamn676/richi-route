@@ -2,11 +2,18 @@ import Foundation
 
 /// A routed leg as the engine's `/leg` answers it: the planner's `LegGeometry` (engine/planner/src/leg.rs).
 struct Leg: Decodable, Sendable, Equatable {
-    struct Span: Decodable, Sendable, Equatable {
+    struct Span: Codable, Sendable, Equatable {
+        /// What OSM says where the rider corrected the surface.
+        struct Kind: Codable, Sendable, Equatable {
+            let surface: Surface
+            let surfaceTag: String?
+        }
+
         let fromIndex: Int
         let toIndex: Int
         let surface: Surface
         let surfaceTag: String?
+        var osm: Kind?
     }
 
     let coordinates: [[Double]]
@@ -20,17 +27,17 @@ struct Leg: Decodable, Sendable, Equatable {
         var spans: [Span] = []
         var at = 0
         for span in surfaces where span.toIndex > at {
-            if span.fromIndex > at { spans.append(Span(fromIndex: at, toIndex: span.fromIndex, surface: .unknown, surfaceTag: nil)) }
+            if span.fromIndex > at { spans.append(Span(fromIndex: at, toIndex: span.fromIndex, surface: .unknown, surfaceTag: nil, osm: nil)) }
             spans.append(span)
             at = span.toIndex
         }
-        if at < coordinates.count - 1 { spans.append(Span(fromIndex: at, toIndex: coordinates.count - 1, surface: .unknown, surfaceTag: nil)) }
+        if at < coordinates.count - 1 { spans.append(Span(fromIndex: at, toIndex: coordinates.count - 1, surface: .unknown, surfaceTag: nil, osm: nil)) }
         return spans
     }
 }
 
 /// The road-bike groups of `src/domain/route-surfaces.ts`, in its order.
-enum Surface: String, Decodable, Sendable, CaseIterable {
+enum Surface: String, Codable, Sendable, CaseIterable {
     case paved, likelyPaved, rough, unpaved, unknown
 
     var label: String {
