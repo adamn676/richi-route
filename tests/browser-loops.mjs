@@ -83,14 +83,14 @@ try {
   await page.keyboard.press('Home');
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowRight');
   assert.equal(await page.getByLabel('Höhenmeter', { exact: true }).inputValue(), '600');
-  assert.equal(await page.getByRole('slider', { name: 'Distanz-Regler', exact: true }).getAttribute('aria-valuetext'), '40 km');
+  assert.equal(await page.getByRole('slider', { name: 'Distanz-Regler', exact: true }).getAttribute('aria-valuetext'), '40 Kilometer', 'the unit spoken out');
   await page.getByRole('button', { name: 'Runden vorschlagen', exact: true }).click();
   await cards.first().waitFor();
   const texts = await cards.allInnerTexts();
   assert.equal(texts.length, 3);
   assert.ok(texts.every(text => /^Über (Nordhausen|Ostdorf|Südheim|Westfeld)\n/.test(text)), texts.join(' / '));
   assert.equal(new Set(texts.map(text => text.split('\n')[0])).size, 3, 'Each loop has its own name');
-  assert.ok(texts.every(text => /\d+,\d\skm · \d+\sm/.test(text)), texts.join(' / '));
+  assert.ok(texts.every(text => /\d+,\d\skm · \d+\shm/.test(text)), texts.join(' / '));
 
   // First all three in view, none chosen: the route is still the start alone.
   let shown = await routeState();
