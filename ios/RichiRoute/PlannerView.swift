@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The planner: the map, its buttons, and the route in a panel over it that the rider pulls up.
 struct PlannerView: View {
-    static let peek: CGFloat = 230
+    static let peek: CGFloat = 290
 
     @State private var planner = Planner()
     @State private var detent = PresentationDetent.height(Self.peek)
@@ -29,6 +29,17 @@ struct PlannerView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: planner.picking)
+        .overlay(alignment: .top) {
+            if let notice = planner.notice {
+                NoticeBar(notice: notice, restore: { planner.replace(with: notice.restore) }, dismiss: planner.dismissNotice)
+                    .padding(.leading, 16)
+                    .padding(.trailing, 72)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .id(notice.id)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: planner.notice)
         .overlay(alignment: .topTrailing) {
             VStack(spacing: 12) {
                 if !planner.routedLegs.isEmpty {
@@ -69,6 +80,32 @@ extension PlannerView {
         case .medium: screen / 2
         case .fraction(0.9): screen * 0.9
         default: Self.peek
+        }
+    }
+}
+
+/// A confirmation over the map, gone after a few seconds, longer with its one action (as the planner's snackbars).
+struct NoticeBar: View {
+    let notice: Notice
+    let restore: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(notice.text).font(.subheadline).padding(.leading, 16).padding(.vertical, 12)
+            Spacer(minLength: 0)
+            if notice.restore != nil {
+                Button("Wiederherstellen", action: restore)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 14)
+            }
+        }
+        .foregroundStyle(Color(MapStyle.ink))
+        .glass(in: Capsule())
+        .task(id: notice.id) {
+            try? await Task.sleep(for: .seconds(notice.restore == nil ? 4 : 8))
+            if !Task.isCancelled { dismiss() }
         }
     }
 }

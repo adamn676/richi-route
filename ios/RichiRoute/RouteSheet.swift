@@ -1,7 +1,34 @@
 import SwiftUI
 
-/// The route panel: its figures, its stops and its surfaces, each shown once, as the web planner's Route tab.
+/// The panel over the map, with the web planner's two tabs: the route and the rider's routes.
 struct RouteSheet: View {
+    @Bindable var planner: Planner
+    let folded: Bool
+    let fold: () -> Void
+    @State private var tab = Tab.route
+
+    enum Tab { case route, library }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Bereiche", selection: $tab) {
+                Text("Route").tag(Tab.route)
+                Text("Meine Routen").tag(Tab.library)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 4)
+            switch tab {
+            case .route: RouteTab(planner: planner, folded: folded, fold: fold)
+            case .library: MyRoutes(planner: planner) { tab = .route }
+            }
+        }
+    }
+}
+
+/// The route: its figures, its stops and its surfaces, each shown once, as the web planner's Route tab.
+struct RouteTab: View {
     @Bindable var planner: Planner
     /// Whether the panel is folded down, where it shows the route's name and figures.
     let folded: Bool
@@ -9,6 +36,8 @@ struct RouteSheet: View {
     let fold: () -> Void
     @State private var searching: Searching?
     @State private var profile: Profile?
+    @State private var naming = false
+    @State private var newName = ""
 
     /// The stop whose search is open.
     private struct Searching: Identifiable {
@@ -62,6 +91,12 @@ struct RouteSheet: View {
             let legs = planner.routedLegs.compactMap { $0 }
             profile = try? await engine.profile(legs)
         }
+        .alert("Route speichern", isPresented: $naming) {
+            TextField("Routenname", text: $newName)
+            Button("Abbrechen", role: .cancel) {}
+            Button("Speichern") { if let name = RouteName.valid(newName) { planner.save(as: name) } }
+                .disabled(RouteName.valid(newName) == nil)
+        }
         .sheet(item: $searching) { stop in
             StopSearch(title: Planner.label(at: stop.index, of: planner.stops.count), engine: planner.engine, near: planner.focus) { coord, name in
                 planner.choose(stop.id, at: coord, name: name)
@@ -77,7 +112,7 @@ struct RouteSheet: View {
     /// What the folded panel shows: the route's figures and its surfaces at a glance, or what is going on.
     private var summary: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let title = planner.title {
+            if let title = planner.savedName ?? planner.title {
                 Text(title).font(.headline).lineLimit(1)
             }
             if planner.isComplete && !planner.isRouting {
@@ -137,6 +172,15 @@ struct RouteSheet: View {
             Button(action: planner.redo) { toolIcon("arrow.uturn.forward") }
                 .disabled(!planner.canRedo).accessibilityLabel("Wiederholen")
             Menu {
+                if planner.savedID == nil {
+                    Button("In „Meine Routen“ speichern …", systemImage: "bookmark") {
+                        newName = planner.name
+                        naming = true
+                    }
+                    .disabled(!planner.hasRoute)
+                } else if !planner.isSaved {
+                    Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
+                }
                 Button("Neue Route", systemImage: "plus", action: planner.newRoute)
             } label: { toolIcon("ellipsis") }
                 .accessibilityLabel("Weitere Aktionen")

@@ -51,6 +51,12 @@ final class Planner {
     /// What the phone lets the rider feel, a new value each time (`PlannerView`).
     private(set) var feedback = Feedback(kind: .tap, count: 0)
     @ObservationIgnored private var saving: Task<Void, Never>?
+    /// The saved route this one is, by its id and name, and its stops when it was saved.
+    private(set) var savedID: UUID?
+    private(set) var savedName: String?
+    private var savedStops: [Stop]?
+    /// A short note on what just happened to the routes, with the route to bring back where there is one.
+    private(set) var notice: Notice?
     private var undos: [[Stop]] = []
     private var redos: [[Stop]] = []
 
@@ -61,7 +67,10 @@ final class Planner {
         engine = await Engine.start()
         engineMissing = engine == nil
         // the route as it was when the app last closed
-        if let saved = RouteStore.current() { open(saved, remembering: false) }
+        if let (file, id) = RouteStore.current() {
+            open(file, remembering: false)
+            if let id { mark(saved: id, name: file.name) }
+        }
         for stop in stops where stop.coord != nil { snap(stop.id) }
         update()
     }
@@ -122,8 +131,72 @@ final class Planner {
         saving = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            RouteStore.keep(file(named: title ?? ""))
+            RouteStore.keep(file(named: name), saved: savedID)
         }
+    }
+
+    /// The route's name: as saved, else by its ends.
+    var name: String { savedName ?? title ?? "Route" }
+
+    /// Saved and unchanged since.
+    var isSaved: Bool { savedID != nil && savedStops == stops }
+
+    /// Whether there is a route worth keeping: Start and Ziel placed.
+    var hasRoute: Bool { stops.first?.coord != nil && stops.last?.coord != nil }
+
+    func save(as name: String) {
+        let id = RouteStore.store(file(named: name), as: .saved)
+        mark(saved: id, name: name)
+        remember()
+        notice = Notice(text: "„\(name)“ gespeichert.")
+    }
+
+    func saveChanges() {
+        guard let savedID, let savedName else { return }
+        RouteStore.store(file(named: savedName), as: .saved, id: savedID)
+        savedStops = stops
+        remember()
+        notice = Notice(text: "„\(savedName)“ gespeichert.")
+    }
+
+    /// The open route renamed or deleted in "Meine Routen".
+    func savedRouteChanged(_ id: UUID, name: String?) {
+        guard id == savedID else { return }
+        if let name { savedName = name } else { mark(saved: nil, name: nil) }
+        remember()
+    }
+
+    /// Opens a saved or recent route, or a new one without; the route it replaces goes to "Zuletzt bearbeitet" where
+    /// it has Start and Ziel and is not saved as it stands.
+    func replace(with entry: RouteStore.Entry?) {
+        let file = entry.flatMap(RouteStore.file)
+        var kept: RouteStore.Entry?
+        if hasRoute && !isSaved {
+            let id = RouteStore.store(self.file(named: name), as: .recent)
+            kept = RouteStore.list(.recent).first { $0.id == id }
+        }
+        if let file {
+            open(file)
+            mark(saved: entry?.kind == .saved ? entry?.id : nil, name: file.name)
+        } else {
+            change {
+                stops = [Stop(), Stop()]
+                return nil
+            }
+            mark(saved: nil, name: nil)
+        }
+        if entry?.kind == .recent, let entry { RouteStore.delete(entry) }
+        notice = kept.map { Notice(text: "Vorige Route liegt in „Zuletzt bearbeitet“.", restore: $0) }
+            ?? entry.map { Notice(text: "„\($0.name)“ geöffnet.") }
+        remember()
+    }
+
+    func dismissNotice() { notice = nil }
+
+    private func mark(saved id: UUID?, name: String?) {
+        savedID = id
+        savedName = id == nil ? nil : name
+        savedStops = id == nil ? nil : stops
     }
 
     // MARK: Editing, each change one undo step
@@ -201,12 +274,7 @@ final class Planner {
 
     func cancelPick() { picking = nil }
 
-    func newRoute() {
-        change {
-            stops = [Stop(), Stop()]
-            return nil
-        }
-    }
+    func newRoute() { replace(with: nil) }
 
     var canUndo: Bool { !undos.isEmpty }
     var canRedo: Bool { !redos.isEmpty }
@@ -442,6 +510,13 @@ final class Planner {
         }
         return MapContent(lines: lines, pins: pins, framing: framing)
     }
+}
+
+/// A confirmation, one statement and at most one action, as the planner's snackbars.
+struct Notice: Equatable, Identifiable {
+    let id = UUID()
+    let text: String
+    var restore: RouteStore.Entry?
 }
 
 struct Feedback: Equatable {

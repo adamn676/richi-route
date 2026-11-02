@@ -192,7 +192,8 @@ struct PlannerMap: UIViewRepresentable {
                 bounds.sw = CLLocationCoordinate2D(latitude: min(bounds.sw.latitude, point[1]), longitude: min(bounds.sw.longitude, point[0]))
                 bounds.ne = CLLocationCoordinate2D(latitude: max(bounds.ne.latitude, point[1]), longitude: max(bounds.ne.longitude, point[0]))
             }
-            let padding = UIEdgeInsets(top: 80, left: 40, bottom: bottomInset + 40, right: 72)
+            // below the bars at the top (a hint or a confirmation) and beside the buttons
+            let padding = UIEdgeInsets(top: 130, left: 40, bottom: bottomInset + 40, right: 72)
             map.setVisibleCoordinateBounds(bounds, edgePadding: padding, animated: true, completionHandler: nil)
         }
 

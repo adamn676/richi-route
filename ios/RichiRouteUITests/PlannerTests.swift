@@ -78,6 +78,28 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 60), "\(title) not restored")
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
         shot(app, "7-restored")
+
+        // saved under a name, replaced by a new route, opened again from "Meine Routen"
+        app.buttons["Weitere Aktionen"].tap()
+        app.buttons["In „Meine Routen“ speichern …"].tap()
+        let field = app.textFields["Routenname"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        // the suggested name, "A → B", replaced
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count + 5) + "Testrunde\n")
+        XCTAssertTrue(app.staticTexts["„Testrunde“ gespeichert."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Testrunde"].waitForExistence(timeout: 5), "the saved name as the title")
+        app.buttons["Weitere Aktionen"].tap()
+        app.buttons["Neue Route"].tap()
+        XCTAssertTrue(tip.waitForExistence(timeout: 10))
+        app.buttons["Meine Routen"].tap()
+        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Testrunde'")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        shot(app, "8-my-routes")
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["„Testrunde“ geöffnet."].waitForExistence(timeout: 5))
+        XCTAssertTrue(figures.waitForExistence(timeout: 30))
+        shot(app, "9-opened")
     }
 
     @MainActor

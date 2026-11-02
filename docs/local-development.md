@@ -384,7 +384,10 @@ elevation profile (the engine's `/profile`, `engine/planner/src/profile.rs`;
 on real routes) and its surfaces. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own
 street with `/street`), the rider's position, or a tap on the map; holding a
-marker drags it. The first
+marker drags it. The route being planned is kept in the planner's file format
+(the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
+the saved routes in that format and the last three replaced without saving, for
+seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first
 screen of earlier tests (long routes, the Garmin test) opens with the launch
 argument `-proof`.
 The routing engine is built into the app as `engine/ios`, which runs the same
