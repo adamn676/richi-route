@@ -47,6 +47,23 @@ struct Engine: Sendable {
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["name"] as? String
     }
 
+    /// The planner's suggestions for a search, places near `near` first.
+    func places(_ query: String, near: [Double]?) async throws -> [Place] {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/places")!
+        url.queryItems = [URLQueryItem(name: "q", value: query)]
+            + (near.map { [URLQueryItem(name: "lat", value: "\($0[1])"), URLQueryItem(name: "lon", value: "\($0[0])")] } ?? [])
+        return try JSONDecoder().decode([Place].self, from: try await ask(URLRequest(url: url.url!)))
+    }
+
+    /// Where an address at `near` meets its own `street`, nil where the street is not within 150 m.
+    func point(on street: String, near: [Double]) async -> [Double]? {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/street")!
+        url.queryItems = [URLQueryItem(name: "lat", value: "\(near[1])"), URLQueryItem(name: "lon", value: "\(near[0])"),
+                          URLQueryItem(name: "name", value: street)]
+        guard let data = try? await ask(URLRequest(url: url.url!)) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["point"] as? [Double]
+    }
+
     private func routing(_ path: String, _ points: [[Double]], extra: [URLQueryItem] = []) -> URLRequest {
         var url = URLComponents(string: "http://127.0.0.1:\(port)/\(path)")!
         url.queryItems = [

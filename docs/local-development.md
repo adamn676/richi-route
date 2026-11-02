@@ -379,8 +379,10 @@ does: Start, Ziel, a Zwischenstopp by tapping the route, each snapped to the
 nearest road and named by street and town (the engine's `/name`, over each
 offline area's `search.index`); the legs come from the engine's `/leg`, drawn
 in their surface colours, with undo and redo, the route's figures and its
-surfaces. Tapping a stop's row replaces it by the next tap on the map; holding
-its marker drags it. The first
+surfaces. Tapping a stop's row opens its search: places from the offline areas
+as the planner suggests them (the engine's `/places`, an address put on its own
+street with `/street`), the rider's position, or a tap on the map; holding a
+marker drags it. The first
 screen of earlier tests (long routes, the Garmin test) opens with the launch
 argument `-proof`.
 The routing engine is built into the app as `engine/ios`, which runs the same

@@ -40,6 +40,10 @@ final class Planner {
     /// Points the engine gave as the nearest road, which need no asking again, and the names of those it knows.
     private var onRoad: Set<[Double]> = []
     private(set) var names: [[Double]: String] = [:]
+    /// The names of places chosen in the search, given to their stops once on the road.
+    private var chosen: [UUID: String] = [:]
+    /// The map's centre, which searches prefer places near.
+    @ObservationIgnored var focus: [Double]?
     /// Counts the requests to frame the route; the map frames it when the count changes.
     private(set) var framing = 0
     /// The stop the rider is replacing: the next tap on the map puts it there.
@@ -84,6 +88,12 @@ final class Planner {
             stops.insert(Stop(coord), at: at)
             return stops[at].id
         }
+    }
+
+    /// A stop put at a place found in the search, which keeps the place's name; without one the road's is looked up.
+    func choose(_ id: UUID, at coord: [Double], name: String?) {
+        chosen[id] = name
+        move(id, to: coord)
     }
 
     func move(_ id: UUID, to coord: [Double]) {
@@ -217,7 +227,9 @@ final class Planner {
                 case .success(let snapped):
                     onRoad.insert(snapped)
                     stops[at].coord = snapped
-                    if names[snapped] == nil {
+                    if let name = chosen.removeValue(forKey: id) {
+                        names[snapped] = name
+                    } else if names[snapped] == nil {
                         // beside the routing, which need not wait for it
                         Task { if let name = await engine.name(snapped) { names[snapped] = name } }
                     }

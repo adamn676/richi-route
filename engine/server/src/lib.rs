@@ -9,8 +9,10 @@
 //! `GET /leg?<query>` routes as `/brouter` does and answers the leg the planner keeps, as JSON
 //! (`richi_planner::leg_json`), or the same failure.
 //!
-//! `GET /name?lat=…&lon=…` names a point as the planner does (`richi_planner::place_name`), from the address search of
-//! the offline areas (`Places`, the iPhone app's), `{"name":null}` without them.
+//! `GET /name?lat=…&lon=…` names a point as the planner does (`richi_planner::place_name`), and `GET /places?q=…` answers
+//! its suggestions for a search (`richi_planner::places_json`), and `GET /street?lat=…&lon=…&name=…` where an address
+//! meets its own street, from the address search of the offline areas (`Places`, the iPhone app's), `{"name":null}`,
+//! `[]` and `{"point":null}` without them.
 //!
 //! `POST /loops` with a JSON body (`richi_planner::LoopRequest`, `Content-Type: application/json`)
 //! answers the planner's loop suggestions as JSON (`richi_planner::suggestions_json`); where no
@@ -29,7 +31,10 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
-use richi_planner::{Failure, LoopRequest, Stop, course_fits, leg_json, place_name, push_string, suggestions_json};
+use richi_planner::{
+    Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, leg_json, nearest_on_lines, place_name, places, places_json,
+    push_number, push_string, suggestions_json,
+};
 use richi_search::index::Index;
 use richi_search::photon;
 use richi_search::search::TypoIndex;
@@ -44,7 +49,36 @@ const MAX_BODY: usize = 8 << 20;
 /// The address search of the offline areas in a folder, `<area>/search.index` each, read on first use.
 pub struct Places {
     folder: PathBuf,
-    areas: OnceLock<Vec<(Index, TypoIndex)>>,
+    areas: OnceLock<Vec<Area>>,
+}
+
+struct Area {
+    index: Index,
+    typos: TypoIndex,
+    /// West, south, east and north of its places.
+    bounds: [f64; 4],
+}
+
+impl Area {
+    fn new(index: Index) -> Area {
+        let bounds =
+            index.docs.iter().map(|doc| doc.point()).fold(
+                [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY],
+                |[w, s, e, n], (lon, lat)| [w.min(lon), s.min(lat), e.max(lon), n.max(lat)],
+            );
+        Area { typos: TypoIndex::new(&index), index, bounds }
+    }
+
+    fn covers(&self, [lon, lat]: [f64; 2]) -> bool {
+        (self.bounds[0]..=self.bounds[2]).contains(&lon) && (self.bounds[1]..=self.bounds[3]).contains(&lat)
+    }
+
+    fn ask(&self, path: &str, query: &str) -> Option<String> {
+        match photon::answer(&self.index, &self.typos, path, query) {
+            photon::Answer::Json(json) => Some(json),
+            _ => None,
+        }
+    }
 }
 
 impl Places {
@@ -52,33 +86,63 @@ impl Places {
         Places { folder, areas: OnceLock::new() }
     }
 
-    fn areas(&self) -> &[(Index, TypoIndex)] {
+    fn areas(&self) -> &[Area] {
         self.areas.get_or_init(|| {
-            let files = std::fs::read_dir(&self.folder)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|area| area.path().join("search.index"));
-            let indexes = files
-                .filter_map(|file| std::fs::File::open(file).ok().and_then(|f| Index::read(BufReader::new(f)).ok()));
-            indexes
-                .map(|index| {
-                    let typos = TypoIndex::new(&index);
-                    (index, typos)
-                })
-                .collect()
+            let files = std::fs::read_dir(&self.folder).into_iter().flatten().flatten();
+            let indexes = files.filter_map(|area| {
+                let file = std::fs::File::open(area.path().join("search.index")).ok()?;
+                Index::read(BufReader::new(file)).ok()
+            });
+            indexes.map(Area::new).collect()
         })
     }
 
     /// The planner's name for a point set on the map (`place_name`), from the first area that knows one.
     pub fn name(&self, at: [f64; 2]) -> Option<String> {
         let query = format!("lat={}&lon={}&lang=de&limit=1&radius=0.3", at[1], at[0]);
-        self.areas().iter().find_map(|(index, typos)| match photon::answer(index, typos, "/reverse", &query) {
-            photon::Answer::Json(json) => place_name(&json, at),
-            _ => None,
-        })
+        self.areas()
+            .iter()
+            .filter(|area| area.covers(at))
+            .find_map(|area| place_name(&area.ask("/reverse", &query)?, at))
+    }
+
+    /// The point on `street` nearest an address at `at`, within 150 m (`pointOnStreet`): a house's centre can lie
+    /// nearer a path behind it (a park, a yard) than its street, and snapping alone would start the route there.
+    pub fn on_street(&self, at: [f64; 2], street: &str) -> Option<[f64; 2]> {
+        const REACH: f64 = 150.0;
+        let street = street.to_lowercase();
+        let piece = |area: &Area, i: u32| {
+            let (a, b) = area.index.road_piece(i);
+            vec![[a.0, a.1], [b.0, b.1]]
+        };
+        let found = self.areas().iter().filter(|area| area.covers(at)).filter_map(|area| {
+            let named =
+                |i: u32| area.index.text(area.index.road_name(i)).is_some_and(|name| name.to_lowercase() == street);
+            let metres =
+                |i: u32| nearest_on_lines(at, &[piece(area, i)], REACH).map_or(f64::INFINITY, |(_, m)| m / 1000.0);
+            let (i, _) = area
+                .index
+                .road_grid
+                .nearest((at[0], at[1]), REACH / 1000.0, |i| if named(i) { metres(i) } else { f64::INFINITY })?;
+            nearest_on_lines(at, &[piece(area, i)], REACH)
+        });
+        found.min_by(|a, b| a.1.total_cmp(&b.1)).map(|(point, _)| point)
+    }
+
+    /// The planner's suggestions for `q` (as the request sent it, percent-encoded), places near `focus` first.
+    pub fn search(&self, q: &str, focus: Option<[f64; 2]>) -> String {
+        let near = focus.map_or(String::new(), |[lon, lat]| format!("&lat={lat}&lon={lon}&location_bias_scale=0.5"));
+        let query = format!("q={q}&lang=de&limit={SEARCH_LIMIT}&bbox={ROUTING_BOUNDS}{near}");
+        let mut areas: Vec<&Area> = self.areas().iter().collect();
+        // the area around the map answers first
+        areas.sort_by_key(|area| !focus.is_some_and(|at| area.covers(at)));
+        let answers: Vec<String> = areas.iter().filter_map(|area| area.ask("/api/", &query)).collect();
+        places_json(&places(&answers))
     }
 }
+
+/// The routing data's rectangle, west, south, east, north (`ROUTING_BOUNDS`, `app/src/config/map.config.ts`).
+const ROUTING_BOUNDS: &str = "5,45,20,50";
 
 /// Answers the connections to `listener`, each search ending after `max_running_time` ms; `places` names points.
 pub fn serve(listener: &TcpListener, pool: RouterPool, places: Option<Places>, max_running_time: i64) -> ! {
@@ -139,8 +203,11 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
         return if target == "/fit" { fit(stream, &body) } else { loops(stream, &body, pool, max_running_time) };
     }
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    if path == "/name" {
-        return name(stream, query, places);
+    match path {
+        "/name" => return name(stream, query, places),
+        "/places" => return search(stream, query, places),
+        "/street" => return street(stream, query, places),
+        _ => {}
     }
     let leg = match path {
         "/brouter" => false,
@@ -175,15 +242,62 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
     }
 }
 
+/// A parameter's value as the request sent it, percent-encoded.
+fn parameter<'a>(query: &'a str, key: &str) -> Option<&'a str> {
+    query.split('&').find_map(|pair| pair.strip_prefix(key)?.strip_prefix('='))
+}
+
+fn coordinate(query: &str) -> Option<[f64; 2]> {
+    let number = |key: &str| parameter(query, key)?.parse::<f64>().ok().filter(|n| n.is_finite());
+    Some([number("lon")?, number("lat")?])
+}
+
+/// `GET /places?q=…[&lat=…&lon=…]`: the planner's suggestions (`richi_planner::places_json`), near the map's centre first.
+fn search(stream: TcpStream, query: &str, places: Option<&Places>) {
+    let q = parameter(query, "q").unwrap_or_default();
+    let body =
+        places.filter(|_| !q.is_empty()).map_or_else(|| "[]".to_string(), |places| places.search(q, coordinate(query)));
+    send_body(stream, "200 OK", "application/json; charset=utf-8", "", body.as_bytes());
+}
+
+/// `GET /street?lat=…&lon=…&name=…`: where an address meets its own street, as `{"point":[lon,lat]}`, null where the
+/// street is not within reach.
+fn street(stream: TcpStream, query: &str, places: Option<&Places>) {
+    let (Some(at), Some(name)) = (coordinate(query), parameter(query, "name").and_then(decode)) else {
+        return send(stream, "400 Bad Request", "lat, lon and name\n");
+    };
+    let mut body = String::from("{\"point\":");
+    match places.and_then(|places| places.on_street(at, &name)) {
+        Some([lon, lat]) => {
+            body.push('[');
+            push_number(&mut body, lon);
+            body.push(',');
+            push_number(&mut body, lat);
+            body.push(']');
+        }
+        None => body.push_str("null"),
+    }
+    body.push('}');
+    send_body(stream, "200 OK", "application/json; charset=utf-8", "", body.as_bytes());
+}
+
+/// A query value with `+` as a space and its `%XX` escapes read as UTF-8.
+fn decode(value: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut rest = value.bytes();
+    while let Some(byte) = rest.next() {
+        bytes.push(match byte {
+            b'+' => b' ',
+            b'%' => u8::from_str_radix(std::str::from_utf8(&[rest.next()?, rest.next()?]).ok()?, 16).ok()?,
+            byte => byte,
+        });
+    }
+    String::from_utf8(bytes).ok()
+}
+
 /// `GET /name?lat=…&lon=…`: the planner's name for a point, as `{"name":…}`, null where no area knows one.
 fn name(stream: TcpStream, query: &str, places: Option<&Places>) {
-    let number = |key: &str| {
-        query
-            .split('&')
-            .find_map(|pair| pair.strip_prefix(key)?.strip_prefix('=')?.parse::<f64>().ok())
-            .filter(|n| n.is_finite())
-    };
-    let (Some(lat), Some(lon)) = (number("lat"), number("lon")) else {
+    let Some([lon, lat]) = coordinate(query) else {
         return send(stream, "400 Bad Request", "lat and lon\n");
     };
     let mut body = String::from("{\"name\":");

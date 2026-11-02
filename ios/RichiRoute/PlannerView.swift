@@ -14,6 +14,8 @@ struct PlannerView: View {
                 if let leg, planner.picking == nil { planner.insert(coord, onLeg: leg) } else { planner.place(coord) }
             } move: { stop, coord in
                 planner.move(stop, to: coord)
+            } moved: { center in
+                planner.focus = center
             }
         }
         .ignoresSafeArea()

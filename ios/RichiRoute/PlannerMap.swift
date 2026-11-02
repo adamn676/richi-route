@@ -12,6 +12,8 @@ struct PlannerMap: UIViewRepresentable {
     let locating: Int
     let tap: (_ coord: [Double], _ leg: Int?) -> Void
     let move: (_ stop: UUID, _ coord: [Double]) -> Void
+    /// Reports the map's centre after each move.
+    let moved: (_ center: [Double]) -> Void
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
@@ -38,17 +40,19 @@ struct PlannerMap: UIViewRepresentable {
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.tap = tap
         context.coordinator.move = move
+        context.coordinator.moved = moved
         context.coordinator.bottomInset = bottomInset
         context.coordinator.show(content, on: map)
         context.coordinator.locate(locating, on: map)
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(tap: tap, move: move) }
+    func makeCoordinator() -> Coordinator { Coordinator(tap: tap, move: move, moved: moved) }
 
     @MainActor
     final class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate, UIGestureRecognizerDelegate {
         var tap: (_ coord: [Double], _ leg: Int?) -> Void
         var move: (_ stop: UUID, _ coord: [Double]) -> Void
+        var moved: (_ center: [Double]) -> Void
         /// The stop a finger holds, while it drags it.
         private var held: UUID?
         var bottomInset: CGFloat = 0
@@ -58,9 +62,15 @@ struct PlannerMap: UIViewRepresentable {
         private var waiting: MapContent?
         private var located = 0
 
-        init(tap: @escaping (_ coord: [Double], _ leg: Int?) -> Void, move: @escaping (_ stop: UUID, _ coord: [Double]) -> Void) {
+        init(tap: @escaping (_ coord: [Double], _ leg: Int?) -> Void, move: @escaping (_ stop: UUID, _ coord: [Double]) -> Void,
+             moved: @escaping (_ center: [Double]) -> Void) {
             self.tap = tap
             self.move = move
+            self.moved = moved
+        }
+
+        func mapView(_ map: MLNMapView, regionDidChangeAnimated animated: Bool) {
+            moved([map.centerCoordinate.longitude, map.centerCoordinate.latitude])
         }
 
         func mapView(_ map: MLNMapView, didFinishLoading style: MLNStyle) {

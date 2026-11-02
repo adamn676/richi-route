@@ -27,17 +27,28 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "3-redone")
 
-        // replacing the Start: tap its row, then the map
-        let start = named.label
+        // the Start by an address: tap its row, search, choose
         app.staticTexts["S"].firstMatch.tap()
-        let hint = app.staticTexts["Neuen Start antippen"]
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.typeText("Herrengasse 16")
+        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Herrengasse 16'")).firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 15), "no suggestion")
+        shot(app, "4-search")
+        suggestion.tap()
+        XCTAssertTrue(app.staticTexts["Herrengasse 16, 8010 Graz, Steiermark"].waitForExistence(timeout: 30), "Start not named by the place")
+        XCTAssertTrue(figures.waitForExistence(timeout: 60))
+        shot(app, "5-address")
+
+        // the Ziel on the map: tap its row, "Auf der Karte wählen", then the map
+        app.staticTexts["Z"].firstMatch.tap()
+        app.buttons["Auf der Karte wählen"].tap()
+        let hint = app.staticTexts["Neues Ziel antippen"]
         XCTAssertTrue(hint.waitForExistence(timeout: 5))
-        shot(app, "4-picking")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.2)).tap()
         XCTAssertTrue(hint.waitForNonExistence(timeout: 5))
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", start)).firstMatch.waitForNonExistence(timeout: 10), "Start not replaced")
-        shot(app, "5-replaced")
+        shot(app, "6-picked")
     }
 
     @MainActor

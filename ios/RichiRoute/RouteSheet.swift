@@ -5,6 +5,13 @@ struct RouteSheet: View {
     @Bindable var planner: Planner
     /// Folds the panel, so the map is free for picking a point.
     let fold: () -> Void
+    @State private var searching: Searching?
+
+    /// The stop whose search is open.
+    private struct Searching: Identifiable {
+        let id: UUID
+        let index: Int
+    }
 
     private static let ink = Color(MapStyle.ink)
     private static let danger = Color(MapStyle.danger)
@@ -32,6 +39,14 @@ struct RouteSheet: View {
         }
         .listStyle(.plain)
         .tint(Self.ink)
+        .sheet(item: $searching) { stop in
+            StopSearch(title: Planner.label(at: stop.index, of: planner.stops.count), engine: planner.engine, near: planner.focus) { coord, name in
+                planner.choose(stop.id, at: coord, name: name)
+            } pickOnMap: {
+                planner.pick(stop.id)
+                fold()
+            }
+        }
     }
 
     // MARK: Summary
@@ -172,13 +187,10 @@ struct RouteSheet: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            planner.pick(stop.id)
-            if planner.picking != nil { fold() }
-        }
+        .onTapGesture { searching = Searching(id: stop.id, index: index) }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Danach den neuen Punkt auf der Karte antippen")
+        .accessibilityHint("Öffnet die Suche für diesen Punkt")
     }
 
     // MARK: Figures and surfaces
