@@ -27,9 +27,15 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "3-redone")
 
+        // the search closes with its X, the stop unchanged
+        app.staticTexts["S"].firstMatch.tap()
+        let search = app.textFields["Start suchen"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        app.buttons["Abbrechen"].tap()
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5))
+
         // the Start by an address: tap its row, search, choose
         app.staticTexts["S"].firstMatch.tap()
-        let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.typeText("Herrengasse 16")
         let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Herrengasse 16'")).firstMatch

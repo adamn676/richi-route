@@ -37,13 +37,15 @@ struct StopSearch: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @FocusState private var typing: Bool
     @State private var places: [Place] = []
     @State private var searched = false
     @State private var locating = false
     @State private var locationFailed = false
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            header
             List {
                 if query.trimmingCharacters(in: .whitespaces).count < 3 {
                     Button { Task { await chooseLocation() } } label: {
@@ -81,14 +83,6 @@ struct StopSearch: View {
             .listStyle(.plain)
             .tint(Color(MapStyle.ink))
             .foregroundStyle(Color(MapStyle.ink))
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, isPresented: .constant(true), placement: .navigationBarDrawer(displayMode: .always),
-                        // the stop in the field itself, as the planner's placeholder: iOS hides the title beside the search
-                        prompt: "\(title) suchen")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
-            }
             // as the planner: from three letters, after a short pause in typing
             .task(id: query) {
                 let typed = query.trimmingCharacters(in: .whitespaces)
@@ -100,6 +94,41 @@ struct StopSearch: View {
                 searched = true
             }
         }
+        .onAppear { typing = true }
+    }
+
+    /// The field and the way out in one row, with no bar behind them that would show while the screen closes.
+    private var header: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                // the stop in the field itself, as the planner's placeholder
+                TextField("\(title) suchen", text: $query)
+                    .focused($typing)
+                    .submitLabel(.search)
+                    // as Enter in the planner: the first suggestion
+                    .onSubmit { if let first = places.first { Task { await choose(first) } } }
+                    .autocorrectionDisabled()
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Eingabe löschen")
+                }
+            }
+            .padding(.leading, 16)
+            .frame(minHeight: 48)
+            .glass(in: Capsule())
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 18, weight: .medium)).frame(width: 48, height: 48)
+            }
+            .glass(in: Circle())
+            .accessibilityLabel("Abbrechen")
+        }
+        .foregroundStyle(Color(MapStyle.ink))
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
     }
 
     /// An address starts on its own street, as in the planner: its centre can lie nearer a path behind it, such as a
