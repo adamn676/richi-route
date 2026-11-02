@@ -66,9 +66,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "richi-search"
+version = "0.1.0"
+
+[[package]]
 name = "richi-server"
 version = "0.1.0"
 dependencies = [
  "brouter-router",
  "richi-planner",
+ "richi-search",
 ]

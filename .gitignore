@@ -41,7 +41,7 @@ ios/RichiRoute.xcodeproj
 ios/RichiRoute/Info.plist
 ios/RichiRoute/Map
 ios/Routing
-ios/Areas
+ios/Data
 ios/build
 
 # Edge app build output

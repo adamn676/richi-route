@@ -19,36 +19,7 @@ struct RouteMap: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        let style = Self.style()
-        return Coordinator(style: style?.json ?? "{}", routeColor: style?.routeColor ?? .systemGreen)
-    }
-
-    /// The style with a pair of sources (map, relief) per area in Areas/, each layer once per area, and the
-    /// planner's colour for a paved route from its metadata.
-    private static func style() -> (json: String, routeColor: UIColor)? {
-        guard let url = Bundle.main.url(forResource: "style", withExtension: "json", subdirectory: "Map"),
-              let data = try? Data(contentsOf: url),
-              var style = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let layers = style["layers"] as? [[String: Any]],
-              let folder = Bundle.main.resourceURL?.appending(path: "Areas"),
-              let ids = try? FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() else { return nil }
-        var sources: [String: Any] = [:]
-        for (name, source) in style["sources"] as? [String: [String: Any]] ?? [:] {
-            for id in ids {
-                let file = folder.appending(path: "\(id)/\(name).pmtiles")
-                sources["\(name)-\(id)"] = source.merging(["url": "pmtiles://\(file.absoluteString)"]) { $1 }
-            }
-        }
-        style["sources"] = sources
-        style["layers"] = layers.flatMap { layer -> [[String: Any]] in
-            guard let source = layer["source"] as? String else { return [layer] }
-            return ids.map { id in layer.merging(["id": "\(layer["id"] ?? "")-\(id)", "source": "\(source)-\(id)"]) { $1 } }
-        }
-        let paved = ((style["metadata"] as? [String: Any])?["richiroute:route"] as? [String: Any])?["paved"] as? String
-        let rgb = Int(paved?.dropFirst() ?? "", radix: 16) ?? 0
-        let color = UIColor(red: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255, blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
-        guard let json = try? JSONSerialization.data(withJSONObject: style) else { return nil }
-        return (String(decoding: json, as: UTF8.self), color)
+        Coordinator(style: MapStyle.shared.json, routeColor: MapStyle.shared.color(.paved))
     }
 
     @MainActor

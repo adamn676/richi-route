@@ -9,6 +9,9 @@
 //! `GET /leg?<query>` routes as `/brouter` does and answers the leg the planner keeps, as JSON
 //! (`richi_planner::leg_json`), or the same failure.
 //!
+//! `GET /name?lat=…&lon=…` names a point as the planner does (`richi_planner::place_name`), from the address search of
+//! the offline areas (`Places`, the iPhone app's), `{"name":null}` without them.
+//!
 //! `POST /loops` with a JSON body (`richi_planner::LoopRequest`, `Content-Type: application/json`)
 //! answers the planner's loop suggestions as JSON (`richi_planner::suggestions_json`); where no
 //! direction has a loop, the first direction's failure as `/brouter` would answer it, 400 for a
@@ -19,13 +22,17 @@
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
-use richi_planner::{Failure, LoopRequest, Stop, course_fits, leg_json, suggestions_json};
+use richi_planner::{Failure, LoopRequest, Stop, course_fits, leg_json, place_name, push_string, suggestions_json};
+use richi_search::index::Index;
+use richi_search::photon;
+use richi_search::search::TypoIndex;
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
@@ -34,14 +41,54 @@ pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
 /// track of a 1,000 km route under one.
 const MAX_BODY: usize = 8 << 20;
 
-/// Answers the connections to `listener`, each search ending after `max_running_time` ms.
-pub fn serve(listener: &TcpListener, pool: RouterPool, max_running_time: i64) -> ! {
+/// The address search of the offline areas in a folder, `<area>/search.index` each, read on first use.
+pub struct Places {
+    folder: PathBuf,
+    areas: OnceLock<Vec<(Index, TypoIndex)>>,
+}
+
+impl Places {
+    pub fn new(folder: PathBuf) -> Places {
+        Places { folder, areas: OnceLock::new() }
+    }
+
+    fn areas(&self) -> &[(Index, TypoIndex)] {
+        self.areas.get_or_init(|| {
+            let files = std::fs::read_dir(&self.folder)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|area| area.path().join("search.index"));
+            let indexes = files
+                .filter_map(|file| std::fs::File::open(file).ok().and_then(|f| Index::read(BufReader::new(f)).ok()));
+            indexes
+                .map(|index| {
+                    let typos = TypoIndex::new(&index);
+                    (index, typos)
+                })
+                .collect()
+        })
+    }
+
+    /// The planner's name for a point set on the map (`place_name`), from the first area that knows one.
+    pub fn name(&self, at: [f64; 2]) -> Option<String> {
+        let query = format!("lat={}&lon={}&lang=de&limit=1&radius=0.3", at[1], at[0]);
+        self.areas().iter().find_map(|(index, typos)| match photon::answer(index, typos, "/reverse", &query) {
+            photon::Answer::Json(json) => place_name(&json, at),
+            _ => None,
+        })
+    }
+}
+
+/// Answers the connections to `listener`, each search ending after `max_running_time` ms; `places` names points.
+pub fn serve(listener: &TcpListener, pool: RouterPool, places: Option<Places>, max_running_time: i64) -> ! {
     let pool = Arc::new(pool);
+    let places = Arc::new(places);
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let pool = pool.clone();
-                std::thread::spawn(move || respond(stream, &pool, max_running_time));
+                let (pool, places) = (pool.clone(), places.clone());
+                std::thread::spawn(move || respond(stream, &pool, places.as_ref().as_ref(), max_running_time));
             }
             // out of file handles, or a socket the system took back: try again shortly instead of spinning
             Err(_) => std::thread::sleep(Duration::from_millis(100)),
@@ -51,7 +98,7 @@ pub fn serve(listener: &TcpListener, pool: RouterPool, max_running_time: i64) ->
 }
 
 /// `RouteServer.run` for one connection.
-fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
+fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_running_time: i64) {
     // a client that stops sending before the headers (and the body) end is dropped
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let mut reader = BufReader::new(&stream);
@@ -92,6 +139,9 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
         return if target == "/fit" { fit(stream, &body) } else { loops(stream, &body, pool, max_running_time) };
     }
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    if path == "/name" {
+        return name(stream, query, places);
+    }
     let leg = match path {
         "/brouter" => false,
         "/leg" => true,
@@ -123,6 +173,26 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
         },
         outcome => answer(stream, outcome, file_name),
     }
+}
+
+/// `GET /name?lat=…&lon=…`: the planner's name for a point, as `{"name":…}`, null where no area knows one.
+fn name(stream: TcpStream, query: &str, places: Option<&Places>) {
+    let number = |key: &str| {
+        query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix(key)?.strip_prefix('=')?.parse::<f64>().ok())
+            .filter(|n| n.is_finite())
+    };
+    let (Some(lat), Some(lon)) = (number("lat"), number("lon")) else {
+        return send(stream, "400 Bad Request", "lat and lon\n");
+    };
+    let mut body = String::from("{\"name\":");
+    match places.and_then(|places| places.name([lon, lat])) {
+        Some(name) => push_string(&mut body, &name),
+        None => body.push_str("null"),
+    }
+    body.push('}');
+    send_body(stream, "200 OK", "application/json; charset=utf-8", "", body.as_bytes());
 }
 
 /// The answer to a routing request's `outcome`, with the file name for a route.

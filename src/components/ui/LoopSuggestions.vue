@@ -14,7 +14,7 @@
           :style="{ width: `${Math.max(1, String(drafts[setting.key] ?? target[setting.key]).length) + .3}ch` }"
           @input="type(setting, $event)" @change="settle(setting, $event)">&nbsp;<small>{{ setting.unit }}</small></span>
         <input class="loops__range" type="range" min="0" :max="setting.steps.length - 1" step="1" :aria-label="`${setting.label}-Regler`"
-          :value="nearest(setting.steps, target[setting.key])" :aria-valuetext="`${formatWhole(target[setting.key])} ${setting.unit}`"
+          :value="nearest(setting.steps, target[setting.key])" :aria-valuetext="`${formatWhole(target[setting.key])} ${setting.spoken}`"
           :style="{ '--filled': `${nearest(setting.steps, target[setting.key]) / (setting.steps.length - 1) * 100}%` }"
           @input="target[setting.key] = setting.steps[+($event.target as HTMLInputElement).value]">
       </div>
@@ -37,7 +37,7 @@
           </svg>
           <span class="loop-card__text">
             <span class="loop-card__name">{{ loop.place && !loop.back ? `Über ${loop.place}` : `Nach ${loop.place ?? loop.heading}` }}</span>
-            <span class="loop-card__figures">{{ formatKm(loop.leg.distanceMeters, 1, true) }}&nbsp;<small>km</small> · {{ formatWhole(loop.leg.ascentMeters ?? 0) }}&nbsp;<small>m</small><template v-if="loop.back"> · <small>hin und zurück</small></template></span>
+            <span class="loop-card__figures">{{ formatKm(loop.leg.distanceMeters, 1, true) }}&nbsp;<small>km</small> · {{ formatWhole(loop.leg.ascentMeters ?? 0) }}&nbsp;<small>hm</small><template v-if="loop.back"> · <small>hin und zurück</small></template></span>
           </span>
         </button>
         <v-btn v-if="loops.selected === index" variant="flat" block @click="loops.keep()">Runde übernehmen</v-btn>
@@ -59,8 +59,8 @@ const loops = useLoopSuggestionsStore();
 const range = (from: number, to: number, step: number) => Array.from({ length: (to - from) / step + 1 }, (_, i) => from + i * step);
 const settings = [
   // Up to the longest brevets; a 1,000 km loop from Graz takes about 30 s and climbs some 10,000 m.
-  { key: 'km', label: 'Distanz', unit: 'km', steps: [...range(10, 100, 5), ...range(110, 300, 10), ...range(325, 600, 25), ...range(650, 1000, 50)] },
-  { key: 'ascent', label: 'Höhenmeter', unit: 'm',
+  { key: 'km', label: 'Distanz', unit: 'km', spoken: 'Kilometer', steps: [...range(10, 100, 5), ...range(110, 300, 10), ...range(325, 600, 25), ...range(650, 1000, 50)] },
+  { key: 'ascent', label: 'Höhenmeter', unit: 'hm', spoken: 'Höhenmeter',
     steps: [...range(0, 1000, 50), ...range(1100, 3000, 100), ...range(3250, 6000, 250), ...range(6500, 10000, 500), ...range(11000, 15000, 1000)] },
 ] as const;
 type Setting = typeof settings[number];

@@ -3,7 +3,7 @@
   <span class="elevation-range" role="group" :aria-label="place">
     <dl class="stats elevation-range__figures" :title="place">
       <div><dt>Ausschnitt</dt><dd>{{ length[0] }}&nbsp;<small>{{ length[1] }}</small></dd></div>
-      <div><dt>Höhenmeter</dt><dd>{{ formatWhole(stats.ascent) }}&nbsp;<small>m</small></dd></div>
+      <div><dt>Höhenmeter</dt><dd>{{ formatWhole(stats.ascent) }}&nbsp;<small>hm</small></dd></div>
       <div v-if="stats.gradient !== null" class="elevation-range__mean"><dt>Ø Steigung</dt><dd>{{ formatGradient(stats.gradient) }}&nbsp;<small>%</small></dd></div>
       <div v-if="stats.steepest !== null"><dt>Max. Steigung</dt><dd>{{ formatGradient(stats.steepest) }}&nbsp;<small>%</small></dd></div>
     </dl>

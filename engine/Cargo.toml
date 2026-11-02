@@ -18,6 +18,8 @@ brouter-mapaccess = { path = "mapaccess" }
 brouter-router = { path = "router" }
 richi-planner = { path = "planner" }
 richi-server = { path = "server" }
+# the address search (app/search), without what builds its index
+richi-search = { path = "../search", default-features = false }
 
 [profile.release]
 debug = "line-tables-only"

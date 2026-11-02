@@ -139,6 +139,7 @@ fn main() {
         serve(
             &listener,
             RouterPool::new(segments, profile_dir, number(5, 1, 1, "threads"), Some(rules), rider),
+            None,
             MAX_RUNNING_TIME_MS,
         );
     }

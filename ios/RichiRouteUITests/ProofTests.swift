@@ -6,6 +6,7 @@ final class ProofTests: XCTestCase {
     @MainActor
     func testRoutesAndLoop() {
         let app = XCUIApplication()
+        app.launchArguments = ["-proof"]
         app.launch()
         let budget = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Suche bis'")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout: 30))

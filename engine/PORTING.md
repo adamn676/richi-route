@@ -30,9 +30,10 @@ differs is a bug in the port. Speed work comes later and must not change results
 ## Crates
 
 One crate per BRouter package, in dependency order: `util`, `codec`, `expressions`, `mapaccess`, then
-`router`. On top: `planner` (the planner's own logic: its routed legs, loop suggestions and FIT courses, long ones in parts), `server` (the
-planner's routing server, with the legs at `/leg`, the loops at `/loops` and FIT courses at `/fit`), the command-line binary `cli` and `ios`, the library the iPhone app
-starts the server from. `planner` is ported from the planner's TypeScript, not from Java: it must answer
+`router`. On top: `planner` (the planner's own logic: its routed legs, loop suggestions, FIT courses, long ones in parts, and
+the names of points), `server` (the planner's routing server, with the legs at `/leg`, the loops at `/loops`, FIT courses at
+`/fit` and, over the address search of `../search`, names at `/name`), the command-line binary `cli` and `ios`, the library
+the iPhone app starts the server from. `planner` is ported from the planner's TypeScript, not from Java: it must answer
 exactly what the TypeScript did, so it follows JavaScript's doubles step by step, with V8's `Math.sin`, `cos`,
 `asin` and `atan2`, which are fdlibm's (`util::jmath`, not HotSpot's `router/src/libm.rs`); see
 `parity/README.md`. `ios` is the only crate the app calls: one function that

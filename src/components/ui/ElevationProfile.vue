@@ -9,7 +9,7 @@
         @reset="inspection.range = null" />
       <dl v-else class="stats profile__figures" aria-live="polite">
         <div><dt>Distanz</dt><dd><small v-if="routeStore.hasAirLines">ca.&nbsp;</small>{{ formatKm(routeStore.distanceMeters, 1, true) }}&nbsp;<small>km</small></dd></div>
-        <div><dt>Höhenmeter</dt><dd><template v-if="routeStore.ascentMeters !== null">{{ formatWhole(routeStore.ascentMeters) }}&nbsp;<small>m</small></template>
+        <div><dt>Höhenmeter</dt><dd><template v-if="routeStore.ascentMeters !== null">{{ formatWhole(routeStore.ascentMeters) }}&nbsp;<small>hm</small></template>
           <span v-else-if="routeStore.routingPending" class="skeleton profile__figure-skeleton" aria-label="wird berechnet" />
           <small v-else>unbekannt</small></dd></div>
       </dl>

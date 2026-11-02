@@ -30,7 +30,25 @@ struct Engine: Sendable {
     /// The route through `points` ([longitude, latitude]) as GeoJSON; `extra` adds request parameters,
     /// such as a round trip's.
     func route(_ points: [[Double]], extra: [URLQueryItem] = []) async throws -> Data {
-        var url = URLComponents(string: "http://127.0.0.1:\(port)/brouter")!
+        try await ask(routing("brouter", points, extra: extra))
+    }
+
+    /// The leg through `points` as the planner keeps it; a single point is asked as `[point, point]`, which
+    /// the engine snaps to the nearest road.
+    func leg(_ points: [[Double]]) async throws -> Leg {
+        try JSONDecoder().decode(Leg.self, from: try await ask(routing("leg", points.count == 1 ? points + points : points)))
+    }
+
+    /// The planner's name for a point on a road ("Herrengasse 16, 8010 Graz"), nil where the areas know none.
+    func name(_ coord: [Double]) async -> String? {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/name")!
+        url.queryItems = [URLQueryItem(name: "lat", value: "\(coord[1])"), URLQueryItem(name: "lon", value: "\(coord[0])")]
+        guard let data = try? await ask(URLRequest(url: url.url!)) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["name"] as? String
+    }
+
+    private func routing(_ path: String, _ points: [[Double]], extra: [URLQueryItem] = []) -> URLRequest {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/\(path)")!
         url.queryItems = [
             URLQueryItem(name: "profile", value: profile),
             URLQueryItem(name: "lonlats", value: points.map { "\($0[0]),\($0[1])" }.joined(separator: "|")),
@@ -39,7 +57,7 @@ struct Engine: Sendable {
         ] + extra + parameters
         var request = URLRequest(url: url.url!)
         request.timeoutInterval = 150
-        return try await ask(request)
+        return request
     }
 
     /// The route of a `route` answer as FIT courses named `name`, in parts over 400 km: each part's name, as its

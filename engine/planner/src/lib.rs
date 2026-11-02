@@ -7,6 +7,7 @@ mod fit;
 mod json;
 mod leg;
 mod loops;
+mod place;
 
 use std::fmt::Write;
 use std::sync::Arc;
@@ -18,11 +19,13 @@ use brouter_router::{Answer, Outcome, RouterPool};
 use brouter_util::jmath;
 
 pub use fit::{Course, course_fits};
-use json::{Json, push_string};
+use json::Json;
+pub use json::push_string;
 use leg::push_coords;
 pub use leg::{Coord, Leg};
 pub use loops::{Earlier, Stop, Suggestion, Target};
 use loops::{Routed, Trip, suggest_loops};
+pub use place::place_name;
 
 /// Why a route failed: the engine's outcome (its error, an exception or a panic), or an internal error
 /// (an answer the planner cannot read, a reply lost).

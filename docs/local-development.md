@@ -373,8 +373,16 @@ Start Vite with the same `MAPS_PORT`; the normal launcher uses 8088.
 
 ## iPhone app
 
-`ios/` holds the native iPhone app (SwiftUI). For now it is a first test: it
-starts the routing engine inside the app and draws routes on the offline map.
+`ios/` holds the native iPhone app (SwiftUI), being built after the screen
+designs. So far it plans a route by tapping the offline map, as the planner
+does: Start, Ziel, a Zwischenstopp by tapping the route, each snapped to the
+nearest road and named by street and town (the engine's `/name`, over each
+offline area's `search.index`); the legs come from the engine's `/leg`, drawn
+in their surface colours, with undo and redo, the route's figures and its
+surfaces. Tapping a stop's row replaces it by the next tap on the map; holding
+its marker drags it. The first
+screen of earlier tests (long routes, the Garmin test) opens with the launch
+argument `-proof`.
 The routing engine is built into the app as `engine/ios`, which runs the same
 server as `richi-engine serve` on a free port of 127.0.0.1. The app calls one
 function, `richi_engine_start(threads, search_mb)`, which takes and returns
@@ -396,14 +404,17 @@ reads one offline area: the app puts the `file://` URLs of each area's
 repeats both sources and their layers per area. Run it after `maps:setup`,
 before copying `ios/` to the Mac.
 
-`node scripts/build-ios-data.mjs [--areas at-6,at-7] [--personal]` lays out
-`ios/Routing/` (routing data, profiles, rules, surface corrections and the
-planner's request parameters) and `ios/Areas/` (offline areas from
-`scripts/build-offline-packages.mjs`) as links, outside git. `--personal` adds
-your road preferences from your own rides; use it only for builds on your own
-phone. Building needs a Mac with Xcode 27, Rust (`rustup target add
-aarch64-apple-ios aarch64-apple-ios-sim`) and XcodeGen. Copy `engine/` and
-`ios/` side by side to the Mac, following the links, then generate the project:
+`node scripts/build-ios-data.mjs [--areas at-6,at-7] [--personal]` lays out,
+as links outside git, `ios/Routing/` (profiles, rules, surface corrections and
+the planner's request parameters, which the app bundles) and `ios/Data/`
+(routing data and offline areas with their map, relief and address search from
+`scripts/build-offline-packages.mjs`, about 740 MB). `--personal` adds your road preferences from your own rides; use
+it only for builds on your own phone. The app keeps `Data` in its own
+`Library/Application Support/RichiRoute`, where it stays from one install to
+the next, so the app itself is about 55 MB and installs quickly. Building needs
+a Mac with Xcode 27, Rust (`rustup target add aarch64-apple-ios
+aarch64-apple-ios-sim`) and XcodeGen. Copy `engine/` and `ios/` side by side
+to the Mac, following the links, then generate the project:
 
 ```sh
 rsync -a --exclude target engine/ mac:projects/RichiRoute/engine/
@@ -411,11 +422,27 @@ rsync -aL --exclude build --exclude RichiRoute.xcodeproj --exclude RichiRoute/In
 ssh mac 'cd projects/RichiRoute/ios && xcodegen generate'
 ```
 
+Once the app is installed, copy `Data` into it once (again after new data);
+`devicectl` skips files that have not changed:
+
+```sh
+# on the Mac, in projects/RichiRoute/ios/Data; the iPhone by its name in `xcrun devicectl list devices`
+for folder in segments Areas; do
+  xcrun devicectl device copy to --device 'iPhone 13 mini' --domain-type appDataContainer \
+    --domain-identifier com.adamn.RichiRoute --source $folder --destination "Library/Application Support/RichiRoute/$folder"
+done
+# the simulator
+cp -R segments Areas "$(xcrun simctl get_app_container booted com.adamn.RichiRoute data)/Library/Application Support/RichiRoute/"
+```
+
 The build compiles the engine with cargo for the device or the simulator. Run
-the app from Xcode on the iPhone; ⌘U runs `RichiRouteUITests`, which taps each
-test case and logs time and memory (`RESULT` lines in the test log). On the
-simulator it also runs over SSH:
-`xcodebuild test -project RichiRoute.xcodeproj -scheme RichiRoute -destination 'platform=iOS Simulator,name=iPhone 17'`.
+the app from Xcode on the iPhone; ⌘U runs `RichiRouteUITests`: `PlannerTests`
+plans a route by tapping the map, `ProofTests` taps each long-route case and
+logs time and memory (`RESULT` lines in the test log). On the simulator it also
+runs over SSH, on the simulator that holds the data (by its id; Xcode's
+parallel testing would use a copy without it); `TEST_RUNNER_RICHIROUTE_SHOTS`
+names a folder for `PlannerTests`' screenshots:
+`xcodebuild test -parallel-testing-enabled NO -project RichiRoute.xcodeproj -scheme RichiRoute -destination 'id=<simulator id>'`.
 On the device, signing over SSH fails (`errSecInternalComponent`), so run it
 from Xcode there.
 

@@ -1,6 +1,6 @@
 # The iPhone app's Xcode project: `xcodegen generate` in ios/ writes RichiRoute.xcodeproj (outside git).
-# Before building, `npm run ios:map` writes RichiRoute/Map/ and `node scripts/build-ios-data.mjs` lays out Routing/ and
-# Areas/ (the bundled data);
+# Before building, `npm run ios:map` writes RichiRoute/Map/ and `node scripts/build-ios-data.mjs` lays out Routing/ (bundled)
+# and Data/ (copied once into the app's data container);
 # the build compiles the routing engine (engine/ios) with cargo for the device or the simulator.
 name: RichiRoute
 options:
@@ -39,9 +39,6 @@ targets:
       - path: Routing
         type: folder
         buildPhase: resources
-      - path: Areas
-        type: folder
-        buildPhase: resources
     dependencies:
       - package: MapLibre
       - package: ConnectIQ
@@ -56,6 +53,7 @@ targets:
         # the app asks its own engine on 127.0.0.1
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        NSLocationWhenInUseUsageDescription: RichiRoute zeigt deinen Standort auf der Karte.
         NSBluetoothAlwaysUsageDescription: RichiRoute sendet Routen über Bluetooth an Garmin-Geräte.
         # Garmin Connect returns the chosen Edge to this scheme; the SDK checks for Garmin Connect by its own
         CFBundleURLTypes:
