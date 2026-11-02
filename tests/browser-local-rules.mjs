@@ -3,6 +3,8 @@ import { writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 import { gpxReady } from './browser-ui.mjs';
 
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
+
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: process.env.PLAYWRIGHT_HEADED !== '1' });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
@@ -11,7 +13,7 @@ await context.route('**/tiles/**', route => route.fulfill({ status: 200, content
 const page = await context.newPage(), errors = [];
 page.on('pageerror', error => errors.push(error.message));
 let requests = 0, hold, release, wrongRevision = false;
-await context.route('**/routing/brouter?**', async route => {
+await context.route('**/routing/leg?**', async route => {
   requests++;
   if (hold) await hold;
   const url = new URL(route.request().url());
@@ -30,7 +32,7 @@ async function reset() {
 }
 const notice = page.getByText('Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben.', { exact: true });
 try {
-  await page.goto('http://127.0.0.1:5173/');
+  await page.goto(`${origin}/`);
   await page.getByRole('heading', { name: 'RichiRoute', exact: true }).waitFor();
   await reset(); await idle();
   assert.equal(await notice.count(), 1, 'Two flights produce one rule notice');

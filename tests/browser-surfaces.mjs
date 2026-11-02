@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const directory = new URL('../experiments/routing/.local/surface-browser/', import.meta.url);
 await mkdir(directory, { recursive: true });
@@ -45,8 +46,8 @@ try {
   const errors = [];
   let requests = 0;
   page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => { if (new URL(request.url()).pathname === '/routing/brouter') requests++; });
-  await page.goto('http://127.0.0.1:5173/');
+  page.on('request', request => { if (new URL(request.url()).pathname === '/routing/leg') requests++; });
+  await page.goto(`${origin}/`);
   await page.waitForSelector('.route-layer', { state: 'attached' });
   await page.evaluate(() => {
     document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('route')
@@ -132,9 +133,9 @@ try {
   await legacyContext.addInitScript(draft => localStorage.setItem('richiroute.route-draft.v1', draft), JSON.stringify(legacy));
   const legacyPage = await legacyContext.newPage();
   let legacyRequests = 0;
-  legacyPage.on('request', request => { if (new URL(request.url()).pathname === '/routing/brouter') legacyRequests++; });
+  legacyPage.on('request', request => { if (new URL(request.url()).pathname === '/routing/leg') legacyRequests++; });
   legacyPage.on('pageerror', error => errors.push(error.message));
-  await legacyPage.goto('http://127.0.0.1:5173/');
+  await legacyPage.goto(`${origin}/`);
   await ready(legacyPage);
   await legacyPage.getByRole('region', { name: 'Untergrund' }).waitFor();
   assert.equal(await legacyPage.getByRole('button', { name: /Unbefestigt/ }).count(), 1);

@@ -40,8 +40,7 @@ await context.route('**/routing/**', route => {
   }
   // Snapping a stop: it stays where it is.
   const [lon, lat] = new URL(route.request().url()).searchParams.get('lonlats').split('|')[0].split(',').map(Number);
-  return route.fulfill({ json: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[lon, lat], [lon, lat]] },
-    properties: { 'track-length': '0', messages: [] } }] } });
+  return route.fulfill({ json: { coordinates: [[lon, lat], [lon, lat]], elevations: null, distanceMeters: 0, ascentMeters: null, surfaces: [] } });
 });
 // Towns by compass quarter around the start; the start's own street and town.
 await context.route('**/geocoding/reverse**', route => {

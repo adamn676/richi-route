@@ -6,14 +6,16 @@ import { routingEngine } from '../src/services/route.service.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function settle() { for (let i = 0; i < 15; i++) await tick(); }
+// The routing service's leg; a single point (a snap) comes as two.
 function response(coords) {
-  return new Response(JSON.stringify({ features: [{ geometry: { type: 'LineString', coordinates: coords }, properties: { 'track-length': coords.length === 1 ? '0' : '100' } }] }));
+  const single = coords.length === 1;
+  return Response.json({ coordinates: single ? [coords[0], coords[0]] : coords, elevations: null, distanceMeters: single ? 0 : 100, ascentMeters: null, surfaces: [] });
 }
 function intercept(t, hold = () => false) {
   const requests = [];
   t.mock.method(globalThis, 'fetch', (url, options) => {
     const parsed = new URL(url, 'http://localhost');
-    assert.equal(parsed.pathname, '/routing/brouter');
+    assert.equal(parsed.pathname, '/routing/leg');
     assert.equal(parsed.searchParams.get('profile'), 'richi-local-v1');
     assert.equal(parsed.searchParams.has('nogos'), false);
     const coords = parsed.searchParams.get('lonlats').split('|').map(pair => pair.split(',').map(Number));

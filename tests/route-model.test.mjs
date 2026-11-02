@@ -230,4 +230,10 @@ test('surface display splits within a leg but keeps point IDs instead of geometr
   assert.equal(segments[1].properties.fromId, 'start');
   assert.equal(segments[1].properties.toId, 'end');
   assert.deepEqual(segments[0].geometry.coordinates.at(-1), segments[1].geometry.coordinates[0]);
+
+  // where the engine's surfaces stop short, the rest of the leg is drawn as unknown
+  const tail = getSegments({ type: 'Feature', geometry: { type: 'LineString', coordinates },
+    properties: { legId: legId('start', 'end'), fromId: 'start', toId: 'end', status: 'routed', surfaces: [{ fromIndex: 0, toIndex: 1, surface: 'paved' }] } });
+  assert.equal(tail.at(-1).properties.surface, 'unknown');
+  assert.deepEqual(tail.at(-1).geometry.coordinates.at(-1), coordinates.at(-1));
 });

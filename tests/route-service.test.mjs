@@ -2,22 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { courseFit, routingEngine, traceLoops } from '../src/services/route.service.ts';
 import { PlacementError } from '../src/domain/route-model.ts';
+import { routingPolicyVersion } from '../src/config/routing-policy.ts';
 import { requestFor } from '../experiments/routing/engines.mjs';
 
 const from = [15.39325, 47.07655];
 const to = [12.45688, 47.00334];
+// The routing service's answer at /leg: the leg the planner keeps.
+const leg = (coordinates, distanceMeters) => Response.json({ coordinates, elevations: null, distanceMeters, ascentMeters: null, surfaces: [] });
 
 test('editor and comparison share the rule revision and search settings; historical presets remain reproducible', async t => {
   const requests = [];
   t.mock.method(globalThis, 'fetch', async url => {
-    const query = new URL(url, 'http://localhost').searchParams;
+    const { pathname, searchParams: query } = new URL(url, 'http://localhost');
+    assert.equal(pathname, '/routing/leg');
     requests.push(query);
     const coords = query.get('lonlats').split('|').map(pair => pair.split(',').map(Number));
-    return Response.json({ features: [{ geometry: { type: 'LineString', coordinates: coords },
-      properties: { 'track-length': coords[0][0] === coords[1][0] ? '0' : '338830' } }] });
+    return leg(coords, coords[0][0] === coords[1][0] ? 0 : 338830);
   });
-  await routingEngine.snap(from, new AbortController().signal);
-  await routingEngine.routeLeg(from, to, new AbortController().signal);
+  assert.deepEqual(await routingEngine.snap(from, new AbortController().signal), from);
+  const routed = await routingEngine.routeLeg(from, to, new AbortController().signal);
+  assert.deepEqual(routed, { coordinates: [from, to], elevations: null, distanceMeters: 338830, ascentMeters: null, surfaces: [],
+    routingPolicy: routingPolicyVersion }, 'The leg as the routing service reads it, with the routing settings');
   const points = [from, to].map(coord => ({ role: 'stop', coord }));
   const comparison = new URL(requestFor('brouter', points, 'local-rules-v1').url).searchParams;
   assert.deepEqual([...requests[1]].sort(), [...comparison].sort());
@@ -71,7 +76,7 @@ test('foreground routing takes the next slot ahead of queued surface lookup', as
   t.mock.method(globalThis, 'fetch', url => new Promise(resolve => {
     const coords = new URL(url, 'http://localhost').searchParams.get('lonlats').split('|').map(p => p.split(',').map(Number));
     started.push(coords[0][0]);
-    releases.push(() => resolve(Response.json({ features: [{ geometry: { type: 'LineString', coordinates: coords }, properties: { 'track-length': '100' } }] })));
+    releases.push(() => resolve(leg(coords, 100)));
   }));
   const signal = new AbortController().signal;
   const running = Array.from({ length: 6 }, (_, i) => routingEngine.routeLeg([i, 47], [i + .01, 47], signal));

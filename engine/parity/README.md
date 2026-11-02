@@ -155,9 +155,10 @@ and `continueStraight`. The output is always GeoJSON, whatever `format` asks for
 
 ## Planner (planner)
 
-The loop suggestions (`planner/`, the server's `/loops`) were ported from the planner's TypeScript and must
-suggest exactly what it did: the same operations in the same order, with V8's `Math.sin`, `cos`, `asin` and
-`atan2`, which are fdlibm's (`util/src/jmath.rs`, checked bit for bit on 3 million values against Node).
+The planner's legs (`planner/src/leg.rs`, the server's `/leg`, `richi-engine legs`) and loop suggestions
+(the server's `/loops`) were ported from the planner's TypeScript and must answer exactly what it did: the
+same operations in the same order, with V8's `Math.sin`, `cos`, `asin` and `atan2`, which are fdlibm's
+(`util/src/jmath.rs`, checked bit for bit on 3 million values against Node).
 
 ```sh
 cargo build --release -p richi-engine
@@ -171,7 +172,10 @@ records to `target/parity/loops/<name>.json` (`planner`, or `--as <name>`). `com
 suggestions differ in any pick's leg (coordinates, heights, surfaces, distance, climbing), heading, squares or
 out and back, or in the points looked up to name them, and prints the time per start. On the move, the
 TypeScript's suggestions (`ts.json`, `ts-dice.json`, recorded with `richi-engine lines` and the rules) and the
-engine's (`planner.json`, `planner-dice.json`) were the same for all 20 starts.
+engine's (`planner.json`, `planner-dice.json`) were the same for all 20 starts. When the legs moved (November
+2026), the engine's `/leg` answers were deep-equal to the legs the TypeScript read from `/brouter` for the 164
+queries of `route.mjs` and 18 more (corrected surfaces, out and back, a few metres, unknown surfaces, the
+coast without heights), with the rider's corrections and preferences, and for 84 edge cases of GeoJSON.
 
 ## Benchmark
 

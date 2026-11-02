@@ -13,7 +13,7 @@ const errors = [];
 const routingRequests = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('request', request => {
-  if (new URL(request.url()).pathname === '/routing/brouter') routingRequests.push(request.url());
+  if (new URL(request.url()).pathname === '/routing/leg') routingRequests.push(request.url());
 });
 async function idle() {
   await page.waitForFunction(() => {

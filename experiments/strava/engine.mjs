@@ -3,13 +3,12 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { routingParameters, routingProfile } from '../../src/config/routing-policy.ts';
-import { parseBRouterLeg } from '../../src/domain/route-response.ts';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 export const strava = path.join(root, '.cache/strava');
 const rules = path.join(root, 'experiments/routing/.local/local-routing-rules');
 
-// The routing engine without a port (`richi-engine lines`), with the planner's profile, local rules and surface
+// The routing engine without a port (`richi-engine legs`), with the planner's profile, local rules and surface
 // corrections, and the rider's road `preferences` file if given. `route` asks as the planner does (`extra` as its round
 // trips) and answers with the route as the planner reads it ([lon, lat] points, surfaces), or an error.
 export function startEngine({ threads = 6, preferences } = {}) {
@@ -18,7 +17,7 @@ export function startEngine({ threads = 6, preferences } = {}) {
   delete env.RICHIROUTE_PREFERENCES;
   if (preferences) env.RICHIROUTE_PREFERENCES = preferences;
   const engine = spawn(path.join(root, 'engine/target/release/richi-engine'),
-    ['lines', path.join(root, '../richiroute-ubuntu-benchmark/data'), path.join(rules, 'profiles'), String(threads), '256'],
+    ['legs', path.join(root, '../richiroute-ubuntu-benchmark/data'), path.join(rules, 'profiles'), String(threads), '256'],
     { env, stdio: ['pipe', 'pipe', 'inherit'] });
   const ended = new Promise((resolve, reject) => engine.once('exit', code => code ? reject(new Error(`Engine ended with ${code}`)) : resolve()));
   const waiting = new Map();
@@ -26,9 +25,7 @@ export function startEngine({ threads = 6, preferences } = {}) {
   readline.createInterface({ input: engine.stdout }).on('line', line => {
     const answer = JSON.parse(line), resolve = waiting.get(answer.id);
     waiting.delete(answer.id);
-    // The GeoJSON comes as text, as the planner's server sends it.
-    let leg;
-    try { leg = answer.geojson && parseBRouterLeg(JSON.parse(answer.geojson)); } catch { leg = null; }
+    const { leg } = answer;
     resolve(leg ? { coordinates: leg.coordinates, surfaces: leg.surfaces, ms: answer.ms } : { error: answer.error ?? 'no route', ms: answer.ms });
   });
   return {

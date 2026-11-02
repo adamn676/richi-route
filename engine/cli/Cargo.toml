@@ -8,4 +8,5 @@ rust-version.workspace = true
 
 [dependencies]
 brouter-router.workspace = true
+richi-planner.workspace = true
 richi-server.workspace = true

@@ -1,6 +1,5 @@
 import { distanceMeters, PlacementError, routingConcurrency, SectionError, type Coord, type LegGeometry, type RoutingEngine } from '../domain/route-model.ts';
 import type { LoopTarget } from '../domain/loop-suggestions.ts';
-import { parseBRouterLeg, parseBRouterLine } from '../domain/route-response.ts';
 import { routingProfile, routingParameters, routingPolicyVersion } from '../config/routing-policy.ts';
 
 const maxSnapDistance = 250;
@@ -68,17 +67,21 @@ async function answer(fetching: () => Promise<Response>, signal: AbortSignal): P
   return response.json();
 }
 
-async function request(points: Coord[], signal: AbortSignal, background = false): Promise<unknown> {
+// The planner's leg through the points, as the routing service's /leg reads it from its route.
+function request(points: Coord[], signal: AbortSignal, background = false): Promise<LegGeometry> {
   const params = new URLSearchParams({ profile: routingProfile, lonlats: points.map(point => point.join(',')).join('|'), format: 'geojson', alternativeidx: '0' });
   // Guide the initial search and its refinement; road costs stay in the profile.
   for (const [name, value] of Object.entries(routingParameters)) params.set(`profile:${name}`, String(value));
-  return withSlot(signal, () => answer(() => fetch('/routing/brouter?' + params, {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]),
-  }), signal), background);
+  return withSlot(signal, async () => {
+    const leg = await answer(() => fetch('/routing/leg?' + params, { signal: AbortSignal.any([signal, AbortSignal.timeout(70_000)]) }), signal);
+    // an engine from before /leg answers it as /brouter
+    if (!Array.isArray((leg as Partial<LegGeometry>).coordinates)) throw new Error('Der Routing-Dienst ist veraltet. Bitte die lokalen Dienste neu starten.');
+    return leg as LegGeometry;
+  }, background);
 }
 
-export async function traceGpxPortion(points: Coord[], signal: AbortSignal) {
-  return parseBRouterLeg(await request(points, signal, true));
+export function traceGpxPortion(points: Coord[], signal: AbortSignal) {
+  return request(points, signal, true);
 }
 
 // A loop suggested by the routing service, with the points whose towns name it (`along`).
@@ -125,13 +128,13 @@ function checkSnap(requested: Coord, snapped: Coord): void {
 
 export const routingEngine: RoutingEngine = {
   async snap(coord, signal) {
-    const { coordinates } = parseBRouterLine(await request([coord, coord], signal));
+    const { coordinates } = await request([coord, coord], signal);
     const snapped = coordinates[0];
     checkSnap(coord, snapped);
     return snapped;
   },
   async routeLeg(from, to, signal) {
-    const leg = parseBRouterLeg(await request([from, to], signal));
+    const leg = await request([from, to], signal);
     checkSnap(from, leg.coordinates[0]);
     checkSnap(to, leg.coordinates.at(-1)!);
     return { ...leg, routingPolicy: routingPolicyVersion };

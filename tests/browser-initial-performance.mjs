@@ -46,7 +46,7 @@ async function measure(item, variant, round) {
     await context.route('**/tiles/**', route => route.fulfill({ status: 200,
       contentType: 'application/vnd.mapbox-vector-tile', body: Buffer.alloc(0) }));
     let requests = 0;
-    await context.route('**/routing/brouter?**', async route => {
+    await context.route('**/routing/leg?**', async route => {
       const url = new URL(route.request().url());
       for (const [name, value] of Object.entries(routingSearch)) {
         assert.equal(url.searchParams.get(`profile:${name}`), String(value), 'The editor sends the configured search setting');
@@ -61,7 +61,7 @@ async function measure(item, variant, round) {
       const origin = variant === 'baseline' ? values['baseline-origin'] : values['optimized-origin'];
       if (origin) {
         // Fetch through Playwright so cross-origin test engines need no browser CORS changes.
-        const target = new URL('/brouter', origin);
+        const target = new URL('/leg', origin);
         target.search = url.search;
         const response = await route.fetch({ url: target.href, timeout: 75_000 });
         return route.fulfill({ response });

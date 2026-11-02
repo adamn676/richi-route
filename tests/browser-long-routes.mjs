@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/index.mjs';
 import { saveEntry } from './browser-ui.mjs';
 
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
 const cases = [
   { name: 'Graz-Virgen across map tiles', minimum: 330000, maximum: 350000, coords: [[15.393249918226957,47.076550949654376],[12.456876612333161,47.00334492589846]] },
   { name: '252 km single leg', minimum: 250000, maximum: 260000, coords: [[15.4329,47.075887],[16.5768,48.5707]] },
@@ -39,8 +40,8 @@ try {
     const errors = [];
     let requests = 0;
     page.on('pageerror', error => errors.push(error.message));
-    page.on('request', request => { if (new URL(request.url()).pathname === '/routing/brouter') requests++; });
-    await page.goto('http://127.0.0.1:5173/');
+    page.on('request', request => { if (new URL(request.url()).pathname === '/routing/leg') requests++; });
+    await page.goto(`${origin}/`);
     await page.waitForSelector('.route-layer', { state: 'attached' });
     await page.evaluate(coords => {
       const map = document.querySelector('.route-layer').__vueParentComponent.props.map;

@@ -19,9 +19,8 @@ await page.route('**/routing/**', async route => {
   const coords = new URL(route.request().url()).searchParams.get('lonlats').split('|').map(p => p.split(',').map(Number));
   assert.ok(coords.length <= 64);
   const coordinates = currentMode === 'offset' ? coords.map(([lon, lat]) => [lon, lat + .001]) : coords;
-  const end = coordinates.at(-1);
-  await route.fulfill({ json: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates },
-    properties: { 'track-length': '500', messages: [['Longitude', 'Latitude', 'Distance', 'WayTags'], [Math.round(end[0] * 1e6), Math.round(end[1] * 1e6), 500, 'surface=asphalt']] } }] } }).catch(() => {});
+  await route.fulfill({ json: { coordinates, elevations: null, distanceMeters: 500, ascentMeters: null,
+    surfaces: [{ fromIndex: 0, toIndex: coordinates.length - 1, surface: 'paved', surfaceTag: 'asphalt' }] } }).catch(() => {});
 });
 const coordsOf = count => Array.from({ length: count }, (_, i) => [15.4 + i / 10000, 47.1]);
 const upload = async (name, count = 1001) => {

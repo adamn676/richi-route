@@ -1,5 +1,5 @@
-//! Starts the app's server over a `Routing` folder laid out as in the app bundle and asks it for a route
-//! and for loops in Graz. Needs the routing segments, profiles and rules (`RICHIROUTE_SEGMENTS`, `RICHIROUTE_PROFILES`,
+//! Starts the app's server over a `Routing` folder laid out as in the app bundle and asks it for a route,
+//! a leg and loops in Graz. Needs the routing segments, profiles and rules (`RICHIROUTE_SEGMENTS`, `RICHIROUTE_PROFILES`,
 //! `RICHIROUTE_RULES`, defaults from `PORTING.md`); skipped when they are missing.
 
 use std::io::{Read, Write};
@@ -28,13 +28,22 @@ fn serves_routes_and_loops_from_the_bundle_layout() {
     }
 
     let port = richi_ios::start(&routing, 4, 1024).unwrap();
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    let query = "profile=richi-local-v1&lonlats=15.4395%2C47.0707%7C15.45%2C47.08&format=geojson&alternativeidx=0";
-    write!(stream, "GET /brouter?{query} HTTP/1.1\r\n\r\n").unwrap();
-    let mut answer = String::new();
-    stream.read_to_string(&mut answer).unwrap();
-    assert!(answer.starts_with("HTTP/1.1 200 OK"), "{}", &answer[..answer.len().min(200)]);
-    assert!(answer.contains("\"track-length\""));
+    let get = |path: &str| {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let query = "profile=richi-local-v1&lonlats=15.4395%2C47.0707%7C15.45%2C47.08&format=geojson&alternativeidx=0";
+        write!(stream, "GET {path}?{query} HTTP/1.1\r\n\r\n").unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer
+    };
+    let ok = |path: &str| {
+        let answer = get(path);
+        assert!(answer.starts_with("HTTP/1.1 200 OK"), "{}", &answer[..answer.len().min(200)]);
+        answer
+    };
+    assert!(ok("/brouter").contains("\"track-length\""));
+    assert!(ok("/leg").contains("\"distanceMeters\""), "the planner's leg");
+    assert!(get("/route").starts_with("HTTP/1.1 404"));
 
     let body =
         r#"{"profile": "richi-local-v1", "start": [15.4395, 47.0707], "target": {"meters": 3000, "ascent": 30}}"#;

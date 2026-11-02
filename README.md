@@ -104,7 +104,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 | Folder | Contents |
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify 4, Pinia, MapLibre GL JS 6, TypeScript, built with Vite 8 |
-| `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)), and the loop suggestions and FIT courses on top of it (`engine/planner`), shared by planner and iPhone app |
+| `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)), and on top of it (`engine/planner`) the routed legs with their surfaces and climbing, the loop suggestions and FIT courses, shared by planner and iPhone app |
 | `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, in its first test ([iPhone app](docs/local-development.md#iphone-app)) |
 | `garmin/` | A Connect IQ app for the Garmin Edge 840 that receives routes from the iPhone app over Bluetooth, in its first test ([Garmin Edge test](docs/local-development.md#garmin-edge-test)) |
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |

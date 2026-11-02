@@ -1,11 +1,13 @@
 import { distanceMeters, isPlaced, reconcileLegs, sameEndpoints, type Coord, type RouteLeg, type RoutePoint, type Surface, type SurfaceKind, type SurfaceSpan } from './route-model.ts';
-import { surfaceType } from './route-response.ts';
 
 // Surface groups as drafts store them, including those before the road-bike grouping (asphalt and concrete apart).
 const savedSurfaces: Record<string, Surface> = {
   paved: 'paved', likelyPaved: 'likelyPaved', rough: 'rough', unpaved: 'unpaved', unknown: 'unknown',
   asphalt: 'paved', likelyAsphalt: 'likelyPaved',
 };
+
+// Materials the road-bike grouping of 28 October 2026 placed anew; drafts saved before keep their old group otherwise.
+const regrouped: Record<string, Surface> = { paving_stones: 'paved', unhewn_cobblestone: 'rough', grass_paver: 'unpaved', woodchips: 'unpaved' };
 
 export interface RouteDraft {
   version: 1;
@@ -54,15 +56,13 @@ function point(value: unknown): RoutePoint {
   };
 }
 
-// A material the groups know is grouped as today; otherwise the saved group stands (translated, for older drafts),
-// which also keeps what the way's type told when the span was routed
+// The group the routing engine gave the span when it was routed, translated for older drafts.
 function surfaceKind(s: Record<string, unknown>): SurfaceKind {
   const saved = text(s.surface), group = Object.hasOwn(savedSurfaces, saved) ? savedSurfaces[saved] : undefined;
   if (!group) throw new Error('Invalid draft surface');
   if (s.surfaceTag === undefined) return { surface: group };
   if (typeof s.surfaceTag !== 'string' || !s.surfaceTag.length || s.surfaceTag.length > 200) throw new Error('Invalid draft surface tag');
-  const tagged = surfaceType(s.surfaceTag);
-  return { surface: tagged === 'unknown' ? group : tagged, surfaceTag: s.surfaceTag };
+  return { surface: Object.hasOwn(regrouped, s.surfaceTag) ? regrouped[s.surfaceTag] : group, surfaceTag: s.surfaceTag };
 }
 
 function leg(value: unknown): RouteLeg {

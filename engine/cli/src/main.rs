@@ -8,6 +8,9 @@
 //! answered. The threads share the decoded map cells, up to `<cellCacheMB>` megabytes (default
 //! `SegmentStore::DEFAULT_CELL_CACHE_BYTES`, 0 to decode every cell for every search as BRouter does).
 //!
+//! `richi-engine legs …`: the same, answering the leg the planner keeps (`{"id":…,"ms":…,"leg":{…}}`,
+//! as the server's `/leg`) instead of the GeoJSON.
+//!
 //! `richi-engine serve <segmentDir> <profileDir> <port> [threads] [bindAddress]`: the planner's routing
 //! server (`richi_server`), listening on 127.0.0.1 unless `<bindAddress>` says otherwise.
 //!
@@ -32,6 +35,7 @@ use brouter_router::{
     Answer, LocalRules, Outcome, Preferences, Rider, RouterPool, SegmentStore, SurfaceFile, limit_search_memory,
     panic_message,
 };
+use richi_planner::leg_json;
 use richi_server::{MAX_RUNNING_TIME_MS, serve};
 
 /// About five times what the planner's loop suggestions take with 12 threads.
@@ -92,11 +96,11 @@ unsafe impl GlobalAlloc for Ceiling {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let serving = match args.get(1).map(String::as_str) {
-        Some("lines") if args.len() >= 4 => false,
-        Some("serve") if args.len() >= 5 => true,
+    let mode = match args.get(1).map(String::as_str) {
+        Some(mode @ ("lines" | "legs")) if args.len() >= 4 => mode,
+        Some("serve") if args.len() >= 5 => "serve",
         _ => fail(
-            "usage: richi-engine lines <segmentDir> <profileDir> [threads] [cellCacheMB]\n       \
+            "usage: richi-engine lines|legs <segmentDir> <profileDir> [threads] [cellCacheMB]\n       \
              richi-engine serve <segmentDir> <profileDir> <port> [threads] [bindAddress]",
         ),
     };
@@ -119,7 +123,7 @@ fn main() {
             .map(|file| Arc::new(Preferences::load(Path::new(&file)).unwrap_or_else(|e| fail(&e)))),
     };
 
-    if serving {
+    if mode == "serve" {
         let Some(rules) = local_rules else { fail("serve: set RICHIROUTE_RULES to the prepared rule file") };
         println!("Local routing rules: {}", rules.revision());
         if let Some(surfaces) = &rider.surfaces {
@@ -139,6 +143,7 @@ fn main() {
         );
     }
 
+    let legs = mode == "legs";
     let threads = number(4, 1, 1, "threads");
     let cell_cache_bytes = number(5, SegmentStore::DEFAULT_CELL_CACHE_BYTES >> 20, 0, "cellCacheMB") << 20;
     let segments = Arc::new(SegmentStore::new(&args[2], cell_cache_bytes));
@@ -157,7 +162,7 @@ fn main() {
         };
         let id = quote(id);
         pool.submit(query.to_string(), MAX_RUNNING_TIME_MS, None, move |outcome, time| {
-            let result = answer(outcome, time.as_millis());
+            let result = answer(outcome, time.as_millis(), legs);
             let mut out = std::io::stdout().lock();
             // a closed stdout leaves nobody to answer
             if writeln!(out, "{{\"id\":{id},{result}}}").and_then(|()| out.flush()).is_err() {
@@ -173,10 +178,15 @@ fn fail(message: &str) -> ! {
     std::process::exit(2);
 }
 
-/// `RouteReference.answer`: the JSON members after `"id"`. The engine turns the data layer's internal
-/// errors into error answers itself; a panic here is any other one.
-fn answer(outcome: Outcome, ms: u128) -> String {
+/// `RouteReference.answer`: the JSON members after `"id"`, with the leg instead of the GeoJSON for
+/// `legs`. The engine turns the data layer's internal errors into error answers itself; a panic here is
+/// any other one.
+fn answer(outcome: Outcome, ms: u128, legs: bool) -> String {
     let (member, text) = match outcome {
+        Ok(Ok(Answer::GeoJson(geojson))) if legs => match leg_json(&geojson) {
+            Ok(leg) => return format!("\"ms\":{ms},\"leg\":{leg}"),
+            Err(reason) => ("error", reason),
+        },
         Ok(Ok(Answer::GeoJson(geojson))) => ("geojson", geojson),
         Ok(Ok(Answer::Error(message))) => ("error", message),
         Ok(Err(exception)) => ("error", format!("exception: {exception}")),

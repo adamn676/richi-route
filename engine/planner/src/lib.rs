@@ -1,7 +1,7 @@
 //! The planner's own logic on top of the engine, one implementation for the web planner and the iPhone
-//! app: the loop suggestions, which the routing server answers at `/loops` (`LoopRequest`), and routes
-//! as FIT courses for Garmin bike computers, at `/fit` (`course_fits`). The routes the loops need run on the
-//! server's `RouterPool` side by side, as `/brouter` requests would.
+//! app: its routed legs, which the routing server answers at `/leg` (`leg_json`), the loop suggestions, at
+//! `/loops` (`LoopRequest`), and routes as FIT courses for Garmin bike computers, at `/fit` (`course_fits`).
+//! The routes the loops need run on the server's `RouterPool` side by side, as `/brouter` requests would.
 
 mod fit;
 mod json;
@@ -195,6 +195,13 @@ fn encode(text: &str) -> String {
         }
     }
     encoded
+}
+
+/// The leg the planner keeps (`LegGeometry`) for the engine's GeoJSON answer.
+pub fn leg_json(geojson: &str) -> Result<String, String> {
+    let mut out = String::new();
+    Leg::from_geojson(geojson)?.push_json(&mut out);
+    Ok(out)
 }
 
 /// The suggestions as the planner reads them: `[{"leg", "heading", "cells", "back", "along"}]`, the leg

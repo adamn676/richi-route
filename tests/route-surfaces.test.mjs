@@ -118,7 +118,7 @@ test('incomplete routes have no surface totals and zero-length legs do not inven
 test('drafts preserve precise surface tags and reject overlapping or malformed spans', () => {
   const { points, legs } = route();
   assert.deepEqual(parseDraft(serializeDraft(points, legs)).legs, legs);
-  // older drafts: their groups are translated, recorded materials regrouped
+  // older drafts: their groups are translated, materials the road-bike grouping placed anew regrouped
   const old = JSON.parse(serializeDraft(points, legs));
   old.legs['stop-a:stop-b'].surfaces = [
     { fromIndex: 0, toIndex: 1, surface: 'asphalt' }, { fromIndex: 1, toIndex: 2, surface: 'rough', surfaceTag: 'paving_stones' },

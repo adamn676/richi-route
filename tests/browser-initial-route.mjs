@@ -3,6 +3,8 @@ import { chromium } from '../.cache/browser-tools/node_modules/playwright-core/i
 import { openRoute } from './browser-ui.mjs';
 import { westernLoop } from './route-examples.ts';
 
+const origin = process.env.ROUTE_TEST_ORIGIN ?? 'http://127.0.0.1:5173';
+
 const browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? {} : { channel: 'chrome' }), headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 await context.addInitScript(() => localStorage.setItem('richiroute.review-basemap', 'street'));
@@ -14,7 +16,7 @@ let gate;
 let failLast = false;
 let holdEdits = false;
 function hold() { gate = new Promise(resolve => { release = resolve; }); }
-await page.route('**/routing/brouter?*', async request => {
+await page.route('**/routing/leg?*', async request => {
   const coords = new URL(request.request().url()).searchParams.get('lonlats').split('|');
   const lastLeg = coords[0] === '15.388014,47.062999' && coords[1] === '15.4329,47.075887';
   const response = await request.fetch();
@@ -35,7 +37,7 @@ async function drawnFeatures() {
     .getSource('segments-source').serialize().data.features.length);
 }
 try {
-  await page.goto('http://127.0.0.1:5173/');
+  await page.goto(`${origin}/`);
   for (const failure of [false, true]) {
     failLast = failure;
     hold();

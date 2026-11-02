@@ -45,6 +45,7 @@ name = "richi-engine"
 version = "0.1.0"
 dependencies = [
  "brouter-router",
+ "richi-planner",
  "richi-server",
 ]
 

@@ -1,10 +1,13 @@
 //! The planner's routing server, as `LocalRulesServer` (BRouter's `RouteServer` with the local rules)
 //! answers: one request per connection, `GET /brouter?<query>`. 200 with the GeoJSON, 400 with the
 //! routing error or the rules version mismatch, 500 for any other exception, 404 without `lonlats` and
-//! `profile`. Unlike Java it queues requests beyond the pool's threads instead of stopping the oldest (a
+//! `profile` or on another path. Unlike Java it queues requests beyond the pool's threads instead of stopping the oldest (a
 //! search stops instead when its client goes away), never compresses, and answers GeoJSON whatever
 //! `format` asks for (`trackname` names only the file). It sends no `Access-Control-Allow-Origin`: the
 //! planner reaches it through its own server, so other web pages cannot read its answers.
+//!
+//! `GET /leg?<query>` routes as `/brouter` does and answers the leg the planner keeps, as JSON
+//! (`richi_planner::leg_json`), or the same failure.
 //!
 //! `POST /loops` with a JSON body (`richi_planner::LoopRequest`, `Content-Type: application/json`)
 //! answers the planner's loop suggestions as JSON (`richi_planner::suggestions_json`); where no
@@ -22,7 +25,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, SystemTime};
 
 use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
-use richi_planner::{Failure, LoopRequest, Stop, course_fits, suggestions_json};
+use richi_planner::{Failure, LoopRequest, Stop, course_fits, leg_json, suggestions_json};
 
 /// BRouter's server default (`maxRunningTime`), for engine mode 0.
 pub const MAX_RUNNING_TIME_MS: i64 = 60_000;
@@ -88,7 +91,12 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
         let body = String::from_utf8_lossy(&body);
         return if target == "/fit" { fit(stream, &body) } else { loops(stream, &body, pool, max_running_time) };
     }
-    let query = target.split_once('?').map_or("", |(_, query)| query).to_string();
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let leg = match path {
+        "/brouter" => false,
+        "/leg" => true,
+        _ => return send(stream, "404 Not Found", ""),
+    };
     let file_name = match get_url_params(&format!("/brouter?{query}")) {
         Ok(params) if params.contains_key("lonlats") && params.contains_key("profile") => file_name(&params),
         Ok(_) => return send(stream, "404 Not Found", ""),
@@ -99,7 +107,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
     let terminated = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel();
     let reply = move |outcome, _| sender.send(outcome).unwrap_or_default();
-    pool.submit(query, max_running_time, Some(terminated.clone()), reply);
+    pool.submit(query.to_string(), max_running_time, Some(terminated.clone()), reply);
     let outcome: Outcome = loop {
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(outcome) => break outcome,
@@ -108,7 +116,13 @@ fn respond(stream: TcpStream, pool: &RouterPool, max_running_time: i64) {
             Err(_) => return terminated.store(true, Relaxed),
         }
     };
-    answer(stream, outcome, file_name);
+    match outcome {
+        Ok(Ok(Answer::GeoJson(geojson))) if leg => match leg_json(&geojson) {
+            Ok(json) => send_body(stream, "200 OK", "application/json; charset=utf-8", "", json.as_bytes()),
+            Err(reason) => internal_error(stream, reason),
+        },
+        outcome => answer(stream, outcome, file_name),
+    }
 }
 
 /// The answer to a routing request's `outcome`, with the file name for a route.

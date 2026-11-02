@@ -66,7 +66,7 @@ builds the routing engine and the address search (`cargo build --release`, quick
 and prepares the shared local rules and their profile. It then starts the engine
 with twelve routing threads (the planner's six requests at a time, with room to run a request's sections
 side by side) and the rules (`richi-engine serve`, BRouter's server
-protocol, the loop suggestions at `/loops` and FIT courses at `/fit`), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
+protocol, the planner's legs at `/leg`, the loop suggestions at `/loops` and FIT courses at `/fit`), bound to `127.0.0.1:17777`. The address search (`richi-search serve`) runs
 at `127.0.0.1:2322`, the map service at `127.0.0.1:8088` and Vite at
 `127.0.0.1:5173`. It checks readiness before opening
 the frontend. Ctrl+C stops the processes it started. Logs are
@@ -1171,7 +1171,8 @@ stones), a lighter green for **Vermutlich befestigt**, amber for
 **Kopfsteinpflaster/Holzbrücke**, magenta for **Unbefestigt** (gravel, dirt and
 every other unpaved material) and a light grey for **Unbekannt**. Ways without
 a surface tag count by their type: roads and cycleways as likely paved, tracks
-of grade 2 to 5 as unpaved. Select a group to see its sections along the route,
+of grade 2 to 5 as unpaved. The routing engine groups them as it answers a leg
+(`/leg`, `engine/planner`), which the iPhone app's engine serves too. Select a group to see its sections along the route,
 and select it again to close them. A section runs on across stops and shaping
 points, and a piece of under 10 m (GPS jitter, a kerb) takes the surface around
 it, so a section ends only where the surface really changes; corrected stretches
@@ -1325,7 +1326,7 @@ The first round's `browser-comparison.json` remains unchanged.
 
 The optional `--baseline-origin` and `--optimized-origin` arguments compare two
 local engines through the same browser interception path. Both must serve the
-current profile and rule revision. The preserved Java 21/bicycle-v2 engine uses
+planner's legs (`/leg`), the current profile and rule revision. The preserved Java 21/bicycle-v2 engine uses
 the earlier profile, so it cannot directly accept the current editor's requests.
 Its 22 October comparison remains in `browser-max-optimization.json`.
 

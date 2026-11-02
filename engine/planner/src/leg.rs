@@ -1,6 +1,5 @@
-//! A routed leg as the planner sees it (`LegGeometry`, `app/src/domain/route-model.ts`): read from the
-//! engine's GeoJSON as `parseBRouterLeg` (`route-response.ts`) reads it, with its distance and climbing
-//! measures.
+//! A routed leg as the planner keeps it (`LegGeometry`, `app/src/domain/route-model.ts`): read from the
+//! engine's GeoJSON, with its surfaces grouped for a road bike, and its distance and climbing measures.
 
 use std::fmt::Write;
 
@@ -111,7 +110,7 @@ pub fn ascent(elevations: &[f64]) -> f64 {
     ascent
 }
 
-/// `surfaceType`.
+/// The material does not matter on a road bike, only whether it is paved; cobblestones are paved but rough.
 fn surface_type(tag: Option<&str>) -> Surface {
     match tag.unwrap_or_default() {
         "asphalt" | "paved" | "concrete" | "concrete:lanes" | "concrete:plates" | "paving_stones" => Surface::Paved,
@@ -137,7 +136,9 @@ const LIKELY_PAVED_WAYS: [&str; 12] = [
     "cycleway",
 ];
 
-/// `surfaceKind`, with `get` looking a tag up.
+/// Without a surface tag the groups know, the way's type: on the planner's loop suggestions (October 2026)
+/// tagged ways of these types are 95–100 % paved, tracks of grade 2 to 5 95–99 % unpaved. Paths and
+/// tracks without a grade stay unknown. `get` looks a tag up.
 fn surface_kind<'a>(get: impl Fn(&str) -> Option<&'a str>) -> Kind {
     let tag = get("surface").filter(|tag| !tag.is_empty());
     let tagged = surface_type(tag);
@@ -156,8 +157,8 @@ fn surface_kind<'a>(get: impl Fn(&str) -> Option<&'a str>) -> Kind {
     Kind { surface, tag }
 }
 
-/// `kindOf`: a way's kind from its tags, and where the rider corrected it what OSM says, given as
-/// `osm:<key>=<value>`.
+/// A way's kind from its tags, and where the rider corrected it what OSM says, given as
+/// `osm:<key>=<value>` (empty where OSM has none).
 fn kind_of(way_tags: &str) -> (Kind, Option<Kind>) {
     // JavaScript's slices: a tag without '=' is its key without the last character and its value whole
     let tags: Vec<(&str, &str)> = way_tags
@@ -177,7 +178,8 @@ fn kind_of(way_tags: &str) -> (Kind, Option<Kind>) {
 }
 
 impl Leg {
-    /// `parseBRouterLeg` on the engine's GeoJSON.
+    /// The leg of the engine's GeoJSON: its first line, with the surfaces of the way tags in its messages
+    /// (spans the messages do not reach stay unknown); a single point is drawn as two.
     pub fn from_geojson(text: &str) -> Result<Leg, String> {
         let raw = Json::parse(text)?;
         let feature = raw.get("features").and_then(Json::array).and_then(|features| {
@@ -247,6 +249,7 @@ impl Leg {
                 elevations.push(elevations[0]);
             }
         }
+        // BRouter's filtered ascent runs about a tenth low, so its heights are filtered like file heights, only coarser
         let ascent = match &elevations {
             Some(elevations) => Some(ascent(elevations)),
             None => property("filtered ascend").map(Json::to_number).filter(|a| a.is_finite()),
@@ -354,6 +357,121 @@ mod tests {
         assert_eq!((leg.coordinates.len(), leg.elevations, leg.ascent), (2, None, Some(7.0)));
         assert!(Leg::from_geojson(r#"{"features": []}"#).is_err());
         assert!(Leg::from_geojson(&single.replace("\"0\"", "\"-1\"")).is_err());
+    }
+
+    /// A leg through 15.000, 15.001, … °E at 47 °N with message `rows` of a point's longitude (in
+    /// millionths) and way tags, and a Distance column where `distance`.
+    fn leg_along(points: usize, rows: &[(&str, &str)], distance: bool) -> Leg {
+        let coordinates: Vec<_> = (0..points).map(|i| format!("[{}, 47]", 15.0 + i as f64 / 1000.0)).collect();
+        let header = if distance {
+            r#"["Longitude", "Latitude", "Distance", "WayTags"]"#
+        } else {
+            r#"["Longitude", "Latitude", "WayTags"]"#
+        };
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|(lon, tags)| {
+                format!(r#"["{lon}", "47000000", {}"{tags}"]"#, if distance { r#""100", "# } else { "" })
+            })
+            .collect();
+        Leg::from_geojson(&format!(
+            r#"{{"features": [{{"geometry": {{"type": "LineString", "coordinates": [{}]}},
+                "properties": {{"track-length": "100", "messages": [{header}, {}]}}}}]}}"#,
+            coordinates.join(", "),
+            rows.join(", ")
+        ))
+        .unwrap()
+    }
+
+    fn spans(leg: &Leg) -> Vec<(usize, usize, Surface, Option<&str>)> {
+        leg.surfaces.iter().map(|s| (s.from, s.to, s.kind.surface, s.kind.tag.as_deref())).collect()
+    }
+
+    #[test]
+    fn message_ends_delimit_spans_and_unmatched_tails_stay_unknown() {
+        let rows = [
+            ("15001000", "highway=cycleway surface=asphalt"),
+            ("15002000", "highway=path"),
+            ("16000000", "surface=asphalt"),
+        ];
+        let leg = leg_along(4, &rows, false);
+        assert_eq!(spans(&leg), [(0, 1, Surface::Paved, Some("asphalt")), (1, 2, Surface::Unknown, None)]);
+        // a span returning to where it started covers the loop
+        let geojson = r#"{"features": [{"geometry": {"type": "LineString", "coordinates": [[15, 47], [15.001, 47.001], [15, 47]]},
+            "properties": {"track-length": "100", "messages": [["Longitude", "Latitude", "Distance", "WayTags"],
+            ["15000000", "47000000", "100", "surface=asphalt"]]}}]}"#;
+        assert_eq!(spans(&Leg::from_geojson(geojson).unwrap()), [(0, 2, Surface::Paved, Some("asphalt"))]);
+        for bad in [r#"[[190, 47], [15, 47]]"#, r#"[[15, 47]]"#] {
+            let geojson = format!(
+                r#"{{"features": [{{"geometry": {{"type": "LineString", "coordinates": {bad}}},
+                "properties": {{"track-length": "100"}}}}]}}"#
+            );
+            assert!(Leg::from_geojson(&geojson).is_err(), "{bad}");
+        }
+        let no_length = r#"{"features": [{"geometry": {"type": "LineString", "coordinates": [[15, 47], [15.1, 47]]},
+            "properties": {"track-length": null}}]}"#;
+        assert!(Leg::from_geojson(no_length).is_err());
+    }
+
+    #[test]
+    fn materials_are_grouped_by_what_they_mean_on_a_road_bike() {
+        for tag in ["asphalt", "concrete", "concrete:plates", "paved", "paving_stones"] {
+            assert_eq!(surface_type(Some(tag)), Surface::Paved, "{tag}");
+        }
+        for tag in ["wood", "sett", "cobblestone", "unhewn_cobblestone"] {
+            assert_eq!(surface_type(Some(tag)), Surface::Rough, "{tag}");
+        }
+        for tag in ["gravel", "fine_gravel", "pebblestone", "compacted", "ground", "grass_paver"] {
+            assert_eq!(surface_type(Some(tag)), Surface::Unpaved, "{tag}");
+        }
+        assert_eq!(surface_type(Some("metal")), Surface::Unknown);
+        assert_eq!(surface_type(None), Surface::Unknown);
+    }
+
+    #[test]
+    fn spans_keep_their_materials_within_a_group_and_untagged_ways_count_by_type() {
+        let rows = [
+            ("15001000", "surface=paving_stones"),
+            ("15002000", "surface=wood"),
+            ("15003000", "surface=metal"),
+            ("15004000", "highway=residential"),
+            ("15005000", "highway=secondary"),
+            ("15006000", "highway=track tracktype=grade1"),
+            ("15007000", "highway=track tracktype=grade3"),
+            ("15008000", "highway=primary surface=gravel"),
+            ("15009000", "highway=primary surface=unknown"),
+        ];
+        assert_eq!(
+            spans(&leg_along(10, &rows, true)),
+            [
+                (0, 1, Surface::Paved, Some("paving_stones")),
+                (1, 2, Surface::Rough, Some("wood")),
+                (2, 3, Surface::Unknown, Some("metal")),
+                (3, 6, Surface::LikelyPaved, None),
+                (6, 7, Surface::Unpaved, None),
+                (7, 8, Surface::Unpaved, Some("gravel")),
+                (8, 9, Surface::LikelyPaved, Some("unknown")),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_corrected_stretch_keeps_what_osm_says_about_it() {
+        let rows = [
+            ("15001000", "highway=track tracktype=grade1 surface=unpaved osm:surface= osm:tracktype=grade1"),
+            ("15002000", "highway=track tracktype=grade1 surface=paved osm:surface=gravel"),
+            ("15003000", "highway=track tracktype=grade1 surface=paved osm:surface=gravel"),
+        ];
+        let leg = leg_along(4, &rows, false);
+        let osm: Vec<_> = leg.surfaces.iter().map(|s| (s.from, s.to, s.osm.clone())).collect();
+        assert_eq!(
+            osm,
+            [
+                (0, 1, Some(Kind { surface: Surface::LikelyPaved, tag: None })),
+                (1, 3, Some(Kind { surface: Surface::Unpaved, tag: Some("gravel".into()) })),
+            ]
+        );
+        assert_eq!(spans(&leg)[1], (1, 3, Surface::Paved, Some("paved")));
     }
 
     #[test]
