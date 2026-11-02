@@ -145,8 +145,7 @@ final class Planner {
     var hasRoute: Bool { stops.first?.coord != nil && stops.last?.coord != nil }
 
     func save(as name: String) {
-        let id = RouteStore.store(file(named: name), as: .saved)
-        mark(saved: id, name: name)
+        mark(saved: RouteStore.store(file(named: name), as: .saved).id, name: name)
         remember()
         notice = Notice(text: "„\(name)“ gespeichert.")
     }
@@ -172,8 +171,7 @@ final class Planner {
         let file = entry.flatMap(RouteStore.file)
         var kept: RouteStore.Entry?
         if hasRoute && !isSaved {
-            let id = RouteStore.store(self.file(named: name), as: .recent)
-            kept = RouteStore.list(.recent).first { $0.id == id }
+            kept = RouteStore.store(self.file(named: name), as: .recent)
         }
         if let file {
             open(file)

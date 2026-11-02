@@ -3,19 +3,19 @@ import Foundation
 /// A route as the planner saves it, its "RichiRoute-Datei" (`exportRouteBackup`, `src/domain/saved-route.ts`):
 /// `{format: "richiroute", version: 1, name, draft}`, the draft as `parseDraft` reads it (`src/domain/route-draft.ts`),
 /// so the web planner and the app open each other's routes.
-struct RouteFile: Codable {
+struct RouteFile: Codable, Sendable {
     var format = "richiroute"
     var version = 1
     var name: String
     var draft: Draft
 
-    struct Draft: Codable {
+    struct Draft: Codable, Sendable {
         var version = 1
         var points: [Point]
         var legs: [String: SavedLeg]
     }
 
-    struct Point: Codable {
+    struct Point: Codable, Sendable {
         let id: String
         let type: String
         let kind: String?
@@ -25,7 +25,7 @@ struct RouteFile: Codable {
         var isGeocoding: Bool?
     }
 
-    struct SavedLeg: Codable {
+    struct SavedLeg: Codable, Sendable {
         let id: String
         let fromId: String
         let toId: String

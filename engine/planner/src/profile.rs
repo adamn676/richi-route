@@ -329,11 +329,103 @@ pub fn draw(track: &Track, from: f64, to: f64) -> Option<Drawn> {
     Some(Drawn { minimum, maximum, runs })
 }
 
-/// The whole route's profile as the app reads it: `{"distance","minimum","maximum","runs":[[[x,y],…],…],
-/// "colors":[[from,band],…]}`, null without heights.
-pub fn profile_json(segments: &[Segment]) -> String {
+/// `upperBound`: the number of the first `length` values not above `target`, the values ascending.
+fn upper_bound(length: usize, value_at: impl Fn(usize) -> f64, target: f64) -> usize {
+    let (mut low, mut high) = (0, length);
+    while low < high {
+        let middle = (low + high) / 2;
+        if value_at(middle) <= target {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    low
+}
+
+/// The height at a distance along the track, between its points (`inspectGpxDistance`'s `elevation`).
+fn elevation_at(track: &Track, requested: f64) -> Option<f64> {
+    let at = requested.clamp(0.0, track.distance);
+    let segment = upper_bound(track.distances.len(), |i| track.distances[i][0], at).saturating_sub(1);
+    let distances = &track.distances[segment];
+    let from = upper_bound(distances.len(), |i| distances[i], at).saturating_sub(1);
+    let to = (from + 1).min(distances.len() - 1);
+    let span = distances[to] - distances[from];
+    let ratio = if span > 0.0 { (at - distances[from]) / span } else { 0.0 };
+    let heights = &track.elevations[segment];
+    if ratio == 0.0 {
+        return heights[from];
+    }
+    Some(heights[from]? * (1.0 - ratio) + heights[to]? * ratio)
+}
+
+/// `cumulativeAscent(…).at(-1)` with the file threshold: climbing counted once it rises 2 m above the last low.
+fn climbed(heights: &[Option<f64>]) -> f64 {
+    const THRESHOLD: f64 = 2.0;
+    let (mut low, mut high, mut total) = (heights.first().copied().flatten(), None::<f64>, 0.0);
+    for &height in heights.iter().skip(1) {
+        let Some(height) = height else {
+            (low, high) = (None, None);
+            continue;
+        };
+        if let Some(top) = high {
+            if height > top {
+                total += height - top;
+                high = Some(height);
+            } else if height < top - THRESHOLD {
+                (high, low) = (None, Some(height));
+            }
+        } else if low.is_none_or(|low| height < low) {
+            low = Some(height);
+        } else if low.is_some_and(|low| height > low + THRESHOLD) {
+            total += height - low.unwrap_or_default();
+            high = Some(height);
+        }
+    }
+    total
+}
+
+/// A stretch's figures (`sectionStats`): its length, climbing and descent, its mean gradient from end to end and its
+/// steepest climb held over 100 m, which a single height error does not make.
+pub struct Stats {
+    pub distance: f64,
+    pub ascent: f64,
+    pub descent: f64,
+    pub gradient: Option<f64>,
+    pub steepest: Option<f64>,
+}
+
+pub fn section_stats(track: &Track, from: f64, to: f64) -> Stats {
+    let sustained = gradients(track, 50.0);
+    let (mut heights, mut steepest) = (Vec::new(), None::<f64>);
+    for (s, distances) in track.distances.iter().enumerate() {
+        for (i, &at) in distances.iter().enumerate() {
+            if at < from || at > to {
+                continue;
+            }
+            heights.push(track.elevations[s][i]);
+            if let Some(gradient) = sustained[s][i] {
+                steepest = Some(steepest.map_or(gradient, |s| s.max(gradient)));
+            }
+        }
+    }
+    let gradient = match (elevation_at(track, from), elevation_at(track, to)) {
+        (Some(start), Some(end)) if to > from => Some((end - start) / (to - from) * 100.0),
+        _ => None,
+    };
+    let ascent = climbed(&heights);
+    heights.reverse();
+    Stats { distance: to - from, ascent, descent: climbed(&heights), gradient, steepest }
+}
+
+/// The profile as the app reads it: `{"distance","minimum","maximum","runs":[[[x,y],…],…],"colors":[[from,band],…],
+/// "along":[[…],…],"gradients":[[…],…]}` for the whole route or the stretch `range` (then with its `"stats"`), null
+/// without heights. `along` and `gradients` are each point's distance and gradient (over 25 m to either side) per leg,
+/// for showing a point of the profile as the planner does.
+pub fn profile_json(segments: &[Segment], range: Option<(f64, f64)>) -> String {
     let track = track(segments);
-    let Some(drawn) = draw(&track, 0.0, track.distance) else { return "null".to_string() };
+    let (from, to) = range.unwrap_or((0.0, track.distance));
+    let Some(drawn) = draw(&track, from, to) else { return "null".to_string() };
     let mut out = String::from("{\"distance\":");
     push_number(&mut out, track.distance);
     out.push_str(",\"minimum\":");
@@ -350,17 +442,51 @@ pub fn profile_json(segments: &[Segment]) -> String {
         out.push(']');
     }
     out.push_str("],\"colors\":[");
-    for (c, (from, band)) in gradient_runs(&track, 0.0, track.distance).iter().enumerate() {
+    for (c, (at, band)) in gradient_runs(&track, from, to).iter().enumerate() {
         out.push_str(if c > 0 { ",[" } else { "[" });
-        push_number(&mut out, *from);
+        push_number(&mut out, *at);
         let _ = write!(out, ",{band}]");
     }
-    out.push_str("]}");
+    out.push_str("],\"along\":");
+    push_lists(&mut out, track.distances.iter().map(|d| d.iter().map(|&a| Some(a))));
+    out.push_str(",\"gradients\":");
+    push_lists(&mut out, gradients(&track, 25.0).iter().map(|g| g.iter().copied()));
+    if range.is_some() {
+        let stats = section_stats(&track, from, to);
+        out.push_str(",\"stats\":{\"distance\":");
+        push_number(&mut out, stats.distance);
+        out.push_str(",\"ascent\":");
+        push_number(&mut out, stats.ascent);
+        out.push_str(",\"descent\":");
+        push_number(&mut out, stats.descent);
+        out.push_str(",\"gradient\":");
+        push_number(&mut out, stats.gradient.unwrap_or(f64::NAN));
+        out.push_str(",\"steepest\":");
+        push_number(&mut out, stats.steepest.unwrap_or(f64::NAN));
+        out.push('}');
+    }
+    out.push('}');
     out
 }
 
-/// `profile_json` for a request `{"legs":[{"coordinates":[[lon,lat],…],"elevations":[…]|null,"distanceMeters":…},…]}`,
-/// the legs as the planner keeps them.
+/// Lists of numbers, null where there is none.
+fn push_lists(out: &mut String, lists: impl Iterator<Item = impl Iterator<Item = Option<f64>>>) {
+    out.push('[');
+    for (l, list) in lists.enumerate() {
+        out.push_str(if l > 0 { ",[" } else { "[" });
+        for (i, value) in list.enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            push_number(out, value.unwrap_or(f64::NAN));
+        }
+        out.push(']');
+    }
+    out.push(']');
+}
+
+/// `profile_json` for a request `{"legs":[{"coordinates":[[lon,lat],…],"elevations":[…]|null,"distanceMeters":…},…],
+/// "from"?:…,"to"?:…}`, the legs as the planner keeps them and the stretch to show, in metres along them.
 pub fn profile_request(body: &str) -> Result<String, String> {
     let json = Json::parse(body)?;
     let legs = json.get("legs").and_then(Json::array).ok_or("legs missing")?;
@@ -385,7 +511,9 @@ pub fn profile_request(body: &str) -> Result<String, String> {
         .iter()
         .map(|(coordinates, elevations, distance)| Segment { coordinates, elevations, distance: *distance })
         .collect();
-    Ok(profile_json(&segments))
+    let range =
+        json.get("from").and_then(Json::number).zip(json.get("to").and_then(Json::number)).filter(|(f, t)| t > f);
+    Ok(profile_json(&segments, range))
 }
 
 #[cfg(test)]
@@ -438,6 +566,6 @@ mod tests {
             [2, 3],
             "the second leg goes on from the first"
         );
-        assert_eq!(profile_json(&[Segment { coordinates: &a[..1], elevations: &[None], distance: 0.0 }]), "null");
+        assert_eq!(profile_json(&[Segment { coordinates: &a[..1], elevations: &[None], distance: 0.0 }], None), "null");
     }
 }
