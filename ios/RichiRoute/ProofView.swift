@@ -45,8 +45,8 @@ struct ProofView: View {
                     NavigationLink("Garmin Edge: Route senden") { GarminView(engine: engine) }
                     if starting {
                         Label("Routing-Engine startet …", systemImage: "hourglass")
-                    } else if let engine {
-                        Text("Suche bis \(engine.searchMB) MB").font(.footnote).foregroundStyle(.secondary)
+                    } else if engine != nil {
+                        Text("Suche bis \(Engine.searchMB()) MB").font(.footnote).foregroundStyle(.secondary)
                     } else {
                         Text("Die Routing-Engine startet nicht: Routing-Daten fehlen.").foregroundStyle(.red)
                     }
@@ -77,7 +77,7 @@ struct ProofView: View {
                     case .success(let km): Text("\(km, specifier: "%.1f") km in \(outcome.seconds, specifier: "%.1f") s")
                     case .failure(let failure): Text("\(failure.message) nach \(outcome.seconds, specifier: "%.1f") s").foregroundStyle(.red)
                     }
-                    Text("Speicher \(mb(outcome.memory.footprint)), Spitze \(mb(outcome.memory.peak)), frei \(mb(outcome.memory.available)), Suche bis \(engine?.searchMB ?? 0) MB")
+                    Text("Speicher \(mb(outcome.memory.footprint)), Spitze \(mb(outcome.memory.peak)), frei \(mb(outcome.memory.available)), Suche bis \(Engine.searchMB()) MB")
                 }
                 .font(.footnote).foregroundStyle(.secondary)
             }

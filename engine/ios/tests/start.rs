@@ -75,6 +75,20 @@ fn serves_routes_and_loops_from_the_bundle_layout() {
     assert!(ask("GET", "application/json").starts_with("HTTP/1.1 405"));
     assert!(ask("POST", "text/plain").starts_with("HTTP/1.1 415"));
     let answer = ask("POST", "application/json; charset=utf-8");
+    // a route search's budget, from what the phone has free
+    let memory = |megabytes: &str| {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let head = format!(
+            "POST /memory HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            megabytes.len()
+        );
+        write!(stream, "{head}{megabytes}").unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer
+    };
+    assert!(memory("1024").starts_with("HTTP/1.1 204"));
+    assert!(memory("lots").starts_with("HTTP/1.1 400"));
     std::fs::remove_dir_all(&routing).unwrap();
     assert!(answer.starts_with("HTTP/1.1 200 OK"), "{}", &answer[..answer.len().min(200)]);
     assert!(answer.contains("\"heading\""), "loop suggestions");

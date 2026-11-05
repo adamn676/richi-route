@@ -10,9 +10,11 @@ struct Engine: Sendable {
     /// The rules' revision and search coefficients a routed leg is kept with (`routingPolicyVersion`): a leg saved
     /// under another is routed again.
     let policy: String?
-    /// Megabytes one search may take: what iOS leaves the app, less the rest of the app and a second,
-    /// shorter search (long searches take turns).
-    let searchMB: UInt32
+
+    /// Megabytes one search may take now: what iOS leaves the app, less what the search takes beside its paths (the
+    /// routing data it reads) and a second, shorter search (long searches take turns). 450 MB measured on an iPhone
+    /// 13 mini on 5 November 2026: long searches then peak about 1.9 GB of its 2.1 GB.
+    static func searchMB() -> UInt32 { UInt32(max(Int(Memory.now().available >> 20) - 450, 512)) }
 
     /// Starts the engine with two searches at a time, as suits a phone's memory, away from the main thread:
     /// it reads the rules and the rider's files first.
@@ -23,24 +25,30 @@ struct Engine: Sendable {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let profile = json["profile"] as? String,
                   let parameters = json["parameters"] as? [String: Any] else { return nil }
-            let searchMB = UInt32(max(Int(Memory.now().available >> 20) - 768, 512))
-            let port = richi_engine_start(2, searchMB)
+            let port = richi_engine_start(2, searchMB())
             return port == 0 ? nil : Engine(port: port, profile: profile, parameters: parameters.sorted { $0.key < $1.key }
-                .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, policy: json["routingPolicy"] as? String,
-                searchMB: searchMB)
+                .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, policy: json["routingPolicy"] as? String)
         }.value
     }
 
     /// The route through `points` ([longitude, latitude]) as GeoJSON; `extra` adds request parameters,
     /// such as a round trip's.
     func route(_ points: [[Double]], extra: [URLQueryItem] = []) async throws -> Data {
-        try await ask(routing("brouter", points, extra: extra))
+        try await budget()
+        return try await ask(routing("brouter", points, extra: extra))
     }
 
     /// The leg through `points` as the planner keeps it; a single point is asked as `[point, point]`, which
     /// the engine snaps to the nearest road.
     func leg(_ points: [[Double]]) async throws -> Leg {
-        try JSONDecoder().decode(Leg.self, from: try await ask(routing("leg", points.count == 1 ? points + points : points)))
+        try await budget()
+        return try JSONDecoder().decode(Leg.self, from: try await ask(routing("leg", points.count == 1 ? points + points : points)))
+    }
+
+    /// The search's budget from what the phone has free now, not at the start: maps and address indexes the rider
+    /// opened since take their share.
+    private func budget() async throws {
+        _ = try await post("memory", Self.searchMB())
     }
 
     /// The planner's name for a point on a road ("Herrengasse 16, 8010 Graz"), nil where the areas know none.
@@ -148,7 +156,7 @@ struct Engine: Sendable {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
+        guard (200..<300).contains(status) else {
             let detail = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             throw Failure(message: detail.isEmpty ? "HTTP \(status)" : detail)
         }

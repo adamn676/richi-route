@@ -149,9 +149,13 @@ final class PlannerTests: XCTestCase {
 
         // two Zwischenstopps, each added from its search by a tap on the map; their grips show that they change places
         // when held and dragged
-        for (index, spot) in [CGVector(dx: 0.3, dy: 0.25), CGVector(dx: 0.6, dy: 0.2)].enumerated() {
+        let spots = [CGVector(dx: 0.3, dy: 0.25), CGVector(dx: 0.6, dy: 0.2), CGVector(dx: 0.45, dy: 0.3), CGVector(dx: 0.7, dy: 0.3)]
+        for (index, spot) in spots.enumerated() {
             grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
-            app.buttons["Zwischenstopp hinzufügen"].tap()
+            // further down the list with each stop
+            let add = app.buttons["Zwischenstopp hinzufügen"]
+            for _ in 0..<4 where !add.isHittable { app.swipeUp() }
+            add.tap()
             XCTAssertTrue(app.textFields["Zwischenstopp \(index + 1) suchen"].waitForExistence(timeout: 5))
             app.buttons["Auf der Karte wählen"].tap()
             XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForExistence(timeout: 5))
@@ -159,10 +163,17 @@ final class PlannerTests: XCTestCase {
             XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForNonExistence(timeout: 5))
         }
         grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
-        XCTAssertTrue(app.buttons["Zwischenstopp 2 entfernen"].waitForExistence(timeout: 10))
+        let group = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '4 Zwischenstopps'")).firstMatch
+        XCTAssertTrue(group.waitForExistence(timeout: 10), "four Zwischenstopps not one row")
         shot(app, "10-grips")
-        app.buttons["Zwischenstopp 2 entfernen"].tap()
-        app.buttons["Zwischenstopp 1 entfernen"].tap()
+        // four and more are one row, open after adding; a tap folds it
+        group.tap()
+        XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForNonExistence(timeout: 5))
+        shot(app, "11-grouped")
+        // the four undone on the map, the panel folded
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+        for _ in 1...4 { app.buttons["Rückgängig"].tap() }
+        XCTAssertTrue(group.waitForNonExistence(timeout: 5))
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
     }
 

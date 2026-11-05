@@ -81,6 +81,8 @@ struct RouteTab: View {
     @State private var searching: Searching?
     /// The profile with the legs and the stretch it was made from, shown together until the next one is there.
     @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
+    /// Whether many Zwischenstopps show one by one rather than as one row.
+    @State private var viasOpen = false
     /// The route's surfaces with the legs they were made from, likewise.
     @State private var surfaces: (value: Surfaces, legs: [Leg])?
 
@@ -241,18 +243,24 @@ struct RouteTab: View {
 
     // MARK: Stops
 
+    /// Start and Ziel, and the Zwischenstopps between them; from four on, those are one row that opens them, as a
+    /// disclosure does, and opens by itself when one is added.
     private var stops: some View {
-        let waypoints = planner.waypoints
+        let waypoints = planner.waypoints, vias = Array(waypoints.dropFirst().dropLast())
+        let grouped = vias.count >= Self.groupedFrom
         return Group {
-            ForEach(Array(waypoints.enumerated()), id: \.element.id) { index, stop in
-                let end = index == 0 || index == waypoints.count - 1
-                stopRow(stop, at: index, removable: !end)
-                    .moveDisabled(end)
-                    .deleteDisabled(end)
-                    .listRowBackground(planner.picking == stop.id ? Color.ink.opacity(0.08) : nil)
+            stopRow(waypoints[0], at: 0, removable: false)
+            if grouped { viasRow(vias.count) }
+            if !grouped || viasOpen {
+                ForEach(Array(vias.enumerated()), id: \.element.id) { index, stop in
+                    stopRow(stop, at: index + 1, removable: true)
+                        .listRowBackground(planner.picking == stop.id ? Color.ink.opacity(0.08) : nil)
+                }
+                .onDelete { offsets in offsets.map { vias[$0].id }.forEach(planner.remove) }
+                .onMove { source, destination in planner.moveStops(from: IndexSet(source.map { $0 + 1 }), to: destination + 1) }
             }
-            .onDelete { offsets in offsets.map { waypoints[$0].id }.forEach(planner.remove) }
-            .onMove(perform: planner.moveStops)
+            stopRow(waypoints[waypoints.count - 1], at: waypoints.count - 1, removable: false)
+                .listRowBackground(planner.picking == waypoints.last?.id ? Color.ink.opacity(0.08) : nil)
             if planner.hasRoute {
                 // its search first, so a Zwischenstopp is added once chosen, never empty
                 Button { searching = Searching(id: UUID(), index: waypoints.count - 1, count: waypoints.count + 1) } label: {
@@ -260,6 +268,42 @@ struct RouteTab: View {
                 }
             }
         }
+        .onChange(of: vias.count) { before, now in if now > before { viasOpen = true } }
+    }
+
+    private static let groupedFrom = 4
+
+    private func viasRow(_ count: Int) -> some View {
+        Button {
+            withAnimation { viasOpen.toggle() }
+        } label: {
+            HStack(spacing: 12) {
+                Color.clear.frame(width: 24, height: 24)
+                Text("\(count) Zwischenstopps").foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(viasOpen ? 90 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        // the dots run on through it
+        .background(alignment: .leading) { Dots().frame(width: 24).padding(.vertical, -12) }
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + 36 }
+        .accessibilityAddTraits(viasOpen ? .isSelected : [])
+        .accessibilityHint(viasOpen ? "Schließt die Zwischenstopps" : "Zeigt die Zwischenstopps")
+    }
+
+    /// Dots from badge to badge, as the planner's, with room around each badge.
+    private func dots(above: Bool, below: Bool) -> some View {
+        VStack(spacing: 0) {
+            Dots().opacity(above ? 1 : 0)
+            Color.clear.frame(height: 32)
+            Dots().opacity(below ? 1 : 0)
+        }
+        .frame(width: 24)
+        .padding(.vertical, -12)
     }
 
     /// A stop: tapping it replaces it by a tap on the map; a Zwischenstopp also has its × to remove it.
@@ -314,16 +358,8 @@ struct RouteTab: View {
                     .accessibilityHidden(true)
             }
         }
-        // dots from badge to badge, as the planner's, with room around each badge; the rows' lines start at the text
-        .background(alignment: .leading) {
-            VStack(spacing: 0) {
-                Dots().opacity(index == 0 ? 0 : 1)
-                Color.clear.frame(height: 32)
-                Dots().opacity(index == count - 1 ? 0 : 1)
-            }
-            .frame(width: 24)
-            .padding(.vertical, -12)
-        }
+        // the rows' lines start at the text, clear of the dots
+        .background(alignment: .leading) { dots(above: index > 0, below: index < count - 1) }
         .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + 36 }
         .contentShape(Rectangle())
         .onTapGesture { searching = Searching(id: stop.id, index: index, count: count) }

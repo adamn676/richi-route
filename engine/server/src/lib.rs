@@ -22,17 +22,20 @@
 //! `POST /fit` with a route as JSON, under the same rules, answers its FIT courses, every part of a long
 //! one, as JSON with the files in base64 (`richi_planner::course_fits`), and `POST /profile` and `POST /surfaces` with
 //! the route's legs its elevation profile and its surface sections as the planner shows them
-//! (`richi_planner::profile_request`, `surfaces_request`).
+//! (`richi_planner::profile_request`, `surfaces_request`). `POST /memory` with a number of megabytes sets what a route
+//! search may take from then on: the iPhone app sends what the phone has free right before it asks for a route.
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
-use brouter_router::{Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, panic_message};
+use brouter_router::{
+    Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, limit_search_memory, panic_message,
+};
 use richi_planner::{
     Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, leg_json, nearest_on_lines, place_name, places, places_json,
     profile_request, push_number, push_string, suggestions_json, surfaces_request,
@@ -50,8 +53,40 @@ const MAX_BODY: usize = 8 << 20;
 
 /// The address search of the offline areas in a folder, `<area>/search.index` each, read on first use.
 pub struct Places {
+    areas: Vec<Slot>,
+}
+
+/// An area, its search index read when first needed: a point is asked only of the areas whose map covers it, so the
+/// phone holds the indexes of the areas the rider plans in, not of every area it has.
+struct Slot {
     folder: PathBuf,
-    areas: OnceLock<Vec<Area>>,
+    /// Its map's rectangle, west, south, east, north; unknown without a map.
+    map: Option<[f64; 4]>,
+    area: OnceLock<Option<Area>>,
+}
+
+impl Slot {
+    fn area(&self) -> Option<&Area> {
+        self.area
+            .get_or_init(|| {
+                let file = std::fs::File::open(self.folder.join("search.index")).ok()?;
+                Index::read(BufReader::new(file)).ok().map(Area::new)
+            })
+            .as_ref()
+    }
+
+    fn may_cover(&self, [lon, lat]: [f64; 2]) -> bool {
+        self.map.is_none_or(|[w, s, e, n]| (w..=e).contains(&lon) && (s..=n).contains(&lat))
+    }
+}
+
+/// The rectangle in a PMTiles map's header.
+fn map_bounds(file: &Path) -> Option<[f64; 4]> {
+    let mut header = [0u8; 118];
+    std::fs::File::open(file).ok()?.read_exact(&mut header).ok()?;
+    let degrees =
+        |at: usize| i32::from_le_bytes([header[at], header[at + 1], header[at + 2], header[at + 3]]) as f64 / 1e7;
+    header.starts_with(b"PMTiles").then(|| [degrees(102), degrees(106), degrees(110), degrees(114)])
 }
 
 struct Area {
@@ -85,27 +120,30 @@ impl Area {
 
 impl Places {
     pub fn new(folder: PathBuf) -> Places {
-        Places { folder, areas: OnceLock::new() }
+        let mut folders: Vec<PathBuf> =
+            std::fs::read_dir(folder).into_iter().flatten().flatten().map(|e| e.path()).collect();
+        folders.sort();
+        let areas = folders
+            .into_iter()
+            .filter(|folder| folder.join("search.index").is_file())
+            .map(|folder| Slot { map: map_bounds(&folder.join("map.pmtiles")), folder, area: OnceLock::new() })
+            .collect();
+        Places { areas }
     }
 
-    fn areas(&self) -> &[Area] {
-        self.areas.get_or_init(|| {
-            let files = std::fs::read_dir(&self.folder).into_iter().flatten().flatten();
-            let indexes = files.filter_map(|area| {
-                let file = std::fs::File::open(area.path().join("search.index")).ok()?;
-                Index::read(BufReader::new(file)).ok()
-            });
-            indexes.map(Area::new).collect()
-        })
+    /// The areas that may know of a point.
+    fn near(&self, at: [f64; 2]) -> impl Iterator<Item = &Area> {
+        self.areas
+            .iter()
+            .filter(move |slot| slot.may_cover(at))
+            .filter_map(Slot::area)
+            .filter(move |area| area.covers(at))
     }
 
     /// The planner's name for a point set on the map (`place_name`), from the first area that knows one.
     pub fn name(&self, at: [f64; 2]) -> Option<String> {
         let query = format!("lat={}&lon={}&lang=de&limit=1&radius=0.3", at[1], at[0]);
-        self.areas()
-            .iter()
-            .filter(|area| area.covers(at))
-            .find_map(|area| place_name(&area.ask("/reverse", &query)?, at))
+        self.near(at).find_map(|area| place_name(&area.ask("/reverse", &query)?, at))
     }
 
     /// The point on `street` nearest an address at `at`, within 150 m (`pointOnStreet`): a house's centre can lie
@@ -117,7 +155,7 @@ impl Places {
             let (a, b) = area.index.road_piece(i);
             vec![[a.0, a.1], [b.0, b.1]]
         };
-        let found = self.areas().iter().filter(|area| area.covers(at)).filter_map(|area| {
+        let found = self.near(at).filter_map(|area| {
             let named =
                 |i: u32| area.index.text(area.index.road_name(i)).is_some_and(|name| name.to_lowercase() == street);
             let metres =
@@ -135,7 +173,7 @@ impl Places {
     pub fn search(&self, q: &str, focus: Option<[f64; 2]>) -> String {
         let near = focus.map_or(String::new(), |[lon, lat]| format!("&lat={lat}&lon={lon}&location_bias_scale=0.5"));
         let query = format!("q={q}&lang=de&limit={SEARCH_LIMIT}&bbox={ROUTING_BOUNDS}{near}");
-        let mut areas: Vec<&Area> = self.areas().iter().collect();
+        let mut areas: Vec<&Area> = self.areas.iter().filter_map(Slot::area).collect();
         // the area around the map answers first
         areas.sort_by_key(|area| !focus.is_some_and(|at| area.covers(at)));
         let answers: Vec<String> = areas.iter().filter_map(|area| area.ask("/api/", &query)).collect();
@@ -189,7 +227,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
     }
     let mut request = request.as_deref().unwrap_or_default().split(' ');
     let (method, target) = (request.next().unwrap_or_default(), request.next().unwrap_or_default());
-    if matches!(target, "/loops" | "/fit" | "/profile" | "/surfaces") {
+    if matches!(target, "/loops" | "/fit" | "/profile" | "/surfaces" | "/memory") {
         // only what a web page cannot send to another site without asking first (no CORS preflight)
         if method != "POST" {
             return send(stream, "405 Method Not Allowed", "");
@@ -206,6 +244,13 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
             "/fit" => fit(stream, &body),
             "/profile" => send_json(stream, profile_request(&body)),
             "/surfaces" => send_json(stream, surfaces_request(&body)),
+            "/memory" => match body.trim().parse::<usize>() {
+                Ok(mb) if mb > 0 => {
+                    limit_search_memory(mb << 20);
+                    send(stream, "204 No Content", "")
+                }
+                _ => send(stream, "400 Bad Request", "a number of megabytes\n"),
+            },
             _ => loops(stream, &body, pool, max_running_time),
         };
     }
