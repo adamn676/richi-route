@@ -233,6 +233,11 @@ impl<V: Copy + Default> SortedHeap<V> {
         self.peaksize
     }
 
+    /// Live entries only; storage below each bin's low pointer contains stale handles.
+    pub fn values(&self) -> impl Iterator<Item = V> + '_ {
+        self.bins.iter().flat_map(|bin| bin.entries[bin.lp..].iter().map(|&(_, value)| value))
+    }
+
     /// `getExtract`: a sample of about `target.len()` entries, spread over the heap. Returns their count.
     pub fn get_extract(&self, target: &mut [Option<V>]) -> usize {
         let tsize = target.len() as i32;

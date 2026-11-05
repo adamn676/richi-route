@@ -3,10 +3,11 @@
 //! # Graph API (for the router)
 //!
 //! - **Arenas.** `OsmNodesMap` owns all nodes, links, turn restrictions and descriptions. They are
-//!   addressed by `NodeIdx`, `LinkIdx`, `RestrictionIdx` and `DescIdx` (`u32` newtypes; `Option<_>` is
-//!   Java's `null`). Compare
-//!   indices where Java compares references. Nothing is freed before the map is dropped. Read them with
-//!   `map.node(n)` / `map.link(l)`, change them with `node_mut` / `link_mut`.
+//!   addressed by `NodeIdx`, `LinkIdx`, `RestrictionIdx` and `DescIdx` (`Option<_>` is Java's `null`).
+//!   Compare indices where Java compares references. Read them with `map.node(n)` / `map.link(l)`, change
+//!   them with `node_mut` / `link_mut`. Nodes and links are slots that the router's reclamation
+//!   (`begin_reclamation`, `mark_node`/`mark_link`, `finish_reclamation`) frees and reuses once nothing
+//!   reaches them; keep their handles only where that marking finds them.
 //! - **Nodes.** `OsmNode` has `ilon`, `ilat`, `selev`, `node_description`, `visit_id` and `firstlink`.
 //!   A *hollow* node (`is_hollow()`) is a placeholder whose position is known but whose cell is not
 //!   loaded; `NodesCache::obtain_non_hollow_node` loads it. Java's `OsmNode` extends `OsmLink`; that
@@ -29,12 +30,10 @@
 //! - **Turn restrictions.** `map.restrictions(node)` lists them in Java's order, for
 //!   `TurnRestriction::is_turn_forbidden`.
 //! - **Link holders.** Java links keep a list of router paths per direction (`OsmLinkHolder`). Here a
-//!   link stores only the first path of each direction, as an opaque `u32` handle the router chooses
-//!   (e.g. an index into its path arena). The router keeps each path's `next_for_link`. The contract:
+//!   link stores only the first path of each direction, as the router's path `SlotId`. The router keeps each path's `next_for_link`. The contract:
 //!   `link.add_link_holder(h, source)` returns the previous first holder, which the router must store as
 //!   `h`'s `next_for_link` when it is `Some` (Java's `setNextForLink`). `first_link_holder(source)`
-//!   starts the walk. Clearing a direction (`unlink_link`) drops its holder. Handles must be below
-//!   `u32::MAX`, which marks "none".
+//!   starts the walk. Clearing a direction (`unlink_link`) drops its holder.
 //! - **Search state.** `OsmNodesMap` keeps the router-facing fields `cleanup_mode`, `current_max_cost`,
 //!   `current_path_cost`, `destination`, `end_node1/2` and `nodes_created`, and the memory checks
 //!   `is_in_memory_bounds`, `collect_outreachers`, `can_escape` and `clear_temp`.

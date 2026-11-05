@@ -100,12 +100,12 @@ Speed work keeps every answer identical; `parity/bench.sh` measures it (see `par
 ## Long sections
 
 A search ends with BRouter's memory error at a limit (`limit_search_memory`: 3 GB on the computer, what
-iOS leaves the iPhone app less its other needs), about 145 bytes per path with the graph around them.
+iOS leaves the iPhone app less its other needs), an estimated 145 bytes per allocated path slot with the graph around them.
+At the existing graph-cleanup points, unreachable path, node and link slots are reclaimed and reused.
+Live slot indices, search order and pruning stay unchanged. Debug builds check slot generations on access.
 Searches past about 150 MB take turns, so sections searched side by side never need much more than one
-limit. Where BRouter would end with that error, the engine goes beyond it: the second pass tries again
-leaning further towards the target (`pass2coefficient` × 1.25, then × 1.5). A quarter more takes about
-a quarter less memory; on sections of 480 to 840 km the route came out within 0.2 % of the exact one's
-cost at 1.25 and within 2.2 % at 1.5. Routes within the limit stay BRouter's.
+limit. A search that exceeds its limit returns `memory limit reached`; it does not retry with different
+search coefficients. The planner asks the rider to add a Zwischenstopp so each section can fit.
 
 ## Parity checks
 

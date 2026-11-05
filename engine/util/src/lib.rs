@@ -10,6 +10,7 @@ mod crc32;
 mod fx_hash;
 pub mod jmath;
 mod long_map;
+mod slot_arena;
 mod sorted_heap;
 
 pub use bit_coder::{BitCoderContext, BitWriter};
@@ -19,6 +20,7 @@ pub use cheap_ruler::CheapAngleMeter;
 pub use crc32::crc;
 pub use fx_hash::{FxBuildHasher, FxHasher};
 pub use long_map::CompactLongMap;
+pub use slot_arena::{SlotArena, SlotId};
 pub use sorted_heap::SortedHeap;
 
 use std::rc::Rc;

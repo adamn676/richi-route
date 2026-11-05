@@ -4,7 +4,7 @@
 use crate::node_hash::NodeHashMap;
 use crate::pos::OsmPos;
 use crate::{Geometry, MapError};
-use brouter_util::{ByteArrayCache, ByteArrayUnifier, ByteDataReader, Description, FxBuildHasher};
+use brouter_util::{ByteArrayCache, ByteArrayUnifier, ByteDataReader, Description, FxBuildHasher, SlotArena, SlotId};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -30,14 +30,37 @@ macro_rules! arena_index {
     };
 }
 
-arena_index!(
+macro_rules! slot_index {
+    ($(#[$doc:meta])* $name:ident) => {
+        $(#[$doc])*
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+        pub struct $name(SlotId);
+
+        impl $name {
+            /// Slot position, stable while this handle is live.
+            pub fn index(self) -> usize {
+                self.0.index()
+            }
+        }
+    };
+}
+
+slot_index!(
     /// A node in `OsmNodesMap`. Java compares `OsmNode`s by reference; compare these instead.
     NodeIdx
 );
-arena_index!(
+slot_index!(
     /// A link in `OsmNodesMap`.
     LinkIdx
 );
+
+#[cfg(test)]
+impl NodeIdx {
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(SlotId::from_index(index))
+    }
+}
+
 arena_index!(
     /// A turn restriction in `OsmNodesMap`.
     RestrictionIdx
@@ -148,13 +171,10 @@ impl OsmPos for OsmNode {
     }
 }
 
-/// Stored for "no link holder", so a link needs 4 bytes per direction instead of 8.
-const NO_HOLDER: u32 = u32::MAX;
-
 /// Port of `OsmLink`: a way section between two nodes, valid in both directions until one is cleared.
 /// `n1 -> n2` is the forward direction. `previous` links the chain of `n2` (the reverse direction),
 /// `next` the chain of `n1`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct OsmLink {
     /// The way tags (valid for both directions).
     pub description_bitmap: Option<DescIdx>,
@@ -164,23 +184,8 @@ pub struct OsmLink {
     n2: Option<NodeIdx>,
     previous: Option<LinkIdx>,
     next: Option<LinkIdx>,
-    reverse_link_holder: u32,
-    first_link_holder: u32,
-}
-
-impl Default for OsmLink {
-    fn default() -> Self {
-        Self {
-            description_bitmap: None,
-            geometry: None,
-            n1: None,
-            n2: None,
-            previous: None,
-            next: None,
-            reverse_link_holder: NO_HOLDER,
-            first_link_holder: NO_HOLDER,
-        }
-    }
+    reverse_link_holder: Option<SlotId>,
+    first_link_holder: Option<SlotId>,
 }
 
 impl OsmLink {
@@ -232,11 +237,11 @@ impl OsmLink {
     fn clear(&mut self, source: NodeIdx) -> Option<LinkIdx> {
         let n = if self.leaves_forward(Some(source), "setNext") {
             self.n2 = None;
-            self.first_link_holder = NO_HOLDER;
+            self.first_link_holder = None;
             self.next.take()
         } else {
             self.n1 = None;
-            self.reverse_link_holder = NO_HOLDER;
+            self.reverse_link_holder = None;
             self.previous.take()
         };
         if self.n1.is_none() && self.n2.is_none() {
@@ -247,21 +252,16 @@ impl OsmLink {
     }
 
     /// The first router path stored for the direction leaving `source` (Java: `getFirstLinkHolder`).
-    pub fn first_link_holder(&self, source: impl Into<Option<NodeIdx>>) -> Option<u32> {
-        let holder = if self.leaves_forward(source.into(), "getFirstLinkHolder") {
+    pub fn first_link_holder(&self, source: impl Into<Option<NodeIdx>>) -> Option<SlotId> {
+        if self.leaves_forward(source.into(), "getFirstLinkHolder") {
             self.first_link_holder
         } else {
             self.reverse_link_holder
-        };
-        (holder != NO_HOLDER).then_some(holder)
+        }
     }
 
-    /// Router path handles must be below `u32::MAX`.
-    pub fn set_first_link_holder(&mut self, holder: Option<u32>, source: impl Into<Option<NodeIdx>>) {
-        let holder = holder.map_or(NO_HOLDER, |h| {
-            assert_ne!(h, NO_HOLDER, "link holder handle u32::MAX is reserved");
-            h
-        });
+    /// Sets the router path head for the direction leaving `source`.
+    pub fn set_first_link_holder(&mut self, holder: Option<SlotId>, source: impl Into<Option<NodeIdx>>) {
         if self.leaves_forward(source.into(), "setFirstLinkHolder") {
             self.first_link_holder = holder;
         } else {
@@ -273,7 +273,7 @@ impl OsmLink {
     /// the previous first one. The caller must then do what Java's `holder.setNextForLink(previous)`
     /// does: store the returned handle as `holder`'s next path, if there is one.
     #[must_use = "the previous holder must become the new holder's next_for_link"]
-    pub fn add_link_holder(&mut self, holder: u32, source: impl Into<Option<NodeIdx>>) -> Option<u32> {
+    pub fn add_link_holder(&mut self, holder: SlotId, source: impl Into<Option<NodeIdx>>) -> Option<SlotId> {
         let source = source.into();
         let first_holder = self.first_link_holder(source);
         self.set_first_link_holder(Some(holder), source);
@@ -296,8 +296,8 @@ static MAP_IDS: AtomicU64 = AtomicU64::new(0);
 /// Port of `OsmNodesMap`: owns the graph (node, link and turn-restriction arenas), the index of hollow
 /// nodes by position, and the router-facing state used by the decoder and the memory checks.
 pub struct OsmNodesMap {
-    nodes: Vec<OsmNode>,
-    links: Vec<OsmLink>,
+    nodes: SlotArena<OsmNode>,
+    links: SlotArena<OsmLink>,
     restrictions: Vec<TurnRestriction>,
     hmap: NodeHashMap,
     ab_unifier: ByteArrayCache,
@@ -305,8 +305,8 @@ pub struct OsmNodesMap {
     /// the table holds the array).
     descriptions: Vec<Description>,
     description_ids: HashMap<usize, DescIdx, FxBuildHasher>,
-    /// The geometry of each cell woven, which links' `Geometry`s slice.
-    geometries: Vec<Arc<[u8]>>,
+    /// The geometry of each cell woven. Swept cells leave holes; their identities are never reused.
+    geometries: Vec<Option<Arc<[u8]>>>,
     /// Tells maps apart for the `GeometryDecoder`, which a recycled map's `Geometry`s would fool.
     id: u64,
 
@@ -341,15 +341,17 @@ impl Default for OsmNodesMap {
     }
 }
 
+type LinkEdges = ([Option<NodeIdx>; 2], [Option<LinkIdx>; 2], [Option<SlotId>; 2]);
+
 impl OsmNodesMap {
     pub fn new() -> Self {
-        Self::with_storage(Vec::new(), Vec::new(), Vec::new(), NodeHashMap::new(), Vec::new(), Vec::new())
+        Self::with_storage(SlotArena::new(), SlotArena::new(), Vec::new(), NodeHashMap::new(), Vec::new(), Vec::new())
     }
 
     /// `new OsmNodesMap()` with these (empty) allocations.
     fn with_storage(
-        nodes: Vec<OsmNode>,
-        links: Vec<OsmLink>,
+        nodes: SlotArena<OsmNode>,
+        links: SlotArena<OsmLink>,
         restrictions: Vec<TurnRestriction>,
         hmap: NodeHashMap,
         nodes2check: Vec<NodeIdx>,
@@ -395,8 +397,7 @@ impl OsmNodesMap {
     /// `new OsmNode(ilon, ilat)`: a node with unknown elevation, not yet in the index.
     pub fn create_node(&mut self, ilon: i32, ilat: i32) -> NodeIdx {
         let own_link = self.create_link(None, None);
-        let idx = NodeIdx::from_index(self.nodes.len());
-        self.nodes.push(OsmNode {
+        NodeIdx(self.nodes.insert(OsmNode {
             ilat,
             ilon,
             selev: i16::MIN,
@@ -405,37 +406,76 @@ impl OsmNodesMap {
             visit_id: 0,
             firstlink: None,
             own_link,
-        });
-        idx
+        }))
     }
 
     /// `new OsmLink(source, target)`, e.g. the router's start link `(None, start_node)`. Not part of any
     /// node's chain.
     pub fn create_link(&mut self, source: Option<NodeIdx>, target: Option<NodeIdx>) -> LinkIdx {
-        let idx = LinkIdx::from_index(self.links.len());
-        self.links.push(OsmLink { n1: source, n2: target, ..OsmLink::default() });
-        idx
+        LinkIdx(self.links.insert(OsmLink { n1: source, n2: target, ..OsmLink::default() }))
     }
 
     pub fn node(&self, n: NodeIdx) -> &OsmNode {
-        &self.nodes[n.index()]
+        &self.nodes[n.0]
     }
 
     pub fn node_mut(&mut self, n: NodeIdx) -> &mut OsmNode {
-        &mut self.nodes[n.index()]
+        &mut self.nodes[n.0]
     }
 
     pub fn link(&self, l: LinkIdx) -> &OsmLink {
-        &self.links[l.index()]
+        &self.links[l.0]
     }
 
     pub fn link_mut(&mut self, l: LinkIdx) -> &mut OsmLink {
-        &mut self.links[l.index()]
+        &mut self.links[l.0]
     }
 
-    /// Number of nodes ever created in this map (the arena never shrinks).
+    /// Number of live nodes in this map.
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Begins reclamation at a completed cleanup boundary. The caller must trace indexed nodes,
+    /// end/start nodes and all path roots, including node first/own links and every link edge.
+    pub fn begin_reclamation(&mut self) {
+        // can_escape/collect_outreachers drain nodes2check; subtree traversal drains subtree_stack.
+        assert!(self.nodes2check.is_empty(), "node cleanup still in progress");
+        assert!(self.subtree_stack.is_empty(), "subtree cleanup still in progress");
+        self.nodes.begin_mark();
+        self.links.begin_mark();
+    }
+
+    pub fn mark_node(&mut self, node: NodeIdx) -> bool {
+        self.nodes.mark(node.0)
+    }
+
+    pub fn mark_link(&mut self, link: LinkIdx) -> bool {
+        self.links.mark(link.0)
+    }
+
+    /// Both endpoints, adjacency links and path-holder heads, including one-sided links.
+    pub fn link_edges(&self, link: LinkIdx) -> LinkEdges {
+        let link = self.link(link);
+        ([link.n1, link.n2], [link.previous, link.next], [link.reverse_link_holder, link.first_link_holder])
+    }
+
+    /// Sweeps unmarked nodes/links and releases geometry cells unused by surviving links.
+    /// Geometry cell indices stay reserved so the decoder's cached identity cannot alias a new cell.
+    pub fn finish_reclamation(&mut self) {
+        self.nodes.sweep();
+        self.links.sweep();
+        let mut used = vec![false; self.geometries.len()];
+        for link in self.links.iter() {
+            if let Some(geometry) = link.geometry {
+                used[geometry.cell()] = true;
+            }
+        }
+        for (geometry, used) in self.geometries.iter_mut().zip(used) {
+            if !used {
+                *geometry = None;
+            }
+        }
     }
 
     /// The target of `link` seen from `source`, which must be one of its nodes.
@@ -458,7 +498,7 @@ impl OsmNodesMap {
         let mut l = self.node(n).firstlink;
         std::iter::from_fn(move || {
             let link = l?;
-            let (t, next) = self.links[link.index()].target_and_next(n);
+            let (t, next) = self.links[link.0].target_and_next(n);
             l = next;
             Some((link, t.expect("link in the source's chain has a target")))
         })
@@ -490,14 +530,14 @@ impl OsmNodesMap {
 
     /// Indexes `node` by its position; returns the node previously indexed there.
     pub fn put(&mut self, node: NodeIdx) -> Option<NodeIdx> {
-        let n = &self.nodes[node.index()];
+        let n = &self.nodes[node.0];
         self.hmap.put(n.ilon, n.ilat, node)
     }
 
     /// Removes whatever node is indexed at `node`'s position, unless `node` is an end node.
     pub fn remove(&mut self, node: NodeIdx) {
         if Some(node) != self.end_node1 && Some(node) != self.end_node2 {
-            let n = &self.nodes[node.index()];
+            let n = &self.nodes[node.0];
             self.hmap.remove(n.ilon, n.ilat);
         }
     }
@@ -532,12 +572,12 @@ impl OsmNodesMap {
 
     /// Adds a woven cell's geometry; returns its index for `Geometry::new`.
     pub(crate) fn add_geometry_cell(&mut self, geometry: Arc<[u8]>) -> usize {
-        self.geometries.push(geometry);
+        self.geometries.push(Some(geometry));
         self.geometries.len() - 1
     }
 
     pub fn geometry(&self, g: Geometry) -> &[u8] {
-        &self.geometries[g.cell()][g.range()]
+        &self.geometries[g.cell()].as_ref().expect("reclaimed geometry cell")[g.range()]
     }
 
     pub(crate) fn id(&self) -> u64 {
@@ -795,10 +835,10 @@ impl OsmNodesMap {
         loop {
             let mut descend = None;
             while let Some(l) = frame.next_link {
-                let (t, next_link) = self.links[l.index()].target_and_next(frame.n);
+                let (t, next_link) = self.links[l.0].target_and_next(frame.n);
                 frame.next_link = next_link;
                 let t = t.expect("link in the source's chain has a target");
-                let target = &self.nodes[t.index()];
+                let target = &self.nodes[t.0];
                 if Some(t) == frame.source || target.is_hollow() {
                     continue;
                 }
@@ -828,7 +868,7 @@ impl OsmNodesMap {
             let Some(parent) = stack.pop() else { break };
             frame = parent;
             let (l, t, nodes_created_until_here) = frame.pending.take().expect("pending descent");
-            if min_id_sub > self.nodes[frame.n.index()].visit_id {
+            if min_id_sub > self.nodes[frame.n.0].visit_id {
                 // peninsula?
                 self.nodes_created = nodes_created_until_here;
                 self.unlink_link(frame.n, l);
@@ -928,7 +968,7 @@ impl OsmNodesMap {
         self.nodes_created = 0;
         for n in self.hmap.values() {
             // addActiveNode
-            self.nodes[n.index()].visit_id = self.last_visit_id;
+            self.nodes[n.0].visit_id = self.last_visit_id;
             self.nodes_created += 1;
             stack.push(n);
         }
@@ -943,13 +983,13 @@ impl OsmNodesMap {
             .map(|d| (d, f64::from(self.current_max_cost - self.current_path_cost + 100)));
 
         while let Some(n) = stack.pop() {
-            self.nodes[n.index()].visit_id = visit_id;
+            self.nodes[n.0].visit_id = visit_id;
 
-            let mut l = self.nodes[n.index()].firstlink;
+            let mut l = self.nodes[n.0].firstlink;
             while let Some(li) = l {
-                let (t, next) = self.links[li.index()].target_and_next(n);
+                let (t, next) = self.links[li.0].target_and_next(n);
                 let t = t.expect("link in the source's chain has a target");
-                let target = &mut self.nodes[t.index()];
+                let target = &mut self.nodes[t.0];
                 if target.visit_id != visit_id {
                     // addActiveNode
                     target.visit_id = visit_id;
@@ -959,11 +999,11 @@ impl OsmNodesMap {
                 l = next;
             }
             if let Some((destination, budget)) = budget
-                && f64::from(self.nodes[n.index()].calc_distance(&destination)) * self.least_cost_per_meter > budget
+                && f64::from(self.nodes[n.0].calc_distance(&destination)) * self.least_cost_per_meter > budget
             {
                 self.vanish(n);
             }
-            if self.nodes[n.index()].firstlink.is_none() {
+            if self.nodes[n.0].firstlink.is_none() {
                 self.nodes_created -= 1;
             }
         }
@@ -975,6 +1015,151 @@ impl OsmNodesMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reclamation_reuses_dead_slots_and_preserves_index_order() {
+        let mut map = OsmNodesMap::new();
+        let a = map.create_node(10, 20);
+        let b = map.create_node(20, 10);
+        let dead = map.create_node(5, 0);
+        for n in [a, b, dead] {
+            map.put(n);
+        }
+        map.remove(dead); // The hash map's free entry still contains this obsolete handle.
+        let order: Vec<_> = map.indexed_nodes().collect();
+        assert_eq!(order, vec![a, b]);
+        let ab = map.node(a).own_link();
+        let own_b = map.node(b).own_link();
+        let dead_link = map.node(dead).own_link();
+        map.add_link(a, ab, false, b);
+
+        let live_geometry: Arc<[u8]> = Arc::from([1, 2, 3]);
+        let dead_geometry: Arc<[u8]> = Arc::from([4, 5, 6]);
+        let live_cell = map.add_geometry_cell(live_geometry.clone());
+        let dead_cell = map.add_geometry_cell(dead_geometry.clone());
+        let geometry = Geometry::new(live_cell, 0, 3);
+        map.link_mut(ab).geometry = Some(geometry);
+        map.link_mut(own_b).geometry = Some(Geometry::new(live_cell, 1, 3));
+        map.link_mut(dead_link).geometry = Some(Geometry::new(dead_cell, 0, 3));
+
+        map.begin_reclamation();
+        for n in [a, b] {
+            assert!(map.mark_node(n));
+            assert!(!map.mark_node(n));
+        }
+        for l in [ab, own_b] {
+            assert!(map.mark_link(l));
+            assert!(!map.mark_link(l));
+        }
+        map.finish_reclamation();
+        assert_eq!(map.node_count(), 2);
+        assert_eq!(map.links.len(), 2);
+        assert_eq!(map.nodes.slots_len(), 3);
+        assert_eq!(map.indexed_nodes().collect::<Vec<_>>(), order);
+        assert_eq!(map.target(ab, a), b);
+        assert_eq!(map.geometry(geometry), &[1, 2, 3]);
+        assert_eq!(Arc::strong_count(&live_geometry), 2);
+        assert_eq!(Arc::strong_count(&dead_geometry), 1);
+        assert!(map.geometries[dead_cell].is_none());
+
+        let replacement = map.create_node(7, 8);
+        assert_eq!(replacement.index(), dead.index());
+        assert_eq!(map.node(replacement).own_link().index(), dead_link.index());
+        assert_eq!(map.node(a).own_link(), ab);
+        assert_eq!(map.node(b).own_link(), own_b);
+        assert!(map.add_geometry_cell(dead_geometry) > dead_cell);
+    }
+
+    #[test]
+    fn geometry_decoder_identity_survives_cell_reclamation() {
+        let mut map = OsmNodesMap::new();
+        let n = map.create_node(10, 20);
+        let link = map.node(n).own_link();
+        let old_cell = map.add_geometry_cell(Arc::from([0, 0, 0]));
+        let old_geometry = Geometry::new(old_cell, 0, 3);
+        map.link_mut(link).geometry = Some(old_geometry);
+        let mut decoder = crate::GeometryDecoder::new();
+        assert_eq!(decoder.decode_geometry(&map, old_geometry, map.node(n), map.node(n), false).len(), 1);
+
+        map.link_mut(link).geometry = None;
+        map.begin_reclamation();
+        map.mark_node(n);
+        map.mark_link(link);
+        map.finish_reclamation();
+        assert!(map.geometries[old_cell].is_none());
+
+        let new_cell = map.add_geometry_cell(Arc::from([0, 0, 0, 0, 0, 0]));
+        let new_geometry = Geometry::new(new_cell, 0, 6);
+        map.link_mut(link).geometry = Some(new_geometry);
+        assert!(!old_geometry.same(&new_geometry));
+        assert_eq!(decoder.decode_geometry(&map, new_geometry, map.node(n), map.node(n), false).len(), 2);
+    }
+
+    #[test]
+    fn link_edges_include_both_chains_and_holder_heads() {
+        let mut map = OsmNodesMap::new();
+        let a = map.create_node(1, 1);
+        let b = map.create_node(2, 2);
+        let c = map.create_node(3, 3);
+        let ac = map.node(a).own_link();
+        let bc = map.node(b).own_link();
+        let ab = map.node(c).own_link();
+        map.add_link(a, ac, false, c);
+        map.add_link(b, bc, false, c);
+        map.add_link(a, ab, false, b);
+        let mut paths = SlotArena::new();
+        let forward = paths.insert(());
+        let reverse = paths.insert(());
+        assert_eq!(map.link_mut(ab).add_link_holder(forward, a), None);
+        map.link_mut(ab).set_first_link_holder(Some(reverse), b);
+        assert_eq!(map.link_edges(ab), ([Some(a), Some(b)], [Some(bc), Some(ac)], [Some(reverse), Some(forward)]));
+        map.unlink_link(a, ab);
+        assert_eq!(map.link_edges(ab), ([Some(a), None], [Some(bc), None], [Some(reverse), None]));
+        assert_eq!(map.link(ab).first_link_holder(b), Some(reverse));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "stale slot handle")]
+    fn stale_node_after_reuse_panics() {
+        let mut map = OsmNodesMap::new();
+        let stale = map.create_node(1, 1);
+        map.begin_reclamation();
+        map.finish_reclamation();
+        map.create_node(2, 2);
+        map.node_mut(stale);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "stale slot handle")]
+    fn stale_link_after_map_recycle_panics() {
+        let mut map = OsmNodesMap::new();
+        let n = map.create_node(1, 1);
+        let stale = map.node(n).own_link();
+        let mut map = map.recycle();
+        map.create_node(2, 2);
+        map.link(stale);
+    }
+
+    #[test]
+    #[should_panic(expected = "node cleanup still in progress")]
+    fn reclamation_rejects_pending_node_cleanup() {
+        let mut map = OsmNodesMap::new();
+        let n = map.create_node(1, 1);
+        map.nodes2check.push(n);
+        map.begin_reclamation();
+    }
+
+    #[test]
+    #[should_panic(expected = "subtree cleanup still in progress")]
+    fn reclamation_rejects_pending_subtree_cleanup() {
+        let mut map = OsmNodesMap::new();
+        let n = map.create_node(1, 1);
+        let frame = map.enter_subtree(None, n);
+        map.subtree_stack.push(frame);
+        map.begin_reclamation();
+    }
 
     /// Java's `OsmNodesMap.main`: peninsula cleanup in tree mode on a small graph.
     #[test]

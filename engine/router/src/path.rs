@@ -4,12 +4,11 @@
 //! `StdModel` is the only path model: kinematic models (`---model:` profiles) are not supported, so
 //! `StdPath`'s fields sit directly in `OsmPath`, and pre-paths (`StdModel.createPrePath` returns
 //! `null`) do not exist. Paths live in an arena per search (`Paths`), addressed by `PathIdx`, whose `u32`
-//! is also the link-holder handle stored in the graph.
+//! slot is also the link-holder handle stored in the graph.
 
 use brouter_expressions::{ExpressionError, NodeContext, Profile, WayContext};
 use brouter_mapaccess::{GeometryDecoder, LinkIdx, NodeIdx, OsmNodesMap, OsmPos, Pos};
-use brouter_util::{CheapAngleMeter, cheap_ruler};
-use std::num::NonZeroU32;
+use brouter_util::{CheapAngleMeter, SlotArena, SlotId, cheap_ruler};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::java::{max_f32, min_f32, min_f64};
@@ -20,10 +19,7 @@ use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
 use crate::routing_context::RoutingContext;
 use crate::track::OsmTrack;
 
-pub type PathIdx = u32;
-
-/// `next_for_link` without a next path (the graph's link holders use the same mark).
-const NO_PATH: PathIdx = u32::MAX;
+pub type PathIdx = SlotId;
 
 const PATH_START_BIT: u8 = 1;
 const CAN_LEAVE_DESTINATION_BIT: u8 = 2;
@@ -43,11 +39,11 @@ pub struct OsmPath {
     pub source_node: Option<NodeIdx>,
     pub target_node: NodeIdx,
     pub link: LinkIdx,
-    origin_path: PathIdx,
+    origin_path: Option<PathIdx>,
     /// The path's element once made (Java's `myElement`), shared by its successors.
     my_element: Option<ElemIdx>,
-    /// The next path of the same link holder list, `NO_PATH` at the end (see `next_for_link()`).
-    next_for_link: PathIdx,
+    /// The next path of the same link holder list.
+    next_for_link: Option<PathIdx>,
     pub treedepth: i32,
     /// The position of the waypoint just before this path position (for angle calculation).
     pub origin_lon: i32,
@@ -57,23 +53,13 @@ pub struct OsmPath {
     priorityclassifier: i32,
     bitfield: u8,
     /// The final pass's state, kept apart (`Paths`), so that the many paths of the search passes stay small.
-    detail: Option<DetailIdx>,
+    detail: Option<SlotId>,
 
     // StdPath: the elevation hysteresis buffers (0-10 m, in micrometers)
     ehbd: i32,
     ehbu: i32,
     uphillcostdiv: i32,
     downhillcostdiv: i32,
-}
-
-/// A path's `Detail` in `Paths`, plus one so that `Option<DetailIdx>` takes four bytes.
-#[derive(Clone, Copy, Debug)]
-struct DetailIdx(NonZeroU32);
-
-impl DetailIdx {
-    fn index(self) -> usize {
-        (self.0.get() - 1) as usize
-    }
 }
 
 /// What a path carries in the final (detail) pass only (and a beeline path's message).
@@ -143,9 +129,9 @@ impl OsmPath {
             source_node,
             target_node,
             link,
-            origin_path: NO_PATH,
+            origin_path: None,
             my_element: None,
-            next_for_link: NO_PATH,
+            next_for_link: None,
             treedepth: 0,
             origin_lon: 0,
             origin_lat: 0,
@@ -170,30 +156,33 @@ impl OsmPath {
         map: &OsmNodesMap,
         elements: &mut PathElements,
     ) -> ElemIdx {
-        let origin = match paths[idx as usize].origin_path {
-            NO_PATH => paths.detail(idx).and_then(|d| d.origin_element),
-            origin_path => Some(Self::element_index(paths, origin_path, map, elements)),
+        let origin = match paths[idx].origin_path {
+            None => paths.detail(idx).and_then(|d| d.origin_element),
+            Some(origin_path) => Some(Self::element_index(paths, origin_path, map, elements)),
         };
-        elements.push(paths[idx as usize].element(map, message, origin))
+        elements.push(paths[idx].element(map, message, origin))
     }
 
     /// The path's own element (`myElement`), made once with the path's message.
     fn element_index(paths: &mut Paths, idx: PathIdx, map: &OsmNodesMap, elements: &mut PathElements) -> ElemIdx {
-        if let Some(e) = paths[idx as usize].my_element {
+        if let Some(e) = paths[idx].my_element {
             return e;
         }
         // the origins the search passes left without an element, made oldest first
         let mut missing = Vec::new();
-        let mut i = paths[idx as usize].origin_path;
-        while i != NO_PATH && paths[i as usize].my_element.is_none() {
-            missing.push(i);
-            i = paths[i as usize].origin_path;
+        let mut i = paths[idx].origin_path;
+        while let Some(parent) = i {
+            if paths[parent].my_element.is_some() {
+                break;
+            }
+            missing.push(parent);
+            i = paths[parent].origin_path;
         }
         for &i in missing.iter().rev().chain([&idx]) {
             let message = paths.take_message(i);
-            paths[i as usize].my_element = Some(Self::new_element(paths, i, message, map, elements));
+            paths[i].my_element = Some(Self::new_element(paths, i, message, map, elements));
         }
-        paths[idx as usize].my_element.expect("made above")
+        paths[idx].my_element.expect("made above")
     }
 
     fn element(&self, map: &OsmNodesMap, message: Option<Box<MessageData>>, origin: Option<ElemIdx>) -> OsmPathElement {
@@ -212,15 +201,15 @@ impl OsmPath {
         env: &mut PathEnv,
     ) -> Result<NewPath, ExpressionError> {
         let (origin_element, origin_path) = if detail_mode {
-            (Some(Self::element_index(paths, origin, env.map, env.elements)), NO_PATH)
+            (Some(Self::element_index(paths, origin, env.map, env.elements)), None)
         } else {
-            (None, origin)
+            (None, Some(origin))
         };
         let detail = detail_mode.then(|| {
             let kinematics = paths.detail(origin).map(|d| d.kinematics).unwrap_or_default();
             Detail { message: None, origin_element, kinematics }
         });
-        let o = &paths[origin as usize];
+        let o = &paths[origin];
         let source = o.target_node;
         let target = env.map.target(link, source);
         let path = Self {
@@ -240,12 +229,12 @@ impl OsmPath {
     }
 
     pub fn next_for_link(&self) -> Option<PathIdx> {
-        (self.next_for_link != NO_PATH).then_some(self.next_for_link)
+        self.next_for_link
     }
 
     /// `setNextForLink`, with the holder the graph returned when this path was added.
     pub fn set_next_for_link(&mut self, next: PathIdx) {
-        self.next_for_link = next;
+        self.next_for_link = Some(next);
     }
 
     fn get_bit(&self, mask: u8) -> bool {
@@ -892,13 +881,97 @@ impl NewPath {
 /// The paths of a search, with the details of those that have one kept apart.
 #[derive(Default)]
 pub struct Paths {
-    paths: Vec<OsmPath>,
-    details: Vec<Detail>,
+    paths: SlotArena<OsmPath>,
+    details: SlotArena<Detail>,
+    allocations_since_reclamation: usize,
 }
 
 impl Paths {
+    /// Allocated slots, live or free: what the memory limit counts.
     pub fn len(&self) -> usize {
-        self.paths.len()
+        self.paths.slots_len()
+    }
+
+    pub(crate) fn allocations_since_reclamation(&self) -> usize {
+        self.allocations_since_reclamation
+    }
+
+    pub(crate) fn reclaim(&mut self, map: &mut OsmNodesMap, queued: impl Iterator<Item = PathIdx>, nodes: &[NodeIdx]) {
+        #[derive(Clone, Copy)]
+        enum Reference {
+            Path(PathIdx),
+            Node(NodeIdx),
+            Link(LinkIdx),
+        }
+        fn enqueue(
+            reference: Reference,
+            paths: &mut SlotArena<OsmPath>,
+            map: &mut OsmNodesMap,
+            work: &mut Vec<Reference>,
+        ) {
+            let fresh = match reference {
+                Reference::Path(id) => paths.mark(id),
+                Reference::Node(id) => map.mark_node(id),
+                Reference::Link(id) => map.mark_link(id),
+            };
+            if fresh {
+                work.push(reference);
+            }
+        }
+
+        self.paths.begin_mark();
+        self.details.begin_mark();
+        map.begin_reclamation();
+        let mut roots: Vec<_> = queued.map(Reference::Path).collect();
+        roots.extend(map.indexed_nodes().chain(nodes.iter().copied()).map(Reference::Node));
+        roots.extend([map.end_node1, map.end_node2].into_iter().flatten().map(Reference::Node));
+        let mut work = Vec::with_capacity(roots.len());
+        for root in roots {
+            enqueue(root, &mut self.paths, map, &mut work);
+        }
+        while let Some(reference) = work.pop() {
+            match reference {
+                Reference::Path(id) => {
+                    let path = &self.paths[id];
+                    if let Some(detail) = path.detail {
+                        self.details.mark(detail);
+                    }
+                    let references = [
+                        path.origin_path.map(Reference::Path),
+                        path.next_for_link.map(Reference::Path),
+                        path.source_node.map(Reference::Node),
+                        Some(Reference::Node(path.target_node)),
+                        Some(Reference::Link(path.link)),
+                    ];
+                    for reference in references.into_iter().flatten() {
+                        enqueue(reference, &mut self.paths, map, &mut work);
+                    }
+                }
+                Reference::Node(id) => {
+                    let node = map.node(id);
+                    let references = [node.firstlink, Some(node.own_link())];
+                    for link in references.into_iter().flatten() {
+                        enqueue(Reference::Link(link), &mut self.paths, map, &mut work);
+                    }
+                }
+                Reference::Link(id) => {
+                    let (nodes, links, holders) = map.link_edges(id);
+                    let references = nodes
+                        .into_iter()
+                        .flatten()
+                        .map(Reference::Node)
+                        .chain(links.into_iter().flatten().map(Reference::Link))
+                        .chain(holders.into_iter().flatten().map(Reference::Path));
+                    for reference in references {
+                        enqueue(reference, &mut self.paths, map, &mut work);
+                    }
+                }
+            }
+        }
+        self.paths.sweep();
+        self.details.sweep();
+        map.finish_reclamation();
+        self.allocations_since_reclamation = 0;
     }
 
     pub fn capacity(&self) -> usize {
@@ -908,21 +981,18 @@ impl Paths {
     pub fn clear(&mut self) {
         self.paths.clear();
         self.details.clear();
+        self.allocations_since_reclamation = 0;
     }
 
     pub fn push(&mut self, path: NewPath) -> PathIdx {
-        let idx = PathIdx::try_from(self.paths.len()).expect("path arena overflow");
         let NewPath { mut path, detail } = path;
-        path.detail = detail.map(|d| {
-            self.details.push(d);
-            DetailIdx(u32::try_from(self.details.len()).ok().and_then(NonZeroU32::new).expect("detail arena overflow"))
-        });
-        self.paths.push(path);
-        idx
+        path.detail = detail.map(|d| self.details.insert(d));
+        self.allocations_since_reclamation += 1;
+        self.paths.insert(path)
     }
 
     fn detail(&self, idx: PathIdx) -> Option<&Detail> {
-        Some(&self.details[self.paths[idx as usize].detail?.index()])
+        Some(&self.details[self.paths[idx].detail?])
     }
 
     pub fn message(&self, idx: PathIdx) -> Option<&MessageData> {
@@ -930,7 +1000,7 @@ impl Paths {
     }
 
     pub fn take_message(&mut self, idx: PathIdx) -> Option<Box<MessageData>> {
-        self.details[self.paths[idx as usize].detail?.index()].message.take()
+        self.details[self.paths[idx].detail?].message.take()
     }
 
     pub fn total_energy(&self, idx: PathIdx) -> f32 {
@@ -938,15 +1008,15 @@ impl Paths {
     }
 }
 
-impl Index<usize> for Paths {
+impl Index<PathIdx> for Paths {
     type Output = OsmPath;
-    fn index(&self, i: usize) -> &OsmPath {
+    fn index(&self, i: PathIdx) -> &OsmPath {
         &self.paths[i]
     }
 }
 
-impl IndexMut<usize> for Paths {
-    fn index_mut(&mut self, i: usize) -> &mut OsmPath {
+impl IndexMut<PathIdx> for Paths {
+    fn index_mut(&mut self, i: PathIdx) -> &mut OsmPath {
         &mut self.paths[i]
     }
 }
@@ -1033,4 +1103,71 @@ fn solve_cubic(a: f64, c: f64, d: f64) -> f64 {
         v -= y / y_prime;
     }
     v
+}
+
+#[cfg(test)]
+mod reclamation_tests {
+    use super::*;
+
+    fn put(paths: &mut Paths, link: LinkIdx, source: Option<NodeIdx>, target: NodeIdx) -> PathIdx {
+        paths.push(NewPath { path: OsmPath::blank(link, source, target), detail: None })
+    }
+
+    #[test]
+    fn current_path_keeps_ancestors_and_both_holder_chains() {
+        let mut map = OsmNodesMap::new();
+        let a = map.create_node(100, 100);
+        let b = map.create_node(200, 200);
+        let dead_node = map.create_node(300, 300);
+        let start = map.create_link(None, Some(a));
+        let link = map.create_link(Some(a), Some(b));
+        let dead_link = map.create_link(None, Some(dead_node));
+        let mut paths = Paths::default();
+        let origin = put(&mut paths, start, None, a);
+        let current = put(&mut paths, link, Some(a), b);
+        paths[current].origin_path = Some(origin);
+        let invalid = put(&mut paths, link, Some(a), b);
+        paths[invalid].airdistance = -1;
+        let reverse = put(&mut paths, link, Some(b), a);
+        paths[current].set_next_for_link(invalid);
+        map.link_mut(link).set_first_link_holder(Some(invalid), a);
+        map.link_mut(link).set_first_link_holder(Some(reverse), b);
+        let dead = put(&mut paths, dead_link, None, dead_node);
+        let mut elements = PathElements::default();
+        OsmPath::element_index(&mut paths, dead, &map, &mut elements);
+
+        paths.reclaim(&mut map, std::iter::once(current), &[]);
+        assert_eq!(paths[invalid].airdistance, -1);
+        assert_eq!(paths[reverse].target_node, a);
+        assert_eq!(map.link(start).target(None), Some(a));
+        let element = OsmPath::element_index(&mut paths, current, &map, &mut elements);
+        assert_eq!(elements[element].ilon, 200);
+        assert!(elements[element].origin.is_some());
+        assert!(std::panic::catch_unwind(|| map.node(dead_node)).is_err());
+        assert!(std::panic::catch_unwind(|| map.link(dead_link)).is_err());
+
+        let replacement = put(&mut paths, link, Some(a), b);
+        assert_eq!(replacement.index(), dead.index());
+        assert!(paths[replacement].my_element.is_none());
+        assert!(paths[replacement].detail.is_none());
+        #[cfg(debug_assertions)]
+        assert!(std::panic::catch_unwind(|| &paths[dead]).is_err());
+    }
+
+    #[test]
+    fn indexed_node_retains_unqueued_invalid_holder() {
+        let mut map = OsmNodesMap::new();
+        let a = map.create_node(100, 100);
+        let b = map.create_node(200, 200);
+        map.put(a);
+        let link = map.create_link(Some(a), Some(b));
+        map.node_mut(a).firstlink = Some(link);
+        let mut paths = Paths::default();
+        let holder = put(&mut paths, link, Some(a), b);
+        paths[holder].airdistance = -1;
+        map.link_mut(link).set_first_link_holder(Some(holder), a);
+        paths.reclaim(&mut map, std::iter::empty(), &[]);
+        assert_eq!(paths[holder].target_node, b);
+        assert_eq!(map.node(b).ilon, 200);
+    }
 }

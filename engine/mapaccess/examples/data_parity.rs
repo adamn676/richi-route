@@ -10,7 +10,7 @@ use brouter_expressions::Profile;
 use brouter_mapaccess::{
     GeometryDecoder, LinkIdx, MapError, MatchedWaypoint, NodeIdx, NodesCache, OsmNodePairSet, OsmPos, Pos, SegmentStore,
 };
-use brouter_util::{ByteArrayUnifier, CheapAngleMeter, Description, SortedHeap, cheap_ruler, crc};
+use brouter_util::{ByteArrayUnifier, CheapAngleMeter, Description, SlotId, SortedHeap, cheap_ruler, crc};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::io::{BufWriter, Write};
@@ -413,11 +413,11 @@ fn dump_index(out: &mut Out, nc: &NodesCache) {
 }
 
 /// Mirror of the router's path holders: `next_for_link` per holder.
-fn holders(nc: &NodesCache, next: &HashMap<u32, u32>, l: LinkIdx, source: Option<NodeIdx>) -> String {
+fn holders(nc: &NodesCache, next: &HashMap<SlotId, SlotId>, l: LinkIdx, source: Option<NodeIdx>) -> String {
     let mut s = String::from("[");
     let first = nc.nodes_map.link(l).first_link_holder(source);
     for h in std::iter::successors(first, |h| next.get(h).copied()) {
-        write!(s, "{h};").unwrap();
+        write!(s, "{};", h.index()).unwrap();
     }
     s.push(']');
     s
@@ -428,7 +428,8 @@ fn router_ops(out: &mut Out, nc: &mut NodesCache, nodes: &[NodeIdx]) {
     let mut next = HashMap::new();
     let mut holder = 0u32;
     // Java's addLinkHolder, with the router's side of the contract
-    let add = |nc: &mut NodesCache, next: &mut HashMap<u32, u32>, l: LinkIdx, h: u32, source: Option<NodeIdx>| {
+    let add = |nc: &mut NodesCache, next: &mut HashMap<SlotId, SlotId>, l: LinkIdx, h: u32, source: Option<NodeIdx>| {
+        let h = SlotId::from_index(h as usize);
         if let Some(previous) = nc.nodes_map.link_mut(l).add_link_holder(h, source) {
             next.insert(h, previous);
         }

@@ -79,8 +79,7 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
 /// the memory of its biggest search for good (about twice that of a long round trip).
 const KEPT_PATHS: usize = (64 << 20) / std::mem::size_of::<OsmPath>();
 
-/// A search's memory per path, with the graph and open set that grow along (measured: 18 million paths
-/// peak at 2.7 GB).
+/// Estimated search bytes per allocated path slot, including the graph and open set.
 const BYTES_PER_PATH: usize = 145;
 
 /// Beyond this many paths a search stops with BRouter's memory error, as a search past Java's heap
@@ -783,17 +782,7 @@ impl Searcher {
 
             // Java prepares a dirty reference track before passing on a timeout; nothing reads it here
             let operation = if cfi == 0 { "pass0" } else { "pass1" };
-            let mut t = self.find_track(operation, start, end, track.as_ref(), ref_track);
-            // Not in BRouter: past the memory limit the second pass leans further towards the target.
-            // Leaning a quarter more takes about a quarter less memory (see PORTING.md, long sections).
-            for lean in [1.25, 1.5] {
-                if cfi == 0 || !matches!(&t, Err(Abort::Error(e)) if e == MEMORY_LIMIT) {
-                    break;
-                }
-                self.air_distance_cost_factor = air_distance_cost_factors[cfi] * lean;
-                t = self.find_track(operation, start, end, track.as_ref(), ref_track);
-            }
-            let mut t = t?;
+            let mut t = self.find_track(operation, start, end, track.as_ref(), ref_track)?;
 
             if t.is_none()
                 && let (Some(old), Some(match_path)) = (&track, self.match_path)
@@ -888,10 +877,10 @@ impl Searcher {
 
         // special case: start+end on same segment
         if let Some(p) = p
-            && self.paths[p as usize].cost >= 0
+            && self.paths[p].cost >= 0
             && end_matched
         {
-            self.paths[p as usize].treedepth = 0; // hack: mark for the final-check
+            self.paths[p].treedepth = 0; // hack: mark for the final-check
         }
         Ok(p)
     }
@@ -938,7 +927,7 @@ impl Searcher {
         best_path.treedepth = 1;
         let idx = self.paths.push(best_path);
         if let Some(previous) = cache.nodes_map.link_mut(best_link).add_link_holder(idx, n1) {
-            self.paths[idx as usize].set_next_for_link(previous);
+            self.paths[idx].set_next_for_link(previous);
         }
         Ok(Some(idx))
     }
@@ -1052,8 +1041,8 @@ impl Searcher {
         open_set.clear();
         for p in [start_path1, start_path2] {
             // addToOpenset
-            if paths[p as usize].cost >= 0 {
-                open_set.add(open_key(&paths[p as usize]), p);
+            if paths[p].cost >= 0 {
+                open_set.add(open_key(&paths[p]), p);
             }
         }
         let mut open_border_list: Vec<PathIdx> = Vec::with_capacity(4096);
@@ -1103,13 +1092,13 @@ impl Searcher {
                     break;
                 }
                 for p in open_border_list.drain(..) {
-                    open_set.add(open_key(&paths[p as usize]), p);
+                    open_set.add(open_key(&paths[p]), p);
                 }
                 memory_panic_mode = false;
                 need_non_panic_processing = true;
                 continue;
             };
-            let pi = path as usize;
+            let pi = path;
 
             if paths[pi].airdistance == -1 {
                 continue;
@@ -1128,12 +1117,21 @@ impl Searcher {
                         open_border_list.push(p3);
                     }
                     open_border_list.retain(|&p3| {
-                        let p3_path = &paths[p3 as usize];
+                        let p3_path = &paths[p3];
                         p3_path.airdistance != -1 && cache.nodes_map.can_escape(p3_path.target_node)
                     });
                     cache.nodes_map.clear_temp();
                     for p in open_border_list.drain(..) {
-                        open_set.add(open_key(&paths[p as usize]), p);
+                        open_set.add(open_key(&paths[p]), p);
+                    }
+                    // Repeatedly tracing unchanged survivors is costly; batch new allocations,
+                    // but reclaim only here, after Java's graph cleanup and open-set filtering.
+                    if paths.allocations_since_reclamation() >= SHARED_PATHS.min(max_paths / 4) {
+                        paths.reclaim(
+                            &mut cache.nodes_map,
+                            open_set.values().chain([path, start_path1, start_path2]),
+                            &[start1, start2, end1, end2],
+                        );
                     }
                     if !cache.nodes_map.is_in_memory_bounds(open_set.get_size(), true) {
                         if max_total_cost < 1_000_000_000 || need_non_panic_processing {
@@ -1212,8 +1210,8 @@ impl Searcher {
             let first_link_holder = cache.nodes_map.link(current_link).first_link_holder(source_node);
             let mut holder = first_link_holder;
             while let Some(h) = holder {
-                paths[h as usize].airdistance = -1; // invalidate the entry in the open set
-                holder = paths[h as usize].next_for_link();
+                paths[h].airdistance = -1; // invalidate the entry in the open set
+                holder = paths[h].next_for_link();
             }
 
             if paths[pi].treedepth > 1 {
@@ -1313,7 +1311,7 @@ impl Searcher {
                         {
                             best_path = Some(test_path);
                         }
-                        holder = paths[other_path as usize].next_for_link();
+                        holder = paths[other_path].next_for_link();
                     }
                     let Some(mut best_path) = best_path else { break 'link };
 
@@ -1330,7 +1328,7 @@ impl Searcher {
                         // add only if this may beat an existing path for that link
                         let mut dominator = cache.nodes_map.link(link).first_link_holder(current_node);
                         while let Some(dp) = dominator {
-                            let dp = &paths[dp as usize];
+                            let dp = &paths[dp];
                             if dp.airdistance != -1 && best_path.definitly_worse_than(dp) {
                                 break;
                             }
@@ -1341,11 +1339,11 @@ impl Searcher {
                             best_path.treedepth = paths[pi].treedepth + 1;
                             let idx = paths.push(best_path);
                             if let Some(previous) = cache.nodes_map.link_mut(link).add_link_holder(idx, current_node) {
-                                paths[idx as usize].set_next_for_link(previous);
+                                paths[idx].set_next_for_link(previous);
                             }
                             // addToOpenset
-                            if paths[idx as usize].cost >= 0 {
-                                open_set.add(open_key(&paths[idx as usize]), idx);
+                            if paths[idx].cost >= 0 {
+                                open_set.add(open_key(&paths[idx]), idx);
                             }
                         }
                     }
@@ -1624,7 +1622,7 @@ fn compile_track(
     let total_energy = elements[element].energy();
 
     let mut track = OsmTrack::new();
-    track.cost = paths[path as usize].cost;
+    track.cost = paths[path].cost;
     track.energy = paths.total_energy(path) as i32;
 
     let mut distance = 0i32;
