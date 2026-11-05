@@ -304,6 +304,17 @@ struct RouteTab: View {
                     .accessibilityHidden(true)
             }
         }
+        // dots from badge to badge, as the planner's, with room around each badge; the rows' lines start at the text
+        .background(alignment: .leading) {
+            VStack(spacing: 0) {
+                Dots().opacity(index == 0 ? 0 : 1)
+                Color.clear.frame(height: 32)
+                Dots().opacity(index == count - 1 ? 0 : 1)
+            }
+            .frame(width: 24)
+            .padding(.vertical, -12)
+        }
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + 36 }
         .contentShape(Rectangle())
         .onTapGesture { searching = Searching(id: stop.id, index: index) }
         .accessibilityElement(children: .contain)
@@ -319,5 +330,18 @@ struct RouteTab: View {
             Text(value).font(.title3.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A dotted line down the middle of its frame.
+private struct Dots: View {
+    var body: some View {
+        GeometryReader { size in
+            Path { path in
+                path.move(to: CGPoint(x: size.size.width / 2, y: 0))
+                path.addLine(to: CGPoint(x: size.size.width / 2, y: size.size.height))
+            }
+            .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 2.6, lineCap: .round, dash: [0, 7], dashPhase: 3.5))
+        }
     }
 }
