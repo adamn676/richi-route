@@ -17,6 +17,8 @@ struct PlannerMap: UIViewRepresentable {
     let moved: (_ center: [Double]) -> Void
     /// Receives the way to show the profile's point under the finger, once the map is made.
     let pointer: (_ show: @escaping ([Double]?) -> Void) -> Void
+    /// Reports, once the map has drawn, whether it has an offline map where the rider looks.
+    let covered: (Bool) -> Void
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
@@ -48,6 +50,7 @@ struct PlannerMap: UIViewRepresentable {
         context.coordinator.move = move
         context.coordinator.shape = shape
         context.coordinator.moved = moved
+        context.coordinator.covered = covered
         context.coordinator.bottomInset = bottomInset
         context.coordinator.show(content, on: map)
         context.coordinator.locate(locating, on: map)
@@ -72,6 +75,9 @@ struct PlannerMap: UIViewRepresentable {
         private var shown: MapContent?
         private var waiting: MapContent?
         private var located = 0
+        var covered: (Bool) -> Void = { _ in }
+        /// The layers drawn from the offline areas' maps.
+        private var areaLayers: Set<String> = []
 
         init(tap: @escaping (_ coord: [Double], _ leg: Int?) -> Void, move: @escaping (_ stop: UUID, _ coord: [Double]) -> Void,
              shape: @escaping (_ coord: [Double], _ leg: Int) -> Void, moved: @escaping (_ center: [Double]) -> Void) {
@@ -79,6 +85,13 @@ struct PlannerMap: UIViewRepresentable {
             self.move = move
             self.shape = shape
             self.moved = moved
+        }
+
+        /// Whether the middle of the map above the panel shows an offline map.
+        func mapViewDidBecomeIdle(_ map: MLNMapView) {
+            let middle = CGPoint(x: map.bounds.midX, y: (map.safeAreaInsets.top + map.bounds.height - bottomInset) / 2)
+            let near = CGRect(x: middle.x - 30, y: middle.y - 30, width: 60, height: 60)
+            covered(!areaLayers.isEmpty && !map.visibleFeatures(in: near, styleLayerIdentifiers: areaLayers).isEmpty)
         }
 
         func mapView(_ map: MLNMapView, regionDidChangeAnimated animated: Bool) {
@@ -161,6 +174,9 @@ struct PlannerMap: UIViewRepresentable {
 
             self.lines = lines
             self.pins = pins
+            areaLayers = Set(style.layers.compactMap { layer in
+                (layer as? MLNForegroundStyleLayer)?.sourceIdentifier?.hasPrefix("map-") == true ? layer.identifier : nil
+            })
             if let waiting { show(waiting, on: map) }
         }
 

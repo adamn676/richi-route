@@ -7,6 +7,7 @@ struct PlannerView: View {
     @State private var planner = Planner()
     @State private var detent = PresentationDetent.height(Self.peek)
     @State private var locating = 0
+    @State private var offMap = false
 
     var body: some View {
         GeometryReader { screen in
@@ -20,6 +21,8 @@ struct PlannerView: View {
                 planner.focus = center
             } pointer: { show in
                 planner.showPoint = show
+            } covered: { covered in
+                offMap = !covered
             }
         }
         .ignoresSafeArea()
@@ -46,6 +49,23 @@ struct PlannerView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: planner.notice)
+        // where the phone has no map, a word why the map is empty, unless something more pressing is shown there
+        .overlay(alignment: .top) {
+            if offMap && planner.picking == nil && planner.notice == nil {
+                Label("Keine Offline-Karte für dieses Gebiet", systemImage: "map")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.ink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glass(in: Capsule())
+                    .padding(.leading, 16)
+                    .padding(.trailing, 72)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: offMap)
         .overlay(alignment: .topTrailing) {
             VStack(spacing: 12) {
                 if !planner.routedLegs.isEmpty {
