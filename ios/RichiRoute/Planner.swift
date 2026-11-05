@@ -46,6 +46,13 @@ final class Planner {
     @ObservationIgnored var focus: [Double]?
     /// Counts the requests to frame the route; the map frames it when the count changes.
     private(set) var framing = 0
+    /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
+    /// moves: through SwiftUI, each move would redraw the planner.
+    @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
+    /// The stretch the elevation profile is zoomed into, which the map lifts and frames.
+    var profileStretch: [[Double]] = [] {
+        didSet { if !profileStretch.isEmpty { frame() } }
+    }
     /// The stop the rider is replacing: the next tap on the map puts it there.
     private(set) var picking: UUID?
     /// What the phone lets the rider feel, a new value each time (`PlannerView`).
@@ -506,7 +513,7 @@ final class Planner {
         let pins = stops.enumerated().compactMap { index, stop in
             stop.coord.map { MapContent.Pin(stop: stop.id, coord: $0, badge: Self.badge(at: index, of: stops.count), error: stopErrors[stop.id] != nil) }
         }
-        return MapContent(lines: lines, pins: pins, framing: framing)
+        return MapContent(lines: lines, pins: pins, framing: framing, stretch: profileStretch)
     }
 }
 
@@ -549,4 +556,6 @@ struct MapContent: Equatable {
     let lines: [Line]
     let pins: [Pin]
     let framing: Int
+    /// The stretch the profile is zoomed into, which framing then shows alone.
+    var stretch: [[Double]] = []
 }

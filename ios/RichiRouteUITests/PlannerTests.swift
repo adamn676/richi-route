@@ -9,9 +9,13 @@ final class PlannerTests: XCTestCase {
         app.launch()
         // the app opens with the route it closed with: start a new one, as a rider would
         let tip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch
+        let grabber = app.buttons["Sheet Grabber"]
         if !tip.waitForExistence(timeout: 20) {
+            // the stops' tools, under the profile in the raised panel
+            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
             app.buttons["Weitere Aktionen"].tap()
             app.buttons["Neue Route"].tap()
+            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
         }
         XCTAssertTrue(tip.waitForExistence(timeout: 60))
         shot(app, "1-empty")
@@ -26,13 +30,25 @@ final class PlannerTests: XCTestCase {
         let figures = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' km'")).firstMatch
         XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route between the two taps")
         shot(app, "2-route")
-        // the profile, below the stops in the raised panel
-        let grabber = app.buttons["Sheet Grabber"]
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
-        XCTAssertTrue(app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Höhenprofil'")).firstMatch.waitForExistence(timeout: 20))
+        // the profile, under the figures in the half-raised panel, the route on the map above it
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
+        let chart = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Höhenprofil'")).firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Zum Zoomen halten und ziehen"].exists)
         shot(app, "2b-profile")
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+        // a finger drawn along the profile points along the route, and lets go of it when lifted
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0)
+        XCTAssertTrue(app.staticTexts["Höhenprofil"].waitForExistence(timeout: 5))
+        // held, then drawn, it marks a stretch and zooms into it
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            .press(forDuration: 0.8, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)))
+        XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForExistence(timeout: 10), "no zoomed stretch")
+        shot(app, "2c-stretch")
+        app.buttons["Ganzes Profil zeigen"].tap()
+        XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForNonExistence(timeout: 10))
 
+        // the stops' tools, under the profile in the half-raised panel
         app.buttons["Rückgängig"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 10))
         app.buttons["Wiederholen"].tap()
@@ -40,6 +56,7 @@ final class PlannerTests: XCTestCase {
         shot(app, "3-redone")
 
         // the search closes with its X, the stop unchanged
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
         app.staticTexts["S"].firstMatch.tap()
         let search = app.textFields["Start suchen"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
@@ -80,6 +97,7 @@ final class PlannerTests: XCTestCase {
         shot(app, "7-restored")
 
         // saved under a name, replaced by a new route, opened again from "Meine Routen"
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
         app.buttons["Weitere Aktionen"].tap()
         app.buttons["In „Meine Routen“ speichern …"].tap()
         let field = app.textFields["Routenname"]

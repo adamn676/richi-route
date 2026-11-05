@@ -5,6 +5,8 @@ struct RouteSheet: View {
     @Bindable var planner: Planner
     let folded: Bool
     let fold: () -> Void
+    /// Lowers the panel to half the screen, so a stretch shows on the map above its profile.
+    let halve: () -> Void
     @State private var tab = Tab.route
 
     enum Tab { case route, library }
@@ -20,7 +22,7 @@ struct RouteSheet: View {
             .padding(.top, 20)
             .padding(.bottom, 4)
             switch tab {
-            case .route: RouteTab(planner: planner, folded: folded, fold: fold)
+            case .route: RouteTab(planner: planner, folded: folded, fold: fold, halve: halve)
             case .library: MyRoutes(planner: planner) { tab = .route }
             }
         }
@@ -34,8 +36,11 @@ struct RouteTab: View {
     let folded: Bool
     /// Folds the panel, so the map is free for picking a point.
     let fold: () -> Void
+    let halve: () -> Void
     @State private var searching: Searching?
     @State private var profile: Profile?
+    /// The stretch the profile is zoomed into, for this route.
+    @State private var zoomed: (route: [String], range: ClosedRange<Double>)?
     @State private var naming = false
     @State private var newName = ""
 
@@ -45,9 +50,10 @@ struct RouteTab: View {
         let index: Int
     }
 
-    private static let ink = Color(MapStyle.ink)
+    private static let ink = Color.ink
     private static let top = "summary"
-    private static let danger = Color(MapStyle.danger)
+    private static let profileRow = "profile"
+    private static let danger = Color.danger
 
     var body: some View {
         ScrollViewReader { scroller in
@@ -56,15 +62,31 @@ struct RouteTab: View {
             if let problem = planner.problem {
                 Section { problemView(problem) }
             }
+            // under the figures, so the half-raised panel shows the profile with the map above it
+            if planner.isComplete, let profile {
+                Section {
+                    ElevationProfile(profile: profile, legs: planner.routedLegs.compactMap { $0 }, range: range) { point in
+                        planner.showPoint(point?.coordinate)
+                    } zoom: { range in
+                        zoomed = range.map { (planner.pairs.map(\.key), $0) }
+                        planner.profileStretch = range.map { profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: planner.routedLegs.compactMap { $0 }) } ?? []
+                        if range == nil {
+                            planner.frame()
+                        } else {
+                            halve()
+                            withAnimation { scroller.scrollTo(Self.profileRow, anchor: .top) }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .id(Self.profileRow)
+                }
+            }
             Section {
                 // a row rather than the list's section header, which brings a large gap of its own
                 stopsHeader.listRowSeparator(.hidden)
                 stops
             }
             if planner.isComplete {
-                if let profile {
-                    Section { ElevationProfile(profile: profile).padding(.vertical, 4) }
-                }
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
                     Text("Untergrund").font(.headline).foregroundStyle(Self.ink).listRowSeparator(.hidden)
@@ -85,11 +107,15 @@ struct RouteTab: View {
         // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
         .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
         }
-        // the profile of the route as it stands: asked again whenever a leg changes
-        .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
-            guard planner.isComplete, let engine = planner.engine else { return profile = nil }
+        // the profile of the route as it stands, or of its stretch: asked again whenever a leg or the stretch changes
+        .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: range)) {
+            guard planner.isComplete, let engine = planner.engine else {
+                planner.profileStretch = []
+                return profile = nil
+            }
+            if zoomed != nil && range == nil { planner.profileStretch = [] }
             let legs = planner.routedLegs.compactMap { $0 }
-            profile = try? await engine.profile(legs)
+            profile = try? await engine.profile(legs, range: range)
         }
         .alert("Route speichern", isPresented: $naming) {
             TextField("Routenname", text: $newName)
@@ -105,6 +131,16 @@ struct RouteTab: View {
                 fold()
             }
         }
+    }
+
+    /// The zoomed stretch while the route is the one it was chosen on.
+    private var range: ClosedRange<Double>? {
+        zoomed.flatMap { $0.route == planner.pairs.map(\.key) ? $0.range : nil }
+    }
+
+    private struct ProfileRequest: Equatable {
+        let route: [String]
+        let range: ClosedRange<Double>?
     }
 
     // MARK: Summary
@@ -226,7 +262,7 @@ struct RouteTab: View {
                 .font(.caption.bold())
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
-                .background(error == nil ? Self.ink : Self.danger, in: Circle())
+                .background(Color(error == nil ? MapStyle.ink : MapStyle.danger), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 if let coord = stop.coord {
                     Text(planner.names[coord] ?? Format.coordinate(coord))
@@ -277,7 +313,7 @@ struct RouteTab: View {
                 Circle().fill(Color(MapStyle.shared.color(part.surface))).frame(width: 10, height: 10)
                 Text(part.surface.label)
                 Spacer()
-                Text("\(Format.km(part.meters)) km")
+                Text(Format.length(part.meters))
                 Text("\(percent(part.meters, of: total)) %").foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
             }
             .font(.subheadline)

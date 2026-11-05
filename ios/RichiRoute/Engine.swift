@@ -68,8 +68,9 @@ struct Engine: Sendable {
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["point"] as? [Double]
     }
 
-    /// The route's elevation profile from its legs, as the planner draws it; nil without heights.
-    func profile(_ legs: [Leg]) async throws -> Profile? {
+    /// The route's elevation profile from its legs, as the planner draws it, whole or the stretch `range`; nil without
+    /// heights.
+    func profile(_ legs: [Leg], range: ClosedRange<Double>? = nil) async throws -> Profile? {
         struct Body: Encodable {
             struct Part: Encodable {
                 let coordinates: [[Double]]
@@ -77,13 +78,15 @@ struct Engine: Sendable {
                 let distanceMeters: Double
             }
             let legs: [Part]
+            let from: Double?
+            let to: Double?
         }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/profile")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(Body(legs: legs.map {
             Body.Part(coordinates: $0.coordinates, elevations: $0.elevations, distanceMeters: $0.distanceMeters)
-        }))
+        }, from: range?.lowerBound, to: range?.upperBound))
         return try JSONDecoder().decode(Profile?.self, from: try await ask(request))
     }
 

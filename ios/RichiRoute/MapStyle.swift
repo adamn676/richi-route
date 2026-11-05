@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// The offline map (Map/style.json, from scripts/build-ios-map.mjs) with a pair of sources (map, relief) per
@@ -36,7 +37,8 @@ struct MapStyle: Sendable {
         json = (try? JSONSerialization.data(withJSONObject: style)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
 
-    /// The planner's ink (`--accent`) and its colour for errors (`--danger`), for markers and the panel alike.
+    /// The planner's ink (`--accent`) and its colour for errors (`--danger`), as the map's markers have them on its
+    /// light map in either mode; text and controls take `Color.ink` and `Color.danger`.
     static let ink = UIColor(red: 0x12 / 255, green: 0x18 / 255, blue: 0x16 / 255, alpha: 1)
     static let inkHex = "#121816"
     static let danger = UIColor(red: 0xa3 / 255, green: 0x26 / 255, blue: 0x1b / 255, alpha: 1)
@@ -52,6 +54,13 @@ struct MapStyle: Sendable {
 
     /// The same as `#rrggbb`, for style expressions.
     func hex(_ name: String) -> String { colors[name] ?? "#808080" }
+}
+
+extension Color {
+    /// The ink and the error colour for text and controls: the planner's own, and in Dark Mode light enough to read
+    /// on the dark panel.
+    static let ink = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0xe6 / 255, green: 0xeb / 255, blue: 0xe9 / 255, alpha: 1) : MapStyle.ink })
+    static let danger = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0xff / 255, green: 0x8a / 255, blue: 0x7a / 255, alpha: 1) : MapStyle.danger })
 }
 
 /// Where the map and routing data lie: the app's own `Library/Application Support/RichiRoute`, which stays from one

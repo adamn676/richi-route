@@ -14,6 +14,8 @@ struct PlannerMap: UIViewRepresentable {
     let move: (_ stop: UUID, _ coord: [Double]) -> Void
     /// Reports the map's centre after each move.
     let moved: (_ center: [Double]) -> Void
+    /// Receives the way to show the profile's point under the finger, once the map is made.
+    let pointer: (_ show: @escaping ([Double]?) -> Void) -> Void
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
@@ -34,6 +36,9 @@ struct PlannerMap: UIViewRepresentable {
         holding.minimumPressDuration = 0.25
         holding.delegate = context.coordinator
         map.addGestureRecognizer(holding)
+        pointer { [weak map, weak coordinator = context.coordinator] point in
+            if let map { coordinator?.point(point, on: map) }
+        }
         return map
     }
 
@@ -58,6 +63,9 @@ struct PlannerMap: UIViewRepresentable {
         var bottomInset: CGFloat = 0
         private var lines: MLNShapeSource?
         private var pins: MLNShapeSource?
+        private var stretch: MLNShapeSource?
+        private var focus: MLNShapeSource?
+        private var pointed: [Double]?
         private var shown: MapContent?
         private var waiting: MapContent?
         private var located = 0
@@ -96,7 +104,13 @@ struct PlannerMap: UIViewRepresentable {
             pending.lineColor = NSExpression(mglJSONObject: ["match", ["get", "style"], "air", colors.hex("air"), colors.hex("waiting")])
             pending.lineWidth = NSExpression(forConstantValue: 3)
             pending.lineDashPattern = NSExpression(forConstantValue: [2, 2])
-            for layer in [outline, line, pending] {
+            // the stretch the profile is zoomed into, lifted in the planner's ink beneath the route
+            let stretch = MLNShapeSource(identifier: "stretch", shape: nil)
+            style.addSource(stretch)
+            let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
+            lifted.lineColor = NSExpression(forConstantValue: MapStyle.ink)
+            lifted.lineWidth = NSExpression(forConstantValue: 13)
+            for layer in [lifted, outline, line, pending] {
                 layer.lineCap = NSExpression(forConstantValue: "round")
                 layer.lineJoin = NSExpression(forConstantValue: "round")
                 style.addLayer(layer)
@@ -117,6 +131,17 @@ struct PlannerMap: UIViewRepresentable {
             badges.textIgnoresPlacement = NSExpression(forConstantValue: true)
             style.addLayer(circles)
             style.addLayer(badges)
+            // the profile's point under the finger, as the planner's
+            let focus = MLNShapeSource(identifier: "focus", shape: nil)
+            style.addSource(focus)
+            let dot = MLNCircleStyleLayer(identifier: "focus", source: focus)
+            dot.circleRadius = NSExpression(forConstantValue: 7)
+            dot.circleColor = NSExpression(forConstantValue: UIColor.white)
+            dot.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
+            dot.circleStrokeWidth = NSExpression(forConstantValue: 3)
+            style.addLayer(dot)
+            self.stretch = stretch
+            self.focus = focus
 
             self.lines = lines
             self.pins = pins
@@ -134,7 +159,30 @@ struct PlannerMap: UIViewRepresentable {
                 return feature
             })
             draw(content.pins)
+            stretch?.shape = content.stretch.count > 1
+                ? MLNPolylineFeature(coordinates: content.stretch.map(Self.coordinate), count: UInt(content.stretch.count)) : nil
             if reframe { frame(content, on: map) }
+        }
+
+        /// The profile's point under the finger. As the finger comes down, the route is brought out from under the
+        /// panel when part of it is there, so the point stays in sight as it moves.
+        func point(_ point: [Double]?, on map: MLNMapView) {
+            if pointed == nil, point != nil, let shown, !inSight(shown, on: map) { frame(shown, on: map) }
+            pointed = point
+            focus?.shape = point.map { point in
+                let feature = MLNPointFeature()
+                feature.coordinate = Self.coordinate(point)
+                return feature
+            }
+        }
+
+        /// Whether the route, or its zoomed stretch, lies in the map above the panel; never where too little of the
+        /// map is left to show it.
+        private func inSight(_ content: MapContent, on map: MLNMapView) -> Bool {
+            guard let bounds = bounds(of: content) else { return true }
+            let free = CGRect(x: 0, y: map.safeAreaInsets.top, width: map.bounds.width, height: map.bounds.height - map.safeAreaInsets.top - bottomInset)
+            guard free.height >= 160 else { return true }
+            return [bounds.sw, bounds.ne].allSatisfy { free.contains(map.convert($0, toPointTo: map)) }
         }
 
         private func draw(_ stops: [MapContent.Pin]) {
@@ -184,14 +232,20 @@ struct PlannerMap: UIViewRepresentable {
             }
         }
 
-        private func frame(_ content: MapContent, on map: MLNMapView) {
-            let points = content.lines.flatMap(\.coordinates) + content.pins.map(\.coord)
-            guard let first = points.first else { return }
+        /// The route with its stops, or the stretch the profile is zoomed into.
+        private func bounds(of content: MapContent) -> MLNCoordinateBounds? {
+            let points = content.stretch.isEmpty ? content.lines.flatMap(\.coordinates) + content.pins.map(\.coord) : content.stretch
+            guard let first = points.first else { return nil }
             var bounds = MLNCoordinateBounds(sw: Self.coordinate(first), ne: Self.coordinate(first))
             for point in points {
                 bounds.sw = CLLocationCoordinate2D(latitude: min(bounds.sw.latitude, point[1]), longitude: min(bounds.sw.longitude, point[0]))
                 bounds.ne = CLLocationCoordinate2D(latitude: max(bounds.ne.latitude, point[1]), longitude: max(bounds.ne.longitude, point[0]))
             }
+            return bounds
+        }
+
+        private func frame(_ content: MapContent, on map: MLNMapView) {
+            guard let bounds = bounds(of: content) else { return }
             // below the bars at the top (a hint or a confirmation) and beside the buttons
             let padding = UIEdgeInsets(top: 130, left: 40, bottom: bottomInset + 40, right: 72)
             map.setVisibleCoordinateBounds(bounds, edgePadding: padding, animated: true, completionHandler: nil)

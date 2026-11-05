@@ -16,6 +16,8 @@ struct PlannerView: View {
                 planner.move(stop, to: coord)
             } moved: { center in
                 planner.focus = center
+            } pointer: { show in
+                planner.showPoint = show
             }
         }
         .ignoresSafeArea()
@@ -51,7 +53,11 @@ struct PlannerView: View {
             .padding(.top, 8)
         }
         .sheet(isPresented: .constant(true)) {
-            RouteSheet(planner: planner, folded: detent == .height(Self.peek)) { detent = .height(Self.peek) }
+            RouteSheet(planner: planner, folded: detent == .height(Self.peek)) {
+                detent = .height(Self.peek)
+            } halve: {
+                detent = .medium
+            }
                 // no full height: iOS swaps the glass for white there, abruptly
                 .presentationDetents([.height(Self.peek), .medium, .fraction(0.9)], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.9)))
@@ -101,7 +107,7 @@ struct NoticeBar: View {
                     .padding(.horizontal, 14)
             }
         }
-        .foregroundStyle(Color(MapStyle.ink))
+        .foregroundStyle(Color.ink)
         .glass(in: Capsule())
         .task(id: notice.id) {
             try? await Task.sleep(for: .seconds(notice.restore == nil ? 4 : 8))
@@ -124,7 +130,7 @@ struct PickHint: View {
                 .frame(minHeight: 44)
                 .padding(.horizontal, 14)
         }
-        .foregroundStyle(Color(MapStyle.ink))
+        .foregroundStyle(Color.ink)
         .glass(in: Capsule())
     }
 }
@@ -142,7 +148,7 @@ struct MapButton: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .foregroundStyle(Color(MapStyle.ink))
+        .foregroundStyle(Color.ink)
         .glass(in: Circle())
         .accessibilityLabel(label)
     }

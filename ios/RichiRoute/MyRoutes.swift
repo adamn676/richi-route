@@ -21,7 +21,7 @@ struct MyRoutes: View {
     @State private var newName = ""
     @State private var deleting: RouteStore.Entry?
 
-    private static let ink = Color(MapStyle.ink)
+    private static let ink = Color.ink
 
     var body: some View {
         List {

@@ -81,8 +81,8 @@ struct StopSearch: View {
                 }
             }
             .listStyle(.plain)
-            .tint(Color(MapStyle.ink))
-            .foregroundStyle(Color(MapStyle.ink))
+            .tint(Color.ink)
+            .foregroundStyle(Color.ink)
             // as the planner: from three letters, after a short pause in typing
             .task(id: query) {
                 let typed = query.trimmingCharacters(in: .whitespaces)
@@ -125,7 +125,7 @@ struct StopSearch: View {
             .glass(in: Circle())
             .accessibilityLabel("Abbrechen")
         }
-        .foregroundStyle(Color(MapStyle.ink))
+        .foregroundStyle(Color.ink)
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 8)
