@@ -114,10 +114,12 @@ struct PlannerMap: UIViewRepresentable {
             let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
             lifted.lineColor = NSExpression(forConstantValue: MapStyle.ink)
             lifted.lineWidth = NSExpression(forConstantValue: 13)
+            // under the map's names, as the planner draws it, so street and place names stay readable on the route
+            let labels = style.layers.first { $0 is MLNSymbolStyleLayer }
             for layer in [lifted, outline, line, pending] {
                 layer.lineCap = NSExpression(forConstantValue: "round")
                 layer.lineJoin = NSExpression(forConstantValue: "round")
-                style.addLayer(layer)
+                if let labels { style.insertLayer(layer, below: labels) } else { style.addLayer(layer) }
             }
 
             // the planner's markers: its ink, red for a stop without a road, a white ring; a Formpunkt white in an ink ring

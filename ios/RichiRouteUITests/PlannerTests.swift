@@ -6,14 +6,11 @@ final class PlannerTests: XCTestCase {
     @MainActor
     func testTapsPlanARoute() {
         let app = XCUIApplication()
+        // without the route the app closed with, on the same map each time
+        app.launchArguments = ["-fresh"]
         app.launch()
-        // the app opens with the route it closed with: start a new one, as a rider would
         let tip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch
         let grabber = app.buttons["Sheet Grabber"]
-        if !tip.waitForExistence(timeout: 20) {
-            app.buttons["Weitere Aktionen"].tap()
-            app.buttons["Neue Route"].tap()
-        }
         XCTAssertTrue(tip.waitForExistence(timeout: 60))
         shot(app, "1-empty")
 
@@ -28,8 +25,8 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route between the two taps")
         shot(app, "2-route")
         // the route held and dragged aside: a Formpunkt there, which "Formpunkte entfernen" takes away again
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.76, dy: 0.302))
-            .press(forDuration: 0.6, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.36)))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.567, dy: 0.356))
+            .press(forDuration: 0.6, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.46)))
         app.buttons["Weitere Aktionen"].tap()
         let unshape = app.buttons["Formpunkte entfernen"]
         XCTAssertTrue(unshape.waitForExistence(timeout: 5), "no Formpunkt after dragging the route")
@@ -115,6 +112,7 @@ final class PlannerTests: XCTestCase {
         let title = routeName.label
         sleep(1)
         app.terminate()
+        app.launchArguments = []
         app.launch()
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 60), "\(title) not restored")
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
@@ -148,6 +146,16 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["„Testrunde“ geöffnet."].waitForExistence(timeout: 5))
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "9-opened")
+
+        // two Zwischenstopps: their grips show that they change places when held and dragged
+        let add = app.buttons["Zwischenstopp hinzufügen"]
+        add.tap()
+        add.tap()
+        XCTAssertTrue(app.staticTexts["Zwischenstopp 2: Karte antippen"].waitForExistence(timeout: 5))
+        shot(app, "10-grips")
+        app.buttons["Zwischenstopp 2 entfernen"].tap()
+        app.buttons["Zwischenstopp 1 entfernen"].tap()
+        XCTAssertTrue(figures.waitForExistence(timeout: 30))
     }
 
     @MainActor

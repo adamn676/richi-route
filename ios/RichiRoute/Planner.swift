@@ -105,8 +105,8 @@ final class Planner {
     func start() async {
         engine = await Engine.start()
         engineMissing = engine == nil
-        // the route as it was when the app last closed
-        if let (file, id) = RouteStore.current() {
+        // the route as it was when the app last closed; the UI tests start without it (`-fresh`), from the same map
+        if !ProcessInfo.processInfo.arguments.contains("-fresh"), let (file, id) = RouteStore.current() {
             open(file)
             if let id { mark(saved: id, name: file.name) }
         }

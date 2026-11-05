@@ -262,6 +262,9 @@ struct RouteTab: View {
     /// A stop: tapping it replaces it by a tap on the map; a Zwischenstopp also has its × to remove it.
     private func stopRow(_ stop: Planner.Stop, at index: Int, removable: Bool) -> some View {
         let count = planner.waypoints.count, error = planner.stopErrors[stop.id]
+        // held and dragged, a Zwischenstopp changes places with another, as in Apple Maps: its grip shows that, where
+        // there is another to change with
+        let movable = removable && count > 3
         return HStack(spacing: 12) {
             Text(Planner.badge(at: index, of: count))
                 .font(.caption.bold())
@@ -290,8 +293,15 @@ struct RouteTab: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .padding(.trailing, -12)
+                .padding(.trailing, movable ? -10 : -12)
                 .accessibilityLabel("\(Planner.label(at: index, of: count)) entfernen")
+            }
+            // a sign, not a button: the whole row is held to drag it
+            if movable {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
         }
         .contentShape(Rectangle())
