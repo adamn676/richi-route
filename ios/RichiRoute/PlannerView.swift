@@ -24,8 +24,10 @@ struct PlannerView: View {
         }
         .ignoresSafeArea()
         .overlay(alignment: .top) {
-            if let picking = planner.picking, let index = planner.waypoints.firstIndex(where: { $0.id == picking }) {
-                PickHint(text: Self.pickText(at: index, of: planner.waypoints.count), cancel: planner.cancelPick)
+            if let picking = planner.picking {
+                // a stop not on the route yet is a new Zwischenstopp, before the Ziel
+                let shown = planner.waypoints, index = shown.firstIndex { $0.id == picking }
+                PickHint(text: Self.pickText(at: index ?? shown.count - 1, of: shown.count + (index == nil ? 1 : 0)), cancel: planner.cancelPick)
                     .padding(.leading, 16)
                     .padding(.trailing, 72)
                     .padding(.top, 8)

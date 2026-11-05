@@ -287,10 +287,15 @@ final class Planner {
         move(id, to: coord)
     }
 
+    /// Puts a stop at `coord`; an `id` the route has not yet is a new Zwischenstopp, before the Ziel (as the planner's
+    /// `addIntermediateStopAndPrepare`), so a Zwischenstopp is added only once it has its place.
     func move(_ id: UUID, to coord: [Double]) {
         change {
-            guard let at = stops.firstIndex(where: { $0.id == id }) else { return nil }
-            stops[at].coord = coord
+            if let at = stops.firstIndex(where: { $0.id == id }) {
+                stops[at].coord = coord
+            } else {
+                stops.insert(Stop(coord, id: id), at: stops.count - 1)
+            }
             return id
         }
     }
@@ -299,14 +304,6 @@ final class Planner {
     func remove(_ id: UUID) {
         change {
             stops.removeAll { $0.id == id }
-            return nil
-        }
-    }
-
-    /// An empty Zwischenstopp before the Ziel, which the next tap on the map fills.
-    func addStop() {
-        change {
-            stops.insert(Stop(), at: stops.count - 1)
             return nil
         }
     }
@@ -324,7 +321,7 @@ final class Planner {
         }
     }
 
-    /// Starts replacing a stop by a tap on the map; picking it again ends that.
+    /// Starts placing a stop, or a new one, by a tap on the map; picking it again ends that.
     func pick(_ id: UUID) {
         picking = picking == id ? nil : id
     }

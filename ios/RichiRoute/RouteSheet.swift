@@ -84,10 +84,12 @@ struct RouteTab: View {
     /// The route's surfaces with the legs they were made from, likewise.
     @State private var surfaces: (value: Surfaces, legs: [Leg])?
 
-    /// The stop whose search is open.
+    /// The stop whose search is open, by its place among the stops and their number with it: a new Zwischenstopp
+    /// is one not on the route yet, before the Ziel.
     private struct Searching: Identifiable {
         let id: UUID
         let index: Int
+        let count: Int
     }
 
     private static let top = "summary"
@@ -167,7 +169,7 @@ struct RouteTab: View {
             shown = profile.map { ($0, legs, range) }
         }
         .sheet(item: $searching) { stop in
-            StopSearch(title: Planner.label(at: stop.index, of: planner.waypoints.count), engine: planner.engine, near: planner.focus) { coord, name in
+            StopSearch(title: Planner.label(at: stop.index, of: stop.count), engine: planner.engine, near: planner.focus) { coord, name in
                 planner.choose(stop.id, at: coord, name: name)
             } pickOnMap: {
                 planner.pick(stop.id)
@@ -252,7 +254,8 @@ struct RouteTab: View {
             .onDelete { offsets in offsets.map { waypoints[$0].id }.forEach(planner.remove) }
             .onMove(perform: planner.moveStops)
             if planner.hasRoute {
-                Button { planner.addStop() } label: {
+                // its search first, so a Zwischenstopp is added once chosen, never empty
+                Button { searching = Searching(id: UUID(), index: waypoints.count - 1, count: waypoints.count + 1) } label: {
                     Label("Zwischenstopp hinzufügen", systemImage: "plus")
                 }
             }
@@ -266,11 +269,18 @@ struct RouteTab: View {
         // there is another to change with
         let movable = removable && count > 3
         return HStack(spacing: 12) {
+            // an empty Start or Ziel as an empty ring, as the planner's
             Text(Planner.badge(at: index, of: count))
                 .font(.caption.bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(stop.coord == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white))
                 .frame(width: 24, height: 24)
-                .background(Color(error == nil ? MapStyle.ink : MapStyle.danger), in: Circle())
+                .background {
+                    if stop.coord == nil {
+                        Circle().strokeBorder(.secondary, style: StrokeStyle(lineWidth: 2, dash: [3, 3]))
+                    } else {
+                        Circle().fill(Color(error == nil ? MapStyle.ink : MapStyle.danger))
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 if let coord = stop.coord {
                     Text(planner.names[coord] ?? Format.coordinate(coord))
@@ -316,7 +326,7 @@ struct RouteTab: View {
         }
         .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + 36 }
         .contentShape(Rectangle())
-        .onTapGesture { searching = Searching(id: stop.id, index: index) }
+        .onTapGesture { searching = Searching(id: stop.id, index: index, count: count) }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Öffnet die Suche für diesen Punkt")

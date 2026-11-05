@@ -147,11 +147,19 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "9-opened")
 
-        // two Zwischenstopps: their grips show that they change places when held and dragged
-        let add = app.buttons["Zwischenstopp hinzufügen"]
-        add.tap()
-        add.tap()
-        XCTAssertTrue(app.staticTexts["Zwischenstopp 2: Karte antippen"].waitForExistence(timeout: 5))
+        // two Zwischenstopps, each added from its search by a tap on the map; their grips show that they change places
+        // when held and dragged
+        for (index, spot) in [CGVector(dx: 0.3, dy: 0.25), CGVector(dx: 0.6, dy: 0.2)].enumerated() {
+            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+            app.buttons["Zwischenstopp hinzufügen"].tap()
+            XCTAssertTrue(app.textFields["Zwischenstopp \(index + 1) suchen"].waitForExistence(timeout: 5))
+            app.buttons["Auf der Karte wählen"].tap()
+            XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForExistence(timeout: 5))
+            app.coordinate(withNormalizedOffset: spot).tap()
+            XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForNonExistence(timeout: 5))
+        }
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        XCTAssertTrue(app.buttons["Zwischenstopp 2 entfernen"].waitForExistence(timeout: 10))
         shot(app, "10-grips")
         app.buttons["Zwischenstopp 2 entfernen"].tap()
         app.buttons["Zwischenstopp 1 entfernen"].tap()
