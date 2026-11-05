@@ -1,17 +1,21 @@
 import Foundation
 import Observation
 
-/// The route being planned, as the web planner's route store keeps it: Start, Zwischenstopps and Ziel, each
-/// snapped to the nearest road by the engine, and a leg routed between each pair of placed neighbours.
+/// The route being planned, as the web planner's route store keeps it: Start, Zwischenstopps and Ziel with the
+/// Formpunkte between them, each snapped to the nearest road by the engine, and a leg routed between each pair of
+/// placed neighbours.
 @MainActor @Observable
 final class Planner {
     struct Stop: Identifiable, Equatable, Sendable {
         let id: UUID
         var coord: [Double]?
+        /// A Formpunkt: it only shapes the route, with no row, badge or name of its own.
+        var shape = false
 
-        init(_ coord: [Double]? = nil, id: UUID = UUID()) {
+        init(_ coord: [Double]? = nil, id: UUID = UUID(), shape: Bool = false) {
             self.id = id
             self.coord = coord
+            self.shape = shape
         }
     }
 
@@ -29,7 +33,11 @@ final class Planner {
 
     var engine: Engine?
     private(set) var engineMissing = false
+    /// Start, Zwischenstopps, Ziel and the Formpunkte between them, in order.
     private(set) var stops = [Stop(), Stop()]
+    /// The stops the rider sees and edits: Start, Zwischenstopps and Ziel.
+    var waypoints: [Stop] { stops.filter { !$0.shape } }
+    var hasShapes: Bool { stops.contains(where: \.shape) }
     /// Legs by their ends; routed ones stay, so undo and redo bring them back at once.
     private(set) var legs: [String: LegState] = [:]
     /// The leg requests running, by their ends; one no longer needed is cancelled, which stops its search.
@@ -101,15 +109,18 @@ final class Planner {
     /// The route as the planner saves it, with its stops' names and the legs routed so far.
     func file(named name: String) -> RouteFile {
         let points = stops.enumerated().map { index, stop in
+            if stop.shape {
+                return RouteFile.Point(id: RouteFile.pointID(stop), type: "shape", kind: nil, coord: stop.coord, address: nil, userInput: nil)
+            }
             let address = stop.coord.flatMap { names[$0] }
-            return RouteFile.Point(id: RouteFile.stopID(stop.id), type: "stop",
+            return RouteFile.Point(id: RouteFile.pointID(stop), type: "stop",
                                    kind: index == 0 ? "start" : index == stops.count - 1 ? "end" : "via",
                                    coord: stop.coord, address: address, userInput: address ?? "")
         }
         var saved: [String: RouteFile.SavedLeg] = [:]
         for pair in pairs {
             guard case .routed(let leg) = legs[pair.key] else { continue }
-            let (from, to) = (RouteFile.stopID(pair.from.id), RouteFile.stopID(pair.to.id))
+            let (from, to) = (RouteFile.pointID(pair.from), RouteFile.pointID(pair.to))
             saved["\(from):\(to)"] = RouteFile.SavedLeg(
                 id: "\(from):\(to)", fromId: from, toId: to, fromCoord: pair.from.coord!, toCoord: pair.to.coord!,
                 coordinates: leg.coordinates, elevations: leg.elevations, surfaces: leg.surfaces,
@@ -121,14 +132,15 @@ final class Planner {
     /// Opens a saved route in place of this one. Its stops keep their names, and legs routed under the app's rules stay;
     /// the others are routed again.
     func open(_ file: RouteFile) {
-        let saved = file.draft.points.filter { $0.type == "stop" }.map { point in
-            Stop(point.coord, id: UUID(uuidString: String(point.id.dropFirst("stop-".count))) ?? UUID())
+        // a Formpunkt without its place shapes nothing
+        let saved = file.draft.points.filter { $0.type == "stop" || $0.type == "shape" && $0.coord != nil }.map { point in
+            Stop(point.coord, id: UUID(uuidString: String(point.id.drop(while: { $0 != "-" }).dropFirst())) ?? UUID(), shape: point.type == "shape")
         }
-        guard saved.count >= 2 else { return }
+        guard saved.count(where: { !$0.shape }) >= 2 else { return }
         stops = saved
         stopErrors = [:]
         snapping = [:]
-        for point in file.draft.points where point.type == "stop" {
+        for point in file.draft.points {
             guard let coord = point.coord else { continue }
             onRoad.insert(coord)
             if let address = point.address { names[coord] = address }
@@ -242,6 +254,23 @@ final class Planner {
         }
     }
 
+    /// The route dragged on the leg `pair`: a Formpunkt where it was let go.
+    func shape(_ coord: [Double], onLeg pair: Int) {
+        guard pairs.indices.contains(pair), let at = stops.firstIndex(where: { $0.id == pairs[pair].to.id }) else { return }
+        change {
+            stops.insert(Stop(coord, shape: true), at: at)
+            return stops[at].id
+        }
+    }
+
+    /// "Formpunkte entfernen": the route between the stops again.
+    func removeShapes() {
+        change {
+            stops.removeAll(where: \.shape)
+            return nil
+        }
+    }
+
     /// A stop put at a place found in the search, which keeps the place's name; without one the road's is looked up.
     func choose(_ id: UUID, at coord: [Double], name: String?) {
         chosen[id] = name
@@ -256,11 +285,10 @@ final class Planner {
         }
     }
 
-    /// Removes a Zwischenstopp; Start and Ziel are emptied instead.
+    /// Removes a Zwischenstopp.
     func remove(_ id: UUID) {
         change {
-            guard let at = stops.firstIndex(where: { $0.id == id }) else { return nil }
-            if at == 0 || at == stops.count - 1 { stops[at].coord = nil } else { stops.remove(at: at) }
+            stops.removeAll { $0.id == id }
             return nil
         }
     }
@@ -273,11 +301,15 @@ final class Planner {
         }
     }
 
-    /// Reorders Zwischenstopps among themselves; Start and Ziel keep their places.
+    /// Reorders Zwischenstopps among themselves (offsets into `waypoints`); Start, Ziel and the Formpunkte keep their
+    /// places (`moveWaypointTo`).
     func moveStops(from source: IndexSet, to destination: Int) {
-        guard source.allSatisfy({ $0 > 0 && $0 < stops.count - 1 }) else { return }
+        var order = waypoints
+        guard source.allSatisfy({ $0 > 0 && $0 < order.count - 1 }) else { return }
+        order.move(fromOffsets: source, toOffset: min(max(destination, 1), order.count - 1))
         change {
-            stops.move(fromOffsets: source, toOffset: min(max(destination, 1), stops.count - 1))
+            var next = order.makeIterator()
+            stops = stops.map { $0.shape ? $0 : next.next()! }
             return nil
         }
     }
@@ -376,7 +408,7 @@ final class Planner {
                     stops[at].coord = snapped
                     if let name = chosen.removeValue(forKey: id) {
                         names[snapped] = name
-                    } else if names[snapped] == nil {
+                    } else if names[snapped] == nil && !stops[at].shape {
                         // beside the routing, which need not wait for it
                         Task {
                             guard let name = await engine.name(snapped) else { return }
@@ -486,9 +518,11 @@ final class Planner {
         return Surface.allCases.compactMap { surface in meters[surface].flatMap { $0 > 0 ? (surface, $0) : nil } }
     }
 
-    /// The first problem fixed elsewhere than at a stop: a leg that could not be routed.
-    var problem: (message: String, pair: Int)? {
-        for (index, pair) in pairs.enumerated() { if case .failed(let message) = legs[pair.key] { return (message, index) } }
+    /// The first problem fixed elsewhere than at a stop's row: a Formpunkt without a road, or a leg that could not be
+    /// routed.
+    var problem: String? {
+        if let shape = stops.first(where: { $0.shape && stopErrors[$0.id] != nil }) { return stopErrors[shape.id] }
+        for pair in pairs { if case .failed(let message) = legs[pair.key] { return message } }
         return nil
     }
 
@@ -520,8 +554,12 @@ final class Planner {
             case .routing, nil: lines.append(.init(coordinates: [pair.from.coord!, pair.to.coord!], style: "waiting", leg: index))
             }
         }
-        let pins = stops.enumerated().compactMap { index, stop in
-            stop.coord.map { MapContent.Pin(stop: stop.id, coord: $0, badge: Self.badge(at: index, of: stops.count), error: stopErrors[stop.id] != nil) }
+        let shown = waypoints
+        let pins = stops.compactMap { stop in
+            stop.coord.map { coord in
+                let badge = shown.firstIndex(of: stop).map { Self.badge(at: $0, of: shown.count) }
+                return MapContent.Pin(stop: stop.id, coord: coord, badge: badge, error: stopErrors[stop.id] != nil)
+            }
         }
         return MapContent(lines: lines, pins: pins, framing: framing, stretch: profileRange == nil ? [] : zoom?.line ?? [])
     }
@@ -559,7 +597,8 @@ struct MapContent: Equatable {
     struct Pin: Equatable {
         let stop: UUID
         var coord: [Double]
-        let badge: String
+        /// S, 1, 2 … Z; nil for a Formpunkt.
+        let badge: String?
         let error: Bool
     }
 

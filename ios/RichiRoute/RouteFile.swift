@@ -57,8 +57,8 @@ struct RouteFile: Codable, Sendable {
         }
     }
 
-    /// A stop's id as the planner writes it.
-    static func stopID(_ id: UUID) -> String { "stop-\(id.uuidString.lowercased())" }
+    /// A stop's or Formpunkt's id as the planner writes it.
+    static func pointID(_ stop: Planner.Stop) -> String { "\(stop.shape ? "shape" : "stop")-\(stop.id.uuidString.lowercased())" }
 
     var distanceMeters: Double { draft.legs.values.reduce(0) { $0 + $1.distanceMeters } }
 }

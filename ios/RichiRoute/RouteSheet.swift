@@ -56,6 +56,9 @@ struct RouteSheet: View {
             } else if !planner.isSaved {
                 Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
             }
+            if planner.hasShapes {
+                Button("Formpunkte entfernen", systemImage: "eraser", action: planner.removeShapes)
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 18, weight: .medium))
@@ -148,7 +151,7 @@ struct RouteTab: View {
             shown = profile.map { ($0, legs, range) }
         }
         .sheet(item: $searching) { stop in
-            StopSearch(title: Planner.label(at: stop.index, of: planner.stops.count), engine: planner.engine, near: planner.focus) { coord, name in
+            StopSearch(title: Planner.label(at: stop.index, of: planner.waypoints.count), engine: planner.engine, near: planner.focus) { coord, name in
                 planner.choose(stop.id, at: coord, name: name)
             } pickOnMap: {
                 planner.pick(stop.id)
@@ -210,9 +213,9 @@ struct RouteTab: View {
         .accessibilityLabel("Untergrund: " + parts.map { "\(percent($0.meters, of: total)) % \($0.surface.label)" }.joined(separator: ", "))
     }
 
-    private func problemView(_ problem: (message: String, pair: Int)) -> some View {
+    private func problemView(_ problem: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(problem.message, systemImage: "exclamationmark.triangle").foregroundStyle(Color.danger)
+            Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(Color.danger)
             Button("Erneut versuchen") { planner.retry() }.buttonStyle(.bordered)
         }
         .font(.subheadline)
@@ -221,17 +224,18 @@ struct RouteTab: View {
     // MARK: Stops
 
     private var stops: some View {
-        Group {
-            ForEach(Array(planner.stops.enumerated()), id: \.element.id) { index, stop in
-                let end = index == 0 || index == planner.stops.count - 1
+        let waypoints = planner.waypoints
+        return Group {
+            ForEach(Array(waypoints.enumerated()), id: \.element.id) { index, stop in
+                let end = index == 0 || index == waypoints.count - 1
                 stopRow(stop, at: index, removable: !end)
                     .moveDisabled(end)
                     .deleteDisabled(end)
                     .listRowBackground(planner.picking == stop.id ? Color.ink.opacity(0.08) : nil)
             }
-            .onDelete { offsets in offsets.map { planner.stops[$0].id }.forEach(planner.remove) }
+            .onDelete { offsets in offsets.map { waypoints[$0].id }.forEach(planner.remove) }
             .onMove(perform: planner.moveStops)
-            if planner.stops.first?.coord != nil, planner.stops.last?.coord != nil {
+            if planner.hasRoute {
                 Button { planner.addStop() } label: {
                     Label("Zwischenstopp hinzufügen", systemImage: "plus")
                 }
@@ -241,7 +245,7 @@ struct RouteTab: View {
 
     /// A stop: tapping it replaces it by a tap on the map; a Zwischenstopp also has its × to remove it.
     private func stopRow(_ stop: Planner.Stop, at index: Int, removable: Bool) -> some View {
-        let count = planner.stops.count, error = planner.stopErrors[stop.id]
+        let count = planner.waypoints.count, error = planner.stopErrors[stop.id]
         return HStack(spacing: 12) {
             Text(Planner.badge(at: index, of: count))
                 .font(.caption.bold())

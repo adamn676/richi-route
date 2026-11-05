@@ -2,8 +2,8 @@ import MapLibre
 import SwiftUI
 
 /// The offline map with the route drawn as the planner draws it: each leg in its surfaces' colours over a white
-/// outline, dashed while it is routed (red where it failed), and the stops as S, 1, 2 … Z, which a held finger
-/// drags.
+/// outline, dashed while it is routed (red where it failed), the stops as S, 1, 2 … Z and the Formpunkte as white
+/// dots, which a held finger drags; held on the route, it drags the route into a new Formpunkt.
 struct PlannerMap: UIViewRepresentable {
     let content: MapContent
     /// The bottom panel's height, which framing the route leaves free.
@@ -12,6 +12,7 @@ struct PlannerMap: UIViewRepresentable {
     let locating: Int
     let tap: (_ coord: [Double], _ leg: Int?) -> Void
     let move: (_ stop: UUID, _ coord: [Double]) -> Void
+    let shape: (_ coord: [Double], _ leg: Int) -> Void
     /// Reports the map's centre after each move.
     let moved: (_ center: [Double]) -> Void
     /// Receives the way to show the profile's point under the finger, once the map is made.
@@ -45,21 +46,24 @@ struct PlannerMap: UIViewRepresentable {
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.tap = tap
         context.coordinator.move = move
+        context.coordinator.shape = shape
         context.coordinator.moved = moved
         context.coordinator.bottomInset = bottomInset
         context.coordinator.show(content, on: map)
         context.coordinator.locate(locating, on: map)
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(tap: tap, move: move, moved: moved) }
+    func makeCoordinator() -> Coordinator { Coordinator(tap: tap, move: move, shape: shape, moved: moved) }
 
     @MainActor
     final class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate, UIGestureRecognizerDelegate {
         var tap: (_ coord: [Double], _ leg: Int?) -> Void
         var move: (_ stop: UUID, _ coord: [Double]) -> Void
+        var shape: (_ coord: [Double], _ leg: Int) -> Void
         var moved: (_ center: [Double]) -> Void
-        /// The stop a finger holds, while it drags it.
-        private var held: UUID?
+        /// What a held finger drags: a stop or Formpunkt, or the route on a leg from where it was picked up.
+        private enum Held { case stop(UUID), route(leg: Int, from: CGPoint) }
+        private var held: Held?
         var bottomInset: CGFloat = 0
         private var lines: MLNShapeSource?
         private var pins: MLNShapeSource?
@@ -70,9 +74,10 @@ struct PlannerMap: UIViewRepresentable {
         private var located = 0
 
         init(tap: @escaping (_ coord: [Double], _ leg: Int?) -> Void, move: @escaping (_ stop: UUID, _ coord: [Double]) -> Void,
-             moved: @escaping (_ center: [Double]) -> Void) {
+             shape: @escaping (_ coord: [Double], _ leg: Int) -> Void, moved: @escaping (_ center: [Double]) -> Void) {
             self.tap = tap
             self.move = move
+            self.shape = shape
             self.moved = moved
         }
 
@@ -115,19 +120,29 @@ struct PlannerMap: UIViewRepresentable {
                 style.addLayer(layer)
             }
 
-            // the planner's markers: its ink, red for a stop without a road, a white ring
+            // the planner's markers: its ink, red for a stop without a road, a white ring; a Formpunkt white in an ink ring
+            let stop = NSPredicate(format: "shape == NO"), formpunkt = NSPredicate(format: "shape == YES")
+            let dots = MLNCircleStyleLayer(identifier: "shape-circles", source: pins)
+            dots.predicate = formpunkt
+            dots.circleRadius = NSExpression(forConstantValue: 7)
+            dots.circleColor = NSExpression(forConstantValue: UIColor.white)
+            dots.circleStrokeColor = NSExpression(mglJSONObject: ["case", ["get", "error"], MapStyle.dangerHex, MapStyle.inkHex])
+            dots.circleStrokeWidth = NSExpression(forConstantValue: 4)
             let circles = MLNCircleStyleLayer(identifier: "stop-circles", source: pins)
+            circles.predicate = stop
             circles.circleRadius = NSExpression(forConstantValue: 12)
             circles.circleColor = NSExpression(mglJSONObject: ["case", ["get", "error"], MapStyle.dangerHex, MapStyle.inkHex])
             circles.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
             circles.circleStrokeWidth = NSExpression(forConstantValue: 2)
             let badges = MLNSymbolStyleLayer(identifier: "stop-badges", source: pins)
+            badges.predicate = stop
             badges.text = NSExpression(forKeyPath: "badge")
             badges.textFontNames = NSExpression(forConstantValue: ["Noto Sans Medium"])
             badges.textFontSize = NSExpression(forConstantValue: 12)
             badges.textColor = NSExpression(forConstantValue: UIColor.white)
             badges.textAllowsOverlap = NSExpression(forConstantValue: true)
             badges.textIgnoresPlacement = NSExpression(forConstantValue: true)
+            style.addLayer(dots)
             style.addLayer(circles)
             style.addLayer(badges)
             // the profile's point under the finger, as the planner's
@@ -167,11 +182,7 @@ struct PlannerMap: UIViewRepresentable {
         /// panel when part of it is there, so the point stays in sight as it moves.
         func point(_ point: [Double]?, on map: MLNMapView) {
             if focus?.shape == nil, point != nil, let shown, !inSight(shown, on: map) { frame(shown, on: map) }
-            focus?.shape = point.map { point in
-                let feature = MLNPointFeature()
-                feature.coordinate = Self.coordinate(point)
-                return feature
-            }
+            focus?.shape = point.map(Self.dot)
         }
 
         /// Whether the route, or its zoomed stretch, lies in the map above the panel; never where too little of the
@@ -187,46 +198,67 @@ struct PlannerMap: UIViewRepresentable {
             pins?.shape = MLNShapeCollectionFeature(shapes: stops.map { pin in
                 let feature = MLNPointFeature()
                 feature.coordinate = Self.coordinate(pin.coord)
-                feature.attributes = ["badge": pin.badge, "error": pin.error, "stop": pin.stop.uuidString]
+                feature.attributes = ["badge": pin.badge ?? "", "shape": pin.badge == nil, "error": pin.error, "stop": pin.stop.uuidString]
                 return feature
             })
         }
 
-        /// The stop under a finger, with a finger's room around the marker.
+        /// The stop or Formpunkt under a finger, with a finger's room around the marker.
         private func stop(at point: CGPoint, on map: MLNMapView) -> UUID? {
             let near = CGRect(x: point.x - 22, y: point.y - 22, width: 44, height: 44)
-            return map.visibleFeatures(in: near, styleLayerIdentifiers: ["stop-circles"])
+            return map.visibleFeatures(in: near, styleLayerIdentifiers: ["stop-circles", "shape-circles"])
                 .compactMap { ($0.attribute(forKey: "stop") as? String).flatMap(UUID.init) }.first
         }
 
-        /// A long press starts only on a stop, so elsewhere the map keeps its own gestures.
-        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
-            guard gesture is UILongPressGestureRecognizer, let map = gesture.view as? MLNMapView else { return true }
-            return stop(at: gesture.location(in: map), on: map) != nil
+        /// The routed leg under a finger.
+        private func leg(at point: CGPoint, on map: MLNMapView) -> Int? {
+            let near = CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28)
+            return map.visibleFeatures(in: near, styleLayerIdentifiers: ["route-line"])
+                .compactMap { ($0.attribute(forKey: "leg") as? NSNumber)?.intValue }.first
         }
 
-        /// Holding a stop lifts it (a light tap), the finger drags it, letting go places it there.
+        /// A long press starts only on a marker or the route, so elsewhere the map keeps its own gestures.
+        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+            guard gesture is UILongPressGestureRecognizer, let map = gesture.view as? MLNMapView else { return true }
+            let point = gesture.location(in: map)
+            return stop(at: point, on: map) != nil || leg(at: point, on: map) != nil
+        }
+
+        /// Holding a marker or the route lifts it (a light tap) and the finger drags it: letting go places the marker
+        /// there, or a Formpunkt where the route was dragged (as the planner, only once it moved).
         @objc func dragged(_ gesture: UILongPressGestureRecognizer) {
             guard let map = gesture.view as? MLNMapView, let shown else { return }
             let point = gesture.location(in: map)
-            let coord = map.convert(point, toCoordinateFrom: map)
-            switch gesture.state {
-            case .began:
-                held = stop(at: point, on: map)
+            let at = map.convert(point, toCoordinateFrom: map)
+            let coord = [at.longitude, at.latitude]
+            switch (gesture.state, held) {
+            case (.began, _):
+                if let stop = stop(at: point, on: map) {
+                    held = .stop(stop)
+                } else if let leg = leg(at: point, on: map) {
+                    held = .route(leg: leg, from: point)
+                }
                 map.isScrollEnabled = false
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            case .changed:
-                guard let held else { return }
+            case (.changed, .stop(let id)):
                 draw(shown.pins.map { pin in
                     var pin = pin
-                    if pin.stop == held { pin.coord = [coord.longitude, coord.latitude] }
+                    if pin.stop == id { pin.coord = coord }
                     return pin
                 })
+            case (.changed, .route):
+                focus?.shape = Self.dot(coord)
             default:
                 map.isScrollEnabled = true
                 defer { held = nil }
-                guard let held else { return }
-                if gesture.state == .ended { move(held, [coord.longitude, coord.latitude]) } else { draw(shown.pins) }
+                let done = gesture.state == .ended
+                switch held {
+                case .stop(let id): if done { move(id, coord) } else { draw(shown.pins) }
+                case .route(let leg, let from):
+                    focus?.shape = nil
+                    if done && hypot(point.x - from.x, point.y - from.y) >= 6 { shape(coord, leg) }
+                case nil: break
+                }
             }
         }
 
@@ -257,15 +289,20 @@ struct PlannerMap: UIViewRepresentable {
             map.setUserTrackingMode(.follow, animated: true, completionHandler: nil)
         }
 
-        /// A tap on a routed leg adds a Zwischenstopp to it; anywhere else it places the next stop.
+        /// A tap on a routed leg adds a Zwischenstopp to it; anywhere else it places the next stop. A marker takes no
+        /// taps, as the planner's.
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
             guard let map = gesture.view as? MLNMapView else { return }
             let point = gesture.location(in: map)
-            let near = CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28)
-            let leg = map.visibleFeatures(in: near, styleLayerIdentifiers: ["route-line"])
-                .compactMap { ($0.attribute(forKey: "leg") as? NSNumber)?.intValue }.first
+            guard stop(at: point, on: map) == nil else { return }
             let coord = map.convert(point, toCoordinateFrom: map)
-            tap([coord.longitude, coord.latitude], leg)
+            tap([coord.longitude, coord.latitude], leg(at: point, on: map))
+        }
+
+        private static func dot(_ point: [Double]) -> MLNPointFeature {
+            let feature = MLNPointFeature()
+            feature.coordinate = coordinate(point)
+            return feature
         }
 
         private static func coordinate(_ point: [Double]) -> CLLocationCoordinate2D {

@@ -27,6 +27,18 @@ final class PlannerTests: XCTestCase {
         let figures = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' km'")).firstMatch
         XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route between the two taps")
         shot(app, "2-route")
+        // the route held and dragged aside: a Formpunkt there, which "Formpunkte entfernen" takes away again
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.76, dy: 0.302))
+            .press(forDuration: 0.6, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.36)))
+        app.buttons["Weitere Aktionen"].tap()
+        let unshape = app.buttons["Formpunkte entfernen"]
+        XCTAssertTrue(unshape.waitForExistence(timeout: 5), "no Formpunkt after dragging the route")
+        shot(app, "2a-formpunkt")
+        unshape.tap()
+        // both one undo step each: the Formpunkt back, then gone again
+        app.buttons["Rückgängig"].tap()
+        app.buttons["Rückgängig"].tap()
+        XCTAssertTrue(figures.waitForExistence(timeout: 60))
         // the profile, under the figures in the half-raised panel, the route on the map above it
         grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
         let chart = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Höhenprofil'")).firstMatch

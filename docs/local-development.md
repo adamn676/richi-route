@@ -386,7 +386,7 @@ on the map, held still first it marks a stretch to zoom into, as the planner's
 profile on touch. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own
 street with `/street`), the rider's position, or a tap on the map; holding a
-marker drags it. The route being planned is kept in the planner's file format
+marker drags it, and holding the route drags it into a Formpunkt, as on the planner. The route being planned is kept in the planner's file format
 (the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
 the saved routes in that format and the last three replaced without saving, for
 seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first

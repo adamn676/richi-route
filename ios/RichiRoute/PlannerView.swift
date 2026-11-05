@@ -14,6 +14,8 @@ struct PlannerView: View {
                 if let leg, planner.picking == nil { planner.insert(coord, onLeg: leg) } else { planner.place(coord) }
             } move: { stop, coord in
                 planner.move(stop, to: coord)
+            } shape: { coord, leg in
+                planner.shape(coord, onLeg: leg)
             } moved: { center in
                 planner.focus = center
             } pointer: { show in
@@ -22,8 +24,8 @@ struct PlannerView: View {
         }
         .ignoresSafeArea()
         .overlay(alignment: .top) {
-            if let picking = planner.picking, let index = planner.stops.firstIndex(where: { $0.id == picking }) {
-                PickHint(text: Self.pickText(at: index, of: planner.stops.count), cancel: planner.cancelPick)
+            if let picking = planner.picking, let index = planner.waypoints.firstIndex(where: { $0.id == picking }) {
+                PickHint(text: Self.pickText(at: index, of: planner.waypoints.count), cancel: planner.cancelPick)
                     .padding(.leading, 16)
                     .padding(.trailing, 72)
                     .padding(.top, 8)
