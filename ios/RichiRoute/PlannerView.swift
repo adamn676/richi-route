@@ -48,7 +48,13 @@ struct PlannerView: View {
                     MapButton(label: "Auf Route zoomen", symbol: "viewfinder") { planner.frame() }
                 }
                 MapButton(label: "Mein Standort", symbol: "location") { locating += 1 }
+                // each only while it can do something; redo keeps its place under undo
+                if planner.canUndo || planner.canRedo {
+                    MapButton(label: "Rückgängig", symbol: "arrow.uturn.backward", action: planner.undo).shown(planner.canUndo)
+                    MapButton(label: "Wiederholen", symbol: "arrow.uturn.forward", action: planner.redo).shown(planner.canRedo)
+                }
             }
+            .animation(.easeOut(duration: 0.2), value: [planner.canUndo, planner.canRedo])
             .padding(.trailing, 16)
             .padding(.top, 8)
         }
@@ -155,6 +161,11 @@ struct MapButton: View {
 }
 
 extension View {
+    /// Present, or out of sight and out of reach, keeping its place.
+    func shown(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0).allowsHitTesting(shown).accessibilityHidden(!shown)
+    }
+
     /// iOS 26's Liquid Glass, as the panel has, for controls over the map; frosted material before.
     @ViewBuilder func glass(in shape: some Shape) -> some View {
         if #available(iOS 26, *) {

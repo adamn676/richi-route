@@ -89,7 +89,7 @@ final class Planner {
         engineMissing = engine == nil
         // the route as it was when the app last closed
         if let (file, id) = RouteStore.current() {
-            open(file, remembering: false)
+            open(file)
             if let id { mark(saved: id, name: file.name) }
         }
         for stop in stops where stop.coord != nil { snap(stop.id) }
@@ -118,17 +118,13 @@ final class Planner {
         return RouteFile(name: name, draft: RouteFile.Draft(points: points, legs: saved))
     }
 
-    /// Opens a saved route in place of this one, one undo step unless it is the route the app closed with. Its stops keep
-    /// their names, and legs routed under the app's rules stay; the others are routed again.
-    func open(_ file: RouteFile, remembering: Bool = true) {
+    /// Opens a saved route in place of this one. Its stops keep their names, and legs routed under the app's rules stay;
+    /// the others are routed again.
+    func open(_ file: RouteFile) {
         let saved = file.draft.points.filter { $0.type == "stop" }.map { point in
             Stop(point.coord, id: UUID(uuidString: String(point.id.dropFirst("stop-".count))) ?? UUID())
         }
         guard saved.count >= 2 else { return }
-        if remembering {
-            undos.append(stops)
-            redos.removeAll()
-        }
         stops = saved
         stopErrors = [:]
         snapping = [:]
@@ -198,12 +194,12 @@ final class Planner {
             open(file)
             mark(saved: entry?.kind == .saved ? entry?.id : nil, name: file.name)
         } else {
-            change {
-                stops = [Stop(), Stop()]
-                return nil
-            }
+            restore([Stop(), Stop()])
             mark(saved: nil, name: nil)
         }
+        // a history of its own, as the planner's (`restoreDraft`): the route replaced comes back with "Wiederherstellen"
+        undos.removeAll()
+        redos.removeAll()
         if entry?.kind == .recent, let entry { RouteStore.delete(entry) }
         notice = kept.map { Notice(text: "Vorige Route liegt in „Zuletzt bearbeitet“.", restore: $0) }
             ?? entry.map { Notice(text: "„\($0.name)“ geöffnet.") }

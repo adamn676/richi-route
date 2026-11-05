@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The panel over the map, with the web planner's two tabs: the route and the rider's routes.
+/// The panel over the map, with the web planner's two tabs, the route and the rider's routes, and beside them the one
+/// menu of what to do with the route, in view at every height of the panel.
 struct RouteSheet: View {
     @Bindable var planner: Planner
     let folded: Bool
@@ -8,17 +9,23 @@ struct RouteSheet: View {
     /// Lowers the panel to half the screen, so a stretch shows on the map above its profile.
     let halve: () -> Void
     @State private var tab = Tab.route
+    @State private var naming = false
+    @State private var newName = ""
 
     enum Tab { case route, library }
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Bereiche", selection: $tab) {
-                Text("Route").tag(Tab.route)
-                Text("Meine Routen").tag(Tab.library)
+            HStack(spacing: 8) {
+                Picker("Bereiche", selection: $tab) {
+                    Text("Route").tag(Tab.route)
+                    Text("Meine Routen").tag(Tab.library)
+                }
+                .pickerStyle(.segmented)
+                menu
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
+            .padding(.leading, 16)
+            .padding(.trailing, 4)
             .padding(.top, 20)
             .padding(.bottom, 4)
             switch tab {
@@ -26,6 +33,37 @@ struct RouteSheet: View {
             case .library: MyRoutes(planner: planner) { tab = .route }
             }
         }
+        .alert("Route speichern", isPresented: $naming) {
+            TextField("Routenname", text: $newName)
+            Button("Abbrechen", role: .cancel) {}
+            Button("Speichern") { if let name = RouteName.valid(newName) { planner.save(as: name) } }
+                .disabled(RouteName.valid(newName) == nil)
+        }
+    }
+
+    private var menu: some View {
+        Menu {
+            Button("Neue Route", systemImage: "plus") {
+                planner.newRoute()
+                tab = .route
+            }
+            if planner.savedID == nil {
+                Button("In „Meine Routen“ speichern …", systemImage: "bookmark") {
+                    newName = planner.name
+                    naming = true
+                }
+                .disabled(!planner.hasRoute)
+            } else if !planner.isSaved {
+                Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .medium))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .foregroundStyle(Color.ink)
+        .accessibilityLabel("Weitere Aktionen")
     }
 }
 
@@ -40,8 +78,6 @@ struct RouteTab: View {
     @State private var searching: Searching?
     /// The profile with the legs and the stretch it was made from, shown together until the next one is there.
     @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
-    @State private var naming = false
-    @State private var newName = ""
 
     /// The stop whose search is open.
     private struct Searching: Identifiable {
@@ -77,7 +113,7 @@ struct RouteTab: View {
             }
             Section {
                 // a row rather than the list's section header, which brings a large gap of its own
-                stopsHeader.listRowSeparator(.hidden)
+                Text("Wegpunkte").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
                 stops
             }
             if planner.isComplete {
@@ -110,12 +146,6 @@ struct RouteTab: View {
             // a stretch without a profile (no heights there): back to the whole route rather than none
             if profile == nil && range != nil { return planner.zoomProfile(nil) }
             shown = profile.map { ($0, legs, range) }
-        }
-        .alert("Route speichern", isPresented: $naming) {
-            TextField("Routenname", text: $newName)
-            Button("Abbrechen", role: .cancel) {}
-            Button("Speichern") { if let name = RouteName.valid(newName) { planner.save(as: name) } }
-                .disabled(RouteName.valid(newName) == nil)
         }
         .sheet(item: $searching) { stop in
             StopSearch(title: Planner.label(at: stop.index, of: planner.stops.count), engine: planner.engine, near: planner.focus) { coord, name in
@@ -189,42 +219,6 @@ struct RouteTab: View {
     }
 
     // MARK: Stops
-
-    private var stopsHeader: some View {
-        HStack(spacing: 0) {
-            Text("Wegpunkte").font(.headline).foregroundStyle(Color.ink)
-            Spacer()
-            Button(action: planner.undo) { toolIcon("arrow.uturn.backward") }
-                .disabled(!planner.canUndo).accessibilityLabel("Rückgängig")
-            Button(action: planner.redo) { toolIcon("arrow.uturn.forward") }
-                .disabled(!planner.canRedo).accessibilityLabel("Wiederholen")
-            Menu {
-                if planner.savedID == nil {
-                    Button("In „Meine Routen“ speichern …", systemImage: "bookmark") {
-                        newName = planner.name
-                        naming = true
-                    }
-                    .disabled(!planner.hasRoute)
-                } else if !planner.isSaved {
-                    Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
-                }
-                Button("Neue Route", systemImage: "plus", action: planner.newRoute)
-            } label: { toolIcon("ellipsis") }
-                .accessibilityLabel("Weitere Aktionen")
-                // the last glyph at the margin, as the planner's tools; its target reaches past it
-                .padding(.trailing, -12)
-        }
-        .buttonStyle(.borderless)
-        .textCase(nil)
-    }
-
-    /// A tool's glyph with Apple's smallest target for a finger, 44 × 44 points.
-    private func toolIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 18, weight: .medium))
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-    }
 
     private var stops: some View {
         Group {

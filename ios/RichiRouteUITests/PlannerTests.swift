@@ -11,11 +11,8 @@ final class PlannerTests: XCTestCase {
         let tip = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch
         let grabber = app.buttons["Sheet Grabber"]
         if !tip.waitForExistence(timeout: 20) {
-            // the stops' tools, under the profile in the raised panel
-            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
             app.buttons["Weitere Aktionen"].tap()
             app.buttons["Neue Route"].tap()
-            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
         }
         XCTAssertTrue(tip.waitForExistence(timeout: 60))
         shot(app, "1-empty")
@@ -48,7 +45,7 @@ final class PlannerTests: XCTestCase {
         app.buttons["Ganzes Profil zeigen"].tap()
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForNonExistence(timeout: 10))
 
-        // the stops' tools, under the profile in the half-raised panel
+        // undo and redo on the map
         app.buttons["Rückgängig"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 10))
         app.buttons["Wiederholen"].tap()
@@ -97,19 +94,25 @@ final class PlannerTests: XCTestCase {
         shot(app, "7-restored")
 
         // saved under a name, replaced by a new route, opened again from "Meine Routen"
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
         app.buttons["Weitere Aktionen"].tap()
         app.buttons["In „Meine Routen“ speichern …"].tap()
         let field = app.textFields["Routenname"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        // the suggested name, "A → B", replaced
-        field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count + 5) + "Testrunde\n")
+        // the suggested name, "A → B", replaced; a long one shows only in part, so a tap at its end may land inside it
+        for _ in 0..<3 where !(field.value as? String ?? "").isEmpty {
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count + 5))
+        }
+        field.typeText("Testrunde\n")
         XCTAssertTrue(app.staticTexts["„Testrunde“ gespeichert."].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Testrunde"].waitForExistence(timeout: 5), "the saved name as the title")
         app.buttons["Weitere Aktionen"].tap()
         app.buttons["Neue Route"].tap()
         XCTAssertTrue(tip.waitForExistence(timeout: 10))
+        // a new route starts a history of its own: nothing to undo
+        let undo = app.buttons["Rückgängig"]
+        XCTAssertFalse(undo.exists && undo.isHittable, "undo after a new route")
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
         app.buttons["Meine Routen"].tap()
         let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Testrunde'")).firstMatch
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
