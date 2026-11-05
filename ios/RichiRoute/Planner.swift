@@ -49,9 +49,23 @@ final class Planner {
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
-    /// The stretch the elevation profile is zoomed into, which the map lifts and frames.
-    var profileStretch: [[Double]] = [] {
-        didSet { if !profileStretch.isEmpty { frame() } }
+    /// The stretch the elevation profile is zoomed into, on the route it was chosen on: its distances along it and
+    /// its line, which the map lifts and frames. Kept here, so profile and map show the same stretch, also after
+    /// another tab or an undo.
+    struct Zoom {
+        let route: [String]
+        let range: ClosedRange<Double>
+        let line: [[Double]]
+    }
+
+    private(set) var zoom: Zoom?
+
+    /// The zoomed stretch while the route is the one it was chosen on.
+    var profileRange: ClosedRange<Double>? { zoom.flatMap { $0.route == pairs.map(\.key) ? $0.range : nil } }
+
+    func zoomProfile(_ range: ClosedRange<Double>?, line: [[Double]] = []) {
+        zoom = range.map { Zoom(route: pairs.map(\.key), range: $0, line: line) }
+        frame()
     }
     /// The stop the rider is replacing: the next tap on the map puts it there.
     private(set) var picking: UUID?
@@ -513,7 +527,7 @@ final class Planner {
         let pins = stops.enumerated().compactMap { index, stop in
             stop.coord.map { MapContent.Pin(stop: stop.id, coord: $0, badge: Self.badge(at: index, of: stops.count), error: stopErrors[stop.id] != nil) }
         }
-        return MapContent(lines: lines, pins: pins, framing: framing, stretch: profileStretch)
+        return MapContent(lines: lines, pins: pins, framing: framing, stretch: profileRange == nil ? [] : zoom?.line ?? [])
     }
 }
 

@@ -21,8 +21,6 @@ struct MyRoutes: View {
     @State private var newName = ""
     @State private var deleting: RouteStore.Entry?
 
-    private static let ink = Color.ink
-
     var body: some View {
         List {
             if !recent.isEmpty {
@@ -53,7 +51,7 @@ struct MyRoutes: View {
             }
         }
         .listStyle(.plain)
-        .tint(Self.ink)
+        .tint(Color.ink)
         .onAppear(perform: refresh)
         .onChange(of: planner.notice) { refresh() }
         .alert("Route umbenennen", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -72,7 +70,7 @@ struct MyRoutes: View {
     private func heading(_ title: String, count: Int? = nil, note: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(title).font(.headline).foregroundStyle(Self.ink)
+                Text(title).font(.headline).foregroundStyle(Color.ink)
                 if let count { Text("\(count)").font(.headline).foregroundStyle(.secondary) }
             }
             Text(note).font(.footnote).foregroundStyle(.secondary)
@@ -87,7 +85,7 @@ struct MyRoutes: View {
             opened()
         } label: {
             VStack(alignment: .leading, spacing: 3) {
-                Text(entry.name).foregroundStyle(Self.ink)
+                Text(entry.name).foregroundStyle(Color.ink)
                 Text(details(entry)).font(.footnote).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

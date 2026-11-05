@@ -8,7 +8,6 @@ struct Profile: Decodable, Equatable, Sendable {
     struct Stats: Decodable, Equatable, Sendable {
         let distance: Double
         let ascent: Double
-        let descent: Double
         let gradient: Double?
         let steepest: Double?
     }
@@ -33,12 +32,12 @@ struct Profile: Decodable, Equatable, Sendable {
 
     static func band(_ gradient: Double) -> Int { [3.0, 8, 15].firstIndex { gradient < $0 } ?? 3 }
 
-    /// A point of the route at a distance along it (`inspectGpxDistance`): where it is, its height and gradient,
-    /// between the points of the leg it lies on.
+    /// A point of the route at a distance along it (`inspectGpxDistance`): where it is, whether its leg has heights,
+    /// and its gradient, between the points of the leg it lies on.
     struct Point: Equatable {
         let distance: Double
         let coordinate: [Double]
-        let elevation: Double?
+        let hasHeight: Bool
         let gradient: Double?
     }
 
@@ -51,15 +50,11 @@ struct Profile: Decodable, Equatable, Sendable {
         let to = min(distances.count - 1, from + 1)
         let span = distances[to] - distances[from]
         let ratio = span > 0 ? (at - distances[from]) / span : 0
-        let interpolate = { (values: [Double?]) -> Double? in
-            if ratio == 0 { return values[from] }
-            guard let a = values[from], let b = values[to] else { return nil }
-            return a * (1 - ratio) + b * ratio
-        }
+        let (a, b) = (gradients[segment][from], gradients[segment][to])
         let coordinate = [coordinates[from][0] + (coordinates[to][0] - coordinates[from][0]) * ratio,
                           coordinates[from][1] + (coordinates[to][1] - coordinates[from][1]) * ratio]
-        return Point(distance: at, coordinate: coordinate, elevation: legs[segment].elevations.flatMap { interpolate($0.map { $0 }) },
-                     gradient: interpolate(gradients[segment]))
+        return Point(distance: at, coordinate: coordinate, hasHeight: legs[segment].elevations != nil,
+                     gradient: ratio == 0 ? a : a.flatMap { a in b.map { a * (1 - ratio) + $0 * ratio } })
     }
 
     /// The route between two distances, ending exactly there (`trackCoordinates`).
@@ -82,7 +77,7 @@ struct Profile: Decodable, Equatable, Sendable {
         var samples: [Sample] = [], run = 1
         for (distances, leg) in zip(along, legs) {
             guard let heights = leg.elevations else {
-                run += distances.count
+                run += 1
                 continue
             }
             samples += zip(distances, heights).map { Sample(distance: $0, height: $1, run: run) }
@@ -180,7 +175,8 @@ struct ElevationProfile: View {
     let focus: (Profile.Point?) -> Void
     let zoom: (ClosedRange<Double>?) -> Void
 
-    @State private var cursor: Double?
+    /// The point under the finger with its height as the line shows it, worked out once per move.
+    @State private var pointed: (point: Profile.Point, height: Double?)?
     @State private var selection: (start: Double, end: Double)?
     @State private var samples: [Profile.Sample] = []
     @ScaledMetric(relativeTo: .caption2) private var heightsWidth: CGFloat = 44
@@ -192,7 +188,10 @@ struct ElevationProfile: View {
 
     private var from: Double { range?.lowerBound ?? 0 }
     private var to: Double { range?.upperBound ?? profile.distance }
-    private var axis: ProfileAxis { ProfileAxis(profile, span: to - from, plotHeight: Self.chartHeight * 68 / 88) }
+    private var axis: ProfileAxis { ProfileAxis(profile, span: to - from, plotHeight: Self.plotY(68)) }
+    private var marked: ClosedRange<Double>? { selection.map { min($0.start, $0.end)...max($0.start, $0.end) } }
+
+    private func x(_ meters: Double, width: CGFloat) -> CGFloat { CGFloat((meters - from) / max(to - from, 1)) * width }
 
     var body: some View {
         let axis = axis
@@ -215,20 +214,22 @@ struct ElevationProfile: View {
         }
         .onChange(of: profile, initial: true) {
             samples = profile.samples(legs: legs)
-            cursor = nil
+            pointed = nil
             focus(nil)
         }
+        // gone while a finger is on it (a leg routed anew, another tab): its point leaves the map too
+        .onDisappear { focus(nil) }
     }
 
     /// "Höhenprofil", in the panel's heading style; while a finger is on the profile, what it points at or marks, in
     /// place, so nothing covers the profile or moves about; and the way back from a stretch, or how to choose one.
     private var heading: some View {
         HStack(spacing: 8) {
-            if let selection {
-                Text("Ausschnitt \(Format.length(abs(selection.end - selection.start)))")
+            if let marked {
+                Text("Ausschnitt \(Format.length(marked.upperBound - marked.lowerBound))")
                     .font(.subheadline.weight(.semibold).monospacedDigit())
-            } else if let cursor, let point = profile.point(at: cursor, legs: legs) {
-                readout(point)
+            } else if let pointed {
+                readout(pointed.point, height: pointed.height)
             } else {
                 Text("Höhenprofil").font(.headline).foregroundStyle(Color.ink)
             }
@@ -243,7 +244,7 @@ struct ElevationProfile: View {
                 .buttonStyle(.borderless)
                 .padding(.trailing, -12)
                 .accessibilityLabel("Ganzes Profil zeigen")
-            } else if cursor == nil && selection == nil {
+            } else if pointed == nil && selection == nil {
                 Text("Zum Zoomen halten und ziehen").font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -252,9 +253,9 @@ struct ElevationProfile: View {
 
     /// The point under the finger, as the planner's tooltip: height as the line shows it, distance, and the gradient
     /// with its colour.
-    private func readout(_ point: Profile.Point) -> some View {
+    private func readout(_ point: Profile.Point, height: Double?) -> some View {
         HStack(spacing: 12) {
-            Text(height(at: point).map { "\(Format.whole($0)) m" } ?? "Höhe unbekannt").fontWeight(.semibold)
+            Text(height.map { "\(Format.whole($0)) m" } ?? "Höhe unbekannt").fontWeight(.semibold)
             Text("\(Format.km(point.distance, digits: 2)) km").foregroundStyle(.secondary)
             if let gradient = point.gradient {
                 HStack(spacing: 4) {
@@ -264,10 +265,6 @@ struct ElevationProfile: View {
             }
         }
         .font(.subheadline.monospacedDigit())
-    }
-
-    private func height(at point: Profile.Point) -> Double? {
-        point.elevation == nil ? nil : Profile.smoothedHeight(samples, at: point.distance, over: Profile.window(to - from))
     }
 
     /// A zoomed stretch's figures, as the planner's `ElevationRange`.
@@ -306,7 +303,7 @@ struct ElevationProfile: View {
     /// Distance marks at a round step, about one per 70 points, and the exact distance at the end (at both ends of a
     /// zoomed stretch), each centred on its line; a round mark too close to an exact one gives way.
     private func distanceMarks(width: CGFloat) -> [(x: CGFloat, label: String)] {
-        let x = { (meters: Double) in CGFloat((meters - from) / max(to - from, 1)) * width }
+        let x = { (meters: Double) in self.x(meters, width: width) }
         let step = ProfileAxis.niceStep(max((to - from) / Double(max(2, Int(width / 70))), 10))
         let first = Int((from / step).rounded(.up)), last = Int((to / step).rounded(.down))
         let apart = { (a: Double, b: Double) in abs(x(a) - x(b)) >= 52 }
@@ -318,8 +315,8 @@ struct ElevationProfile: View {
 
     private func distances(_ marks: [(x: CGFloat, label: String)]) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(marks, id: \.x) { mark in
-                Text(mark.label).fixedSize().frame(width: 0).offset(x: mark.x)
+            ForEach(marks.indices, id: \.self) { i in
+                Text(marks[i].label).fixedSize().frame(width: 0).offset(x: marks[i].x)
             }
         }
         .font(.caption2.monospacedDigit())
@@ -329,19 +326,20 @@ struct ElevationProfile: View {
     }
 
     private func chart(width: CGFloat, axis: ProfileAxis, marks: [CGFloat]) -> some View {
-        let x = { (distance: Double) in CGFloat((distance - from) / max(to - from, 1)) * width }
+        let x = { (meters: Double) in self.x(meters, width: width) }
         return ZStack(alignment: .topLeading) {
             ProfileLine(profile: profile, axis: axis, verticals: marks)
-            if let selection {
-                let (a, b) = (x(min(selection.start, selection.end)), x(max(selection.start, selection.end)))
+            if let marked {
+                let (a, b) = (x(marked.lowerBound), x(marked.upperBound))
                 Rectangle().fill(Color.ink.opacity(0.12)).frame(width: max(b - a, 2), height: Self.plotY(68))
                     .offset(x: a, y: Self.plotY(10))
             }
-            if let cursor {
-                Rectangle().fill(Color.secondary).frame(width: 1, height: Self.chartHeight - Self.plotY(4)).offset(x: x(cursor), y: Self.plotY(4))
-                if let point = profile.point(at: cursor, legs: legs), let height = height(at: point) {
+            if let pointed {
+                let at = x(pointed.point.distance)
+                Rectangle().fill(Color.secondary).frame(width: 1, height: Self.chartHeight - Self.plotY(4)).offset(x: at, y: Self.plotY(4))
+                if let height = pointed.height {
                     Circle().fill(.white).stroke(Color(MapStyle.ink), lineWidth: 2).frame(width: 10, height: 10)
-                        .offset(x: x(cursor) - 5, y: Self.plotY(axis.y(height)) - 5)
+                        .offset(x: at - 5, y: Self.plotY(axis.y(height)) - 5)
                 }
             }
         }
@@ -363,17 +361,17 @@ struct ElevationProfile: View {
         case (.changed, .select):
             selection?.end = at
         case (.began, .point), (.changed, .point):
-            cursor = at
-            focus(profile.point(at: at, legs: legs))
+            let point = profile.point(at: at, legs: legs)
+            pointed = point.map { ($0, $0.hasHeight ? Profile.smoothedHeight(samples, at: $0.distance, over: Profile.window(to - from)) : nil) }
+            focus(point)
         default:
-            if cursor != nil {
-                cursor = nil
+            if pointed != nil {
+                pointed = nil
                 focus(nil)
             }
-            guard let chosen = selection else { return }
+            guard let chosen = marked else { return }
             selection = nil
-            let (low, high) = (min(chosen.start, chosen.end), max(chosen.start, chosen.end))
-            if state == .ended && high - low >= max(50, (to - from) / 100) { zoom(low...high) }
+            if state == .ended && chosen.upperBound - chosen.lowerBound >= max(50, (to - from) / 100) { zoom(chosen) }
         }
     }
 }

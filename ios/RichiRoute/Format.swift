@@ -21,7 +21,9 @@ enum Format {
 
     /// A gradient in percent, signed, up to one decimal: +4,5 or -2 (`formatGradient`).
     static func gradient(_ percent: Double) -> String {
-        percent.formatted(.number.locale(german).precision(.fractionLength(0...1)).sign(strategy: .always(includingZero: false)))
+        // rounded first, so what rounds to 0 shows without a sign, as `exceptZero`
+        let rounded = (percent * 10).rounded() / 10
+        return (rounded == 0 ? 0 : rounded).formatted(.number.locale(german).precision(.fractionLength(0...1)).sign(strategy: .always(includingZero: false)))
     }
 
     /// A point without an address, as the planner's stop fields show it.

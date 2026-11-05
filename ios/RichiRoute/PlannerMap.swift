@@ -65,7 +65,6 @@ struct PlannerMap: UIViewRepresentable {
         private var pins: MLNShapeSource?
         private var stretch: MLNShapeSource?
         private var focus: MLNShapeSource?
-        private var pointed: [Double]?
         private var shown: MapContent?
         private var waiting: MapContent?
         private var located = 0
@@ -167,8 +166,7 @@ struct PlannerMap: UIViewRepresentable {
         /// The profile's point under the finger. As the finger comes down, the route is brought out from under the
         /// panel when part of it is there, so the point stays in sight as it moves.
         func point(_ point: [Double]?, on map: MLNMapView) {
-            if pointed == nil, point != nil, let shown, !inSight(shown, on: map) { frame(shown, on: map) }
-            pointed = point
+            if focus?.shape == nil, point != nil, let shown, !inSight(shown, on: map) { frame(shown, on: map) }
             focus?.shape = point.map { point in
                 let feature = MLNPointFeature()
                 feature.coordinate = Self.coordinate(point)

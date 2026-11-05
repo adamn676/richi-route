@@ -38,9 +38,8 @@ struct RouteTab: View {
     let fold: () -> Void
     let halve: () -> Void
     @State private var searching: Searching?
-    @State private var profile: Profile?
-    /// The stretch the profile is zoomed into, for this route.
-    @State private var zoomed: (route: [String], range: ClosedRange<Double>)?
+    /// The profile with the legs and the stretch it was made from, shown together until the next one is there.
+    @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
     @State private var naming = false
     @State private var newName = ""
 
@@ -50,10 +49,8 @@ struct RouteTab: View {
         let index: Int
     }
 
-    private static let ink = Color.ink
     private static let top = "summary"
     private static let profileRow = "profile"
-    private static let danger = Color.danger
 
     var body: some View {
         ScrollViewReader { scroller in
@@ -63,16 +60,13 @@ struct RouteTab: View {
                 Section { problemView(problem) }
             }
             // under the figures, so the half-raised panel shows the profile with the map above it
-            if planner.isComplete, let profile {
+            if planner.isComplete, let shown {
                 Section {
-                    ElevationProfile(profile: profile, legs: planner.routedLegs.compactMap { $0 }, range: range) { point in
+                    ElevationProfile(profile: shown.profile, legs: shown.legs, range: shown.range) { point in
                         planner.showPoint(point?.coordinate)
                     } zoom: { range in
-                        zoomed = range.map { (planner.pairs.map(\.key), $0) }
-                        planner.profileStretch = range.map { profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: planner.routedLegs.compactMap { $0 }) } ?? []
-                        if range == nil {
-                            planner.frame()
-                        } else {
+                        planner.zoomProfile(range, line: range.map { shown.profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: shown.legs) } ?? [])
+                        if range != nil {
                             halve()
                             withAnimation { scroller.scrollTo(Self.profileRow, anchor: .top) }
                         }
@@ -89,7 +83,7 @@ struct RouteTab: View {
             if planner.isComplete {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
-                    Text("Untergrund").font(.headline).foregroundStyle(Self.ink).listRowSeparator(.hidden)
+                    Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
                     surfaces
                 }
             }
@@ -101,21 +95,21 @@ struct RouteTab: View {
                 .padding(.top, 8)
         }
         .listStyle(.plain)
-        .tint(Self.ink)
+        .tint(Color.ink)
         // folded, the panel shows its start again, not wherever it was scrolled to
         .onChange(of: folded) { if folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
         // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
         .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
         }
         // the profile of the route as it stands, or of its stretch: asked again whenever a leg or the stretch changes
-        .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: range)) {
-            guard planner.isComplete, let engine = planner.engine else {
-                planner.profileStretch = []
-                return profile = nil
-            }
-            if zoomed != nil && range == nil { planner.profileStretch = [] }
-            let legs = planner.routedLegs.compactMap { $0 }
-            profile = try? await engine.profile(legs, range: range)
+        .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: planner.profileRange)) {
+            guard planner.isComplete, let engine = planner.engine else { return shown = nil }
+            let (legs, range) = (legs, planner.profileRange)
+            let profile = try? await engine.profile(legs, range: range)
+            guard !Task.isCancelled else { return }
+            // a stretch without a profile (no heights there): back to the whole route rather than none
+            if profile == nil && range != nil { return planner.zoomProfile(nil) }
+            shown = profile.map { ($0, legs, range) }
         }
         .alert("Route speichern", isPresented: $naming) {
             TextField("Routenname", text: $newName)
@@ -133,10 +127,7 @@ struct RouteTab: View {
         }
     }
 
-    /// The zoomed stretch while the route is the one it was chosen on.
-    private var range: ClosedRange<Double>? {
-        zoomed.flatMap { $0.route == planner.pairs.map(\.key) ? $0.range : nil }
-    }
+    private var legs: [Leg] { planner.routedLegs.compactMap { $0 } }
 
     private struct ProfileRequest: Equatable {
         let route: [String]
@@ -191,7 +182,7 @@ struct RouteTab: View {
 
     private func problemView(_ problem: (message: String, pair: Int)) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(problem.message, systemImage: "exclamationmark.triangle").foregroundStyle(Self.danger)
+            Label(problem.message, systemImage: "exclamationmark.triangle").foregroundStyle(Color.danger)
             Button("Erneut versuchen") { planner.retry() }.buttonStyle(.bordered)
         }
         .font(.subheadline)
@@ -201,7 +192,7 @@ struct RouteTab: View {
 
     private var stopsHeader: some View {
         HStack(spacing: 0) {
-            Text("Wegpunkte").font(.headline).foregroundStyle(Self.ink)
+            Text("Wegpunkte").font(.headline).foregroundStyle(Color.ink)
             Spacer()
             Button(action: planner.undo) { toolIcon("arrow.uturn.backward") }
                 .disabled(!planner.canUndo).accessibilityLabel("Rückgängig")
@@ -242,7 +233,7 @@ struct RouteTab: View {
                 stopRow(stop, at: index, removable: !end)
                     .moveDisabled(end)
                     .deleteDisabled(end)
-                    .listRowBackground(planner.picking == stop.id ? Self.ink.opacity(0.08) : nil)
+                    .listRowBackground(planner.picking == stop.id ? Color.ink.opacity(0.08) : nil)
             }
             .onDelete { offsets in offsets.map { planner.stops[$0].id }.forEach(planner.remove) }
             .onMove(perform: planner.moveStops)
@@ -272,7 +263,7 @@ struct RouteTab: View {
                 if planner.snapping[stop.id] != nil {
                     Text("Straßenpunkt wird gesucht …").font(.caption).foregroundStyle(.secondary)
                 } else if let error {
-                    Text(error).font(.caption).foregroundStyle(Self.danger)
+                    Text(error).font(.caption).foregroundStyle(Color.danger)
                 }
             }
             Spacer(minLength: 0)
