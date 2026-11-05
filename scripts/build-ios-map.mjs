@@ -1,10 +1,11 @@
 // Writes ios/RichiRoute/Map/, the street map the iPhone app draws with MapLibre Native, offline:
-//   style.json                     the planner's map (scripts/map-style.mjs) with its relief, over one offline area:
+//   style.json, style-dark.json    the planner's map (scripts/map-style.mjs) with its relief, light and for Dark Mode, over
+//                                  one offline area:
 //                                  the app puts the file:// URLs of the area's map.pmtiles and terrain.pmtiles in place
 //                                  of {map} and {terrain}, and for more areas repeats both sources and each layer using
 //                                  them once per area; metadata carries the route colours (src/config/mapStyle.ts)
 //   fonts/<font stack>/<range>.pbf the glyphs, as asset:// URLs from the app bundle's Map folder
-//   sprite.json/png, sprite@2x.*   the map's icons
+//   sprite*.json/png               the map's icons, light and dark
 // Run after changing the map style (npm run maps:setup installs the fonts and icons).
 import { copyFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -18,28 +19,36 @@ const assets = path.join(root, '.cache/maps/assets');
 // Latin with the neighbouring countries' letters (č ő ž …) and typographic punctuation (– „ “ ’), as the areas' labels use.
 const ranges = ['0-255', '256-511', '8192-8447'];
 
-// Devanagari labels (none in the areas) take the regular font, so one font stack less.
-const layers = JSON.parse(JSON.stringify(mapLayers('map')).replaceAll('Noto Sans Devanagari Regular v1', 'Noto Sans Regular'));
-// The relief as the planner draws it, beneath the roads.
-const roads = layers.findIndex(layer => layer.id.startsWith('roads_tunnels_'));
-if (roads < 0) throw new Error('No roads_tunnels_* layer to put the relief beneath: has @protomaps/basemaps renamed it?');
-layers.splice(roads, 0, { id: 'hillshade', type: 'hillshade', source: 'terrain', paint: hillshadePaint });
-const style = {
-  version: 8, name: 'RichiRoute',
-  metadata: { 'richiroute:route': routeStyle, 'richiroute:rides': ridesStyle, 'richiroute:loops': loopColors },
-  glyphs: 'asset://Map/fonts/{fontstack}/{range}.pbf',
-  sprite: 'asset://Map/sprite',
-  sources: {
-    map: { type: 'vector', url: 'pmtiles://{map}', attribution: mapAttribution },
-    terrain: { type: 'raster-dem', url: 'pmtiles://{terrain}', encoding: 'terrarium', tileSize: 512, attribution: terrainAttribution },
-  },
-  layers,
-};
+// At night the relief stays in the background: slopes a little darker than the land, ridges a little lighter.
+const darkRelief = { ...hillshadePaint, 'hillshade-shadow-color': '#111413', 'hillshade-highlight-color': '#3a413e',
+  'hillshade-accent-color': '#181c1b' };
+
+function style(night) {
+  // Devanagari labels (none in the areas) take the regular font, so one font stack less.
+  const layers = JSON.parse(JSON.stringify(mapLayers('map', night)).replaceAll('Noto Sans Devanagari Regular v1', 'Noto Sans Regular'));
+  // The relief as the planner draws it, beneath the roads.
+  const roads = layers.findIndex(layer => layer.id.startsWith('roads_tunnels_'));
+  if (roads < 0) throw new Error('No roads_tunnels_* layer to put the relief beneath: has @protomaps/basemaps renamed it?');
+  layers.splice(roads, 0, { id: 'hillshade', type: 'hillshade', source: 'terrain', paint: night ? darkRelief : hillshadePaint });
+  return {
+    version: 8, name: 'RichiRoute',
+    metadata: { 'richiroute:route': routeStyle, 'richiroute:rides': ridesStyle, 'richiroute:loops': loopColors },
+    glyphs: 'asset://Map/fonts/{fontstack}/{range}.pbf',
+    sprite: night ? 'asset://Map/sprite-dark' : 'asset://Map/sprite',
+    sources: {
+      map: { type: 'vector', url: 'pmtiles://{map}', attribution: mapAttribution },
+      terrain: { type: 'raster-dem', url: 'pmtiles://{terrain}', encoding: 'terrarium', tileSize: 512, attribution: terrainAttribution },
+    },
+    layers,
+  };
+}
 
 await rm(path.join(target, 'fonts'), { recursive: true, force: true });
 await mkdir(target, { recursive: true });
-await writeFile(path.join(target, 'style.json'), JSON.stringify(style));
-const json = JSON.stringify(layers);
+const styles = [style(false), style(true)];
+await writeFile(path.join(target, 'style.json'), JSON.stringify(styles[0]));
+await writeFile(path.join(target, 'style-dark.json'), JSON.stringify(styles[1]));
+const json = JSON.stringify(styles.map(s => s.layers));
 const stacks = (await readdir(path.join(assets, 'fonts'))).filter(name => json.includes(JSON.stringify(name)));
 for (const stack of stacks) {
   const directory = path.join(target, 'fonts', stack);
@@ -51,7 +60,9 @@ for (const stack of stacks) {
     await (ranges.includes(range) ? copyFile(path.join(assets, 'fonts', stack, `${range}.pbf`), file) : writeFile(file, ''));
   }
 }
-for (const name of ['light.json', 'light.png', 'light@2x.json', 'light@2x.png']) {
-  await copyFile(path.join(assets, 'sprites/v4', name), path.join(target, name.replace('light', 'sprite')));
+for (const [flavor, sprite] of [['light', 'sprite'], ['dark', 'sprite-dark']]) {
+  for (const suffix of ['.json', '.png', '@2x.json', '@2x.png']) {
+    await copyFile(path.join(assets, 'sprites/v4', flavor + suffix), path.join(target, sprite + suffix));
+  }
 }
-console.log(`ios/RichiRoute/Map: ${layers.length} layers, fonts ${stacks.join(', ')}`);
+console.log(`ios/RichiRoute/Map: ${styles[0].layers.length} layers, fonts ${stacks.join(', ')}`);

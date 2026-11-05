@@ -23,7 +23,12 @@ struct PlannerMap: UIViewRepresentable {
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
         map.delegate = context.coordinator
-        map.styleJSON = MapStyle.shared.json
+        // the map goes dark with the phone, as Apple's does, the route kept through the change
+        context.coordinator.dark = context.environment.colorScheme == .dark
+        map.styleJSON = MapStyle.shared.json(dark: context.coordinator.dark)
+        map.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak coordinator = context.coordinator] (map: MLNMapView, _: UITraitCollection) in
+            coordinator?.restyle(map)
+        }
         map.setCenter(CLLocationCoordinate2D(latitude: 47.0707, longitude: 15.4395), zoomLevel: 13, animated: false)
         // the panel names the map's sources at its end and covers the map's bottom; the compass leaves the buttons room
         map.attributionButton.isHidden = true
@@ -68,6 +73,7 @@ struct PlannerMap: UIViewRepresentable {
         private enum Held { case stop(UUID), route(leg: Int, from: CGPoint) }
         private var held: Held?
         var bottomInset: CGFloat = 0
+        var dark = false
         private var lines: MLNShapeSource?
         private var pins: MLNShapeSource?
         private var stretch: MLNShapeSource?
@@ -98,6 +104,15 @@ struct PlannerMap: UIViewRepresentable {
             moved([map.centerCoordinate.longitude, map.centerCoordinate.latitude])
         }
 
+        /// Swaps in the light or dark map when the phone changes its appearance.
+        func restyle(_ map: MLNMapView) {
+            let dark = map.traitCollection.userInterfaceStyle == .dark
+            guard dark != self.dark else { return }
+            self.dark = dark
+            (lines, pins, stretch, focus) = (nil, nil, nil, nil)
+            map.styleJSON = MapStyle.shared.json(dark: dark)
+        }
+
         func mapView(_ map: MLNMapView, didFinishLoading style: MLNStyle) {
             let lines = MLNShapeSource(identifier: "route", shape: nil)
             let pins = MLNShapeSource(identifier: "stops", shape: nil)
@@ -118,15 +133,21 @@ struct PlannerMap: UIViewRepresentable {
             line.lineWidth = NSExpression(forConstantValue: 5)
             let pending = MLNLineStyleLayer(identifier: "route-pending", source: lines)
             pending.predicate = NSCompoundPredicate(notPredicateWithSubpredicate: routed)
-            pending.lineColor = NSExpression(mglJSONObject: ["match", ["get", "style"], "air", colors.hex("air"), colors.hex("waiting")])
+            let waitingColor = dark ? "#9aa29e" : colors.hex("waiting")
+            pending.lineColor = NSExpression(mglJSONObject: ["match", ["get", "style"], "air", colors.hex("air"), waitingColor])
             pending.lineWidth = NSExpression(forConstantValue: 3)
             pending.lineDashPattern = NSExpression(forConstantValue: [2, 2])
-            // the stretch the profile is zoomed into, lifted in the planner's ink beneath the route
+            // the stretch the profile is zoomed into, lifted beneath the route: in the planner's ink, on the dark map
+            // as a soft light glow, which the white outline can't be taken for
             let stretch = MLNShapeSource(identifier: "stretch", shape: nil)
             style.addSource(stretch)
             let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
-            lifted.lineColor = NSExpression(forConstantValue: MapStyle.ink)
-            lifted.lineWidth = NSExpression(forConstantValue: 13)
+            lifted.lineColor = NSExpression(forConstantValue: dark ? UIColor.white : MapStyle.ink)
+            lifted.lineWidth = NSExpression(forConstantValue: dark ? 22 : 13)
+            if dark {
+                lifted.lineOpacity = NSExpression(forConstantValue: 0.5)
+                lifted.lineBlur = NSExpression(forConstantValue: 6)
+            }
             // under the map's names, as the planner draws it, so street and place names stay readable on the route
             let labels = style.layers.first { $0 is MLNSymbolStyleLayer }
             for layer in [lifted, outline, line, pending] {
@@ -177,15 +198,25 @@ struct PlannerMap: UIViewRepresentable {
             areaLayers = Set(style.layers.compactMap { layer in
                 (layer as? MLNForegroundStyleLayer)?.sourceIdentifier?.hasPrefix("map-") == true ? layer.identifier : nil
             })
-            if let waiting { show(waiting, on: map) }
+            // after a change of appearance the route is drawn again where it was; what came meanwhile follows
+            if let shown { fill(shown) }
+            if let waiting {
+                self.waiting = nil
+                show(waiting, on: map)
+            }
         }
 
         func show(_ content: MapContent, on map: MLNMapView) {
-            guard let lines, pins != nil else { return waiting = content }
+            guard lines != nil, pins != nil else { return waiting = content }
             guard content != shown else { return }
             let reframe = content.framing != shown?.framing
             shown = content
-            lines.shape = MLNShapeCollectionFeature(shapes: content.lines.map { line in
+            fill(content)
+            if reframe { frame(content, on: map) }
+        }
+
+        private func fill(_ content: MapContent) {
+            lines?.shape = MLNShapeCollectionFeature(shapes: content.lines.map { line in
                 let feature = MLNPolylineFeature(coordinates: line.coordinates.map(Self.coordinate), count: UInt(line.coordinates.count))
                 feature.attributes = ["style": line.style, "leg": line.leg]
                 return feature
@@ -193,7 +224,6 @@ struct PlannerMap: UIViewRepresentable {
             draw(content.pins)
             stretch?.shape = content.stretch.count > 1
                 ? MLNPolylineFeature(coordinates: content.stretch.map(Self.coordinate), count: UInt(content.stretch.count)) : nil
-            if reframe { frame(content, on: map) }
         }
 
         /// The profile's point under the finger. As the finger comes down, the route is brought out from under the

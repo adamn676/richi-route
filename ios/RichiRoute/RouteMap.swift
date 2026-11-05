@@ -1,7 +1,7 @@
 import MapLibre
 import SwiftUI
 
-/// The offline map (Map/style.json, from scripts/build-ios-map.mjs) over the bundled areas, with a route
+/// The offline map (`MapStyle`) over the bundled areas, with a route
 /// drawn on top in the planner's colours and fitted into view.
 struct RouteMap: UIViewRepresentable {
     let route: Data?
@@ -9,7 +9,7 @@ struct RouteMap: UIViewRepresentable {
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
         map.delegate = context.coordinator
-        map.styleJSON = context.coordinator.style
+        map.styleJSON = MapStyle.shared.json(dark: context.environment.colorScheme == .dark)
         map.setCenter(CLLocationCoordinate2D(latitude: 47.3, longitude: 13.5), zoomLevel: 6, animated: false)
         return map
     }
@@ -19,19 +19,17 @@ struct RouteMap: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(style: MapStyle.shared.json, routeColor: MapStyle.shared.color(.paved))
+        Coordinator(routeColor: MapStyle.shared.color(.paved))
     }
 
     @MainActor
     final class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate {
-        let style: String
         private let routeColor: UIColor
         private var shown: Data?
         private var waiting: Data?
         private var source: MLNShapeSource?
 
-        init(style: String, routeColor: UIColor) {
-            self.style = style
+        init(routeColor: UIColor) {
             self.routeColor = routeColor
         }
 

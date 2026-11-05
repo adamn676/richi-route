@@ -1,27 +1,34 @@
 import SwiftUI
 import UIKit
 
-/// The offline map (Map/style.json, from scripts/build-ios-map.mjs) with a pair of sources (map, relief) per
-/// area in the app's `Areas` folder (`DataFolder`), each layer once per area, and the planner's route colours
-/// from its metadata.
+/// The offline map (Map/style.json and, for Dark Mode, Map/style-dark.json, from scripts/build-ios-map.mjs) with a
+/// pair of sources (map, relief) per area in the app's `Areas` folder (`DataFolder`), each layer once per area, and
+/// the planner's route colours from its metadata.
 struct MapStyle: Sendable {
     static let shared = MapStyle()
 
-    let json: String
+    private let light: String
+    private let dark: String
     private let colors: [String: String]
 
     private init() {
-        guard let url = Bundle.main.url(forResource: "style", withExtension: "json", subdirectory: "Map"),
+        let ids = (try? FileManager.default.contentsOfDirectory(atPath: DataFolder.areas.path).sorted()) ?? []
+        let light = Self.load("style", areas: ids)
+        self.light = light.json
+        dark = Self.load("style-dark", areas: ids).json
+        colors = light.colors
+    }
+
+    /// The map for the light or the dark appearance.
+    func json(dark: Bool) -> String { dark ? self.dark : light }
+
+    private static func load(_ name: String, areas ids: [String]) -> (json: String, colors: [String: String]) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Map"),
               let data = try? Data(contentsOf: url),
               var style = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let layers = style["layers"] as? [[String: Any]] else {
-            json = "{}"
-            colors = [:]
-            return
-        }
+              let layers = style["layers"] as? [[String: Any]] else { return ("{}", [:]) }
         // the colours come with the app; the areas may not have been loaded yet
-        colors = (style["metadata"] as? [String: Any])?["richiroute:route"] as? [String: String] ?? [:]
-        let ids = (try? FileManager.default.contentsOfDirectory(atPath: DataFolder.areas.path).sorted()) ?? []
+        let colors = (style["metadata"] as? [String: Any])?["richiroute:route"] as? [String: String] ?? [:]
         var sources: [String: Any] = [:]
         for (name, source) in style["sources"] as? [String: [String: Any]] ?? [:] {
             for id in ids {
@@ -34,11 +41,12 @@ struct MapStyle: Sendable {
             guard let source = layer["source"] as? String else { return [layer] }
             return ids.map { id in layer.merging(["id": "\(layer["id"] ?? "")-\(id)", "source": "\(source)-\(id)"]) { $1 } }
         }
-        json = (try? JSONSerialization.data(withJSONObject: style)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        let json = (try? JSONSerialization.data(withJSONObject: style)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        return (json, colors)
     }
 
-    /// The planner's ink (`--accent`) and its colour for errors (`--danger`), as the map's markers have them on its
-    /// light map in either mode; text and controls take `Color.ink` and `Color.danger`.
+    /// The planner's ink (`--accent`) and its colour for errors (`--danger`), as the map's markers have them in either
+    /// mode; text and controls take `Color.ink` and `Color.danger`.
     static let ink = UIColor(red: 0x12 / 255, green: 0x18 / 255, blue: 0x16 / 255, alpha: 1)
     static let inkHex = "#121816"
     static let danger = UIColor(red: 0xa3 / 255, green: 0x26 / 255, blue: 0x1b / 255, alpha: 1)

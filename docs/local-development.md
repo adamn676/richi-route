@@ -407,8 +407,10 @@ instead of one. The map is MapLibre Native 7.0.0.
 `npm run ios:map` writes `ios/RichiRoute/Map/` (outside git), the map the app
 bundles: `style.json` (Karte with Geländerelief, from the same
 `scripts/map-style.mjs` that `maps:start` serves, the relief settings shared
-with the planner, and the route colours as metadata), the Latin glyph ranges of
-its three fonts and the icons, about 1 MB. Other glyph ranges are empty files,
+with the planner, and the route colours as metadata), `style-dark.json` (the
+same map at night, which the app shows while the phone is in Dark Mode and
+switches to live, as Apple Maps does), the Latin glyph ranges of its three fonts
+and the light and dark icons, about 1 MB. Other glyph ranges are empty files,
 so foreign letters drop out of labels instead of leaving tiles blank. The style
 reads one offline area: the app puts the `file://` URLs of each area's
 `map.pmtiles` and `terrain.pmtiles` in place of `{map}` and `{terrain}`, and
