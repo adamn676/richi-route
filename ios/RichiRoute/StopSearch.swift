@@ -83,6 +83,8 @@ struct StopSearch: View {
             .listStyle(.plain)
             .tint(Color.ink)
             .foregroundStyle(Color.ink)
+            // the areas' address indexes read while the rider types, so the first search answers at once
+            .task { _ = try? await engine?.places("", near: nil) }
             // as the planner: from three letters, after a short pause in typing
             .task(id: query) {
                 let typed = query.trimmingCharacters(in: .whitespaces)

@@ -25,6 +25,7 @@
 //! (`richi_planner::profile_request`, `surfaces_request`). `POST /memory` with a number of megabytes sets what a route
 //! search may take from then on: the iPhone app sends what the phone has free right before it asks for a route.
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -173,11 +174,23 @@ impl Places {
     pub fn search(&self, q: &str, focus: Option<[f64; 2]>) -> String {
         let near = focus.map_or(String::new(), |[lon, lat]| format!("&lat={lat}&lon={lon}&location_bias_scale=0.5"));
         let query = format!("q={q}&lang=de&limit={SEARCH_LIMIT}&bbox={ROUTING_BOUNDS}{near}");
-        let mut areas: Vec<&Area> = self.areas.iter().filter_map(Slot::area).collect();
-        // the area around the map answers first
-        areas.sort_by_key(|area| !focus.is_some_and(|at| area.covers(at)));
-        let answers: Vec<String> = areas.iter().filter_map(|area| area.ask("/api/", &query)).collect();
-        places_json(&places(&answers))
+        // every area's matches ranked together by their scores, as the planner's one index for all areas ranks them;
+        // a place in two areas (at their border) once
+        let mut found: Vec<(f64, String)> = self
+            .areas
+            .iter()
+            .filter_map(Slot::area)
+            .flat_map(|area| photon::scored(&area.index, &area.typos, &query))
+            .collect();
+        found.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut seen = HashSet::new();
+        let features: Vec<String> = found
+            .into_iter()
+            .map(|(_, feature)| feature)
+            .filter(|f| seen.insert(f.clone()))
+            .take(SEARCH_LIMIT)
+            .collect();
+        places_json(&places(&[photon::collection(&features)]))
     }
 }
 

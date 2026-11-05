@@ -101,10 +101,10 @@ enum RouteStore {
     }
 
     private static func update(_ kind: Kind, _ change: (inout [Entry]) -> Void) {
-        var entries = index(kind)
-        change(&entries)
-        indexes[kind] = entries
-        let path = indexURL(kind)
+        var changed = index(kind)
+        change(&changed)
+        indexes[kind] = changed
+        let (path, entries) = (indexURL(kind), changed)
         writing.async {
             try? FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? JSONEncoder().encode(entries).write(to: path, options: .atomic)

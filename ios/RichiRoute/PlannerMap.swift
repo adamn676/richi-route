@@ -181,7 +181,7 @@ struct PlannerMap: UIViewRepresentable {
         }
 
         func show(_ content: MapContent, on map: MLNMapView) {
-            guard let lines, let pins else { return waiting = content }
+            guard let lines, pins != nil else { return waiting = content }
             guard content != shown else { return }
             let reframe = content.framing != shown?.framing
             shown = content

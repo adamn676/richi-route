@@ -51,8 +51,8 @@ pub struct Place {
 pub const SEARCH_LIMIT: usize = 20;
 const SUGGESTIONS: usize = 8;
 
-/// The suggestions from the answers of each area's search to `/api/` (the area around the map first): those of all
-/// areas, a place found by an earlier area left out, without clutter, one per address and one per name in a town.
+/// The suggestions from the answers of each area's search to `/api/`, best first: those of all areas, a place found by
+/// an earlier area left out, without clutter, one per address and one per name in a town.
 pub fn places(answers: &[String]) -> Vec<Place> {
     let parsed: Vec<Json> = answers.iter().filter_map(|answer| Json::parse(answer).ok()).collect();
     // a place an earlier area found already: areas overlap at their borders

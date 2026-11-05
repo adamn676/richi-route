@@ -12,6 +12,32 @@ pub enum Answer {
     NotFound,
 }
 
+/// The features `/api/?…` answers, best first, each with its score: the scores of several indexes compare, so their
+/// answers can be merged as one index's would be (the iPhone app's areas).
+pub fn scored(index: &Index, typos: &TypoIndex, query: &str) -> Vec<(f64, String)> {
+    let params = parameters(query);
+    let get = |name: &str| params.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let number = |name: &str| get(name).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+    let bbox = get("bbox").and_then(|b| {
+        let v: Vec<f64> = b.split(',').filter_map(|x| x.parse().ok()).collect();
+        (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]])
+    });
+    let query = Query {
+        text: get("q").unwrap_or_default(),
+        focus: number("lon").zip(number("lat")),
+        bias_scale: number("location_bias_scale").unwrap_or(DEFAULT_BIAS_SCALE),
+        bbox,
+        limit: number("limit").map_or(15, |l| l.clamp(1.0, 50.0) as usize),
+    };
+    search(index, typos, &query)
+        .into_iter()
+        .map(|(hit, score)| match hit {
+            Hit::Doc(d) => (score, doc_feature(index, &index.docs[d as usize])),
+            Hit::House(h) => (score, house_feature(index, &index.houses[h as usize])),
+        })
+        .collect()
+}
+
 /// The answer to `path` with the query string `query` (without its `?`).
 pub fn answer(index: &Index, typos: &TypoIndex, path: &str, query: &str) -> Answer {
     let params = parameters(query);
@@ -20,24 +46,7 @@ pub fn answer(index: &Index, typos: &TypoIndex, path: &str, query: &str) -> Answ
     let point = number("lon").zip(number("lat"));
     let body = match path.trim_end_matches('/') {
         "/api" => {
-            let bbox = get("bbox").and_then(|b| {
-                let v: Vec<f64> = b.split(',').filter_map(|x| x.parse().ok()).collect();
-                (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]])
-            });
-            let query = Query {
-                text: get("q").unwrap_or_default(),
-                focus: point,
-                bias_scale: number("location_bias_scale").unwrap_or(DEFAULT_BIAS_SCALE),
-                bbox,
-                limit: number("limit").map_or(15, |l| l.clamp(1.0, 50.0) as usize),
-            };
-            let features: Vec<String> = search(index, typos, &query)
-                .into_iter()
-                .map(|(hit, _)| match hit {
-                    Hit::Doc(d) => doc_feature(index, &index.docs[d as usize]),
-                    Hit::House(h) => house_feature(index, &index.houses[h as usize]),
-                })
-                .collect();
+            let features: Vec<String> = scored(index, typos, query).into_iter().map(|(_, feature)| feature).collect();
             collection(&features)
         }
         "/reverse" => {
@@ -120,7 +129,8 @@ fn feature(p: Point, properties: &[(&str, &str)]) -> String {
     )
 }
 
-fn collection(features: &[String]) -> String {
+/// A GeoJSON FeatureCollection of `features`.
+pub fn collection(features: &[String]) -> String {
     format!(r#"{{"type":"FeatureCollection","features":[{}]}}"#, features.join(","))
 }
 

@@ -13,14 +13,18 @@ final class SearchTests: XCTestCase {
         app.staticTexts["S"].firstMatch.tap()
         let field = app.textFields["Start suchen"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        for town in ["Graz", "Feldkirch", "Hermagor", "Neusiedl am See"] {
+        // each town among the suggestions, seen from wherever the map is
+        let towns = [("Graz", "Graz, Steiermark"), ("Feldkirch", "Feldkirch, Vorarlberg"),
+                     ("Hermagor", "Hermagor, Kärnten"), ("Neusiedl am See", "Neusiedl am See, Burgenland")]
+        for (typed, town) in towns {
             let started = Date()
-            field.typeText(town)
-            let first = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", town)).firstMatch
-            let found = first.waitForExistence(timeout: 30)
-            print("SEARCH \(town): \(found ? "„\(first.label)“" : "nothing") after \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
-            XCTAssertTrue(found, "\(town) not found")
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: town.count))
+            field.typeText(typed)
+            let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", typed, town)).firstMatch
+            let found = suggestion.waitForExistence(timeout: 30)
+            let first = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", typed)).firstMatch
+            print("SEARCH \(typed): \(found ? "found" : "not found") after \(String(format: "%.1f", Date().timeIntervalSince(started))) s, first „\(first.label)“")
+            XCTAssertTrue(found, "\(town) not among the suggestions")
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: typed.count))
         }
         app.buttons["Abbrechen"].tap()
     }
