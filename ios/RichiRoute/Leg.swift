@@ -61,7 +61,4 @@ enum Geo {
         return 2 * 6_371_008.8 * asin(min(a, 1).squareRoot())
     }
 
-    static func length(_ coordinates: ArraySlice<[Double]>) -> Double {
-        zip(coordinates, coordinates.dropFirst()).reduce(0) { $0 + distance($1.0, $1.1) }
-    }
 }

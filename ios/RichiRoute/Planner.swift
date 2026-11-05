@@ -57,24 +57,34 @@ final class Planner {
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
-    /// The stretch the elevation profile is zoomed into, on the route it was chosen on: its distances along it and
-    /// its line, which the map lifts and frames. Kept here, so profile and map show the same stretch, also after
-    /// another tab or an undo.
-    struct Zoom {
+    /// A stretch chosen on the route it was chosen on: its distances along it and its line, which the map lifts and
+    /// frames. Kept here, so panel and map show the same stretch, also after another tab or an undo.
+    struct Stretch {
         let route: [String]
         let range: ClosedRange<Double>
         let line: [[Double]]
     }
 
-    private(set) var zoom: Zoom?
+    /// The stretch the elevation profile is zoomed into, and the surface section picked in "Untergrund", which the map
+    /// shows rather than the stretch.
+    private(set) var zoom: Stretch?
+    private(set) var section: Stretch?
 
-    /// The zoomed stretch while the route is the one it was chosen on.
-    var profileRange: ClosedRange<Double>? { zoom.flatMap { $0.route == pairs.map(\.key) ? $0.range : nil } }
+    var profileRange: ClosedRange<Double>? { current(zoom)?.range }
+    var sectionRange: ClosedRange<Double>? { current(section)?.range }
 
     func zoomProfile(_ range: ClosedRange<Double>?, line: [[Double]] = []) {
-        zoom = range.map { Zoom(route: pairs.map(\.key), range: $0, line: line) }
+        zoom = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line) }
         frame()
     }
+
+    func focusSection(_ range: ClosedRange<Double>?, line: [[Double]] = []) {
+        section = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line) }
+        frame()
+    }
+
+    /// A stretch while the route is the one it was chosen on.
+    private func current(_ stretch: Stretch?) -> Stretch? { stretch.flatMap { $0.route == pairs.map(\.key) ? $0 : nil } }
     /// The stop the rider is replacing: the next tap on the map puts it there.
     private(set) var picking: UUID?
     /// What the phone lets the rider feel, a new value each time (`PlannerView`).
@@ -509,14 +519,6 @@ final class Planner {
 
     var highestMeters: Double? { routedLegs.compactMap { $0?.elevations?.max() }.max() }
 
-    /// Metres per surface group, in the groups' order, those the route has.
-    var surfaceMeters: [(surface: Surface, meters: Double)] {
-        var meters: [Surface: Double] = [:]
-        for leg in routedLegs.compactMap({ $0 }) {
-            for span in leg.drawnSpans { meters[span.surface, default: 0] += Geo.length(leg.coordinates[span.fromIndex...span.toIndex]) }
-        }
-        return Surface.allCases.compactMap { surface in meters[surface].flatMap { $0 > 0 ? (surface, $0) : nil } }
-    }
 
     /// The first problem fixed elsewhere than at a stop's row: a Formpunkt without a road, or a leg that could not be
     /// routed.
@@ -561,7 +563,7 @@ final class Planner {
                 return MapContent.Pin(stop: stop.id, coord: coord, badge: badge, error: stopErrors[stop.id] != nil)
             }
         }
-        return MapContent(lines: lines, pins: pins, framing: framing, stretch: profileRange == nil ? [] : zoom?.line ?? [])
+        return MapContent(lines: lines, pins: pins, framing: framing, stretch: (current(section) ?? current(zoom))?.line ?? [])
     }
 }
 

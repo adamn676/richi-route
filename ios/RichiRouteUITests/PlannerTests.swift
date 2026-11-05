@@ -57,6 +57,21 @@ final class PlannerTests: XCTestCase {
         app.buttons["Ganzes Profil zeigen"].tap()
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForNonExistence(timeout: 10))
 
+        // a surface opens its sections, the first on the map; the arrows step through them, a second tap closes them
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        let paved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Befestigt'")).firstMatch
+        XCTAssertTrue(paved.waitForExistence(timeout: 20), "no surfaces")
+        paved.tap()
+        let count = app.staticTexts.matching(NSPredicate(format: "label MATCHES 'Befestigt · (1 von [0-9]+|1 Abschnitt)'")).firstMatch
+        XCTAssertTrue(count.waitForExistence(timeout: 5), "no sections")
+        shot(app, "2d-sections")
+        if app.buttons["Nächster Abschnitt"].exists {
+            app.buttons["Nächster Abschnitt"].tap()
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Befestigt · 2 von'")).firstMatch.waitForExistence(timeout: 5))
+        }
+        paved.tap()
+        XCTAssertTrue(count.waitForNonExistence(timeout: 5))
+
         // undo and redo on the map
         app.buttons["Rückgängig"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 10))

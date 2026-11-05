@@ -381,7 +381,9 @@ offline area's `search.index`); the legs come from the engine's `/leg`, drawn
 in their surface colours, with undo and redo, the route's figures, its
 elevation profile (the engine's `/profile`, `engine/planner/src/profile.rs`;
 `node engine/parity/profile.mjs <engine origin>` compares it with the planner's
-on real routes) and its surfaces. A finger drawn along the profile shows the point
+on real routes) and its surfaces, whose sections a tap on a surface opens and shows on the map (the engine's
+`/surfaces`, `engine/planner/src/surfaces.rs`; `node engine/parity/surfaces.mjs <engine origin>` compares them with
+the planner's). A finger drawn along the profile shows the point
 on the map, held still first it marks a stretch to zoom into, as the planner's
 profile on touch. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own

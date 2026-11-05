@@ -5,9 +5,9 @@ import Foundation
 enum Format {
     private static let german = Locale(identifier: "de_DE")
 
-    /// Kilometres with up to `digits` decimals.
-    static func km(_ meters: Double, digits: Int = 1) -> String {
-        (meters / 1000).formatted(.number.locale(german).precision(.fractionLength(0...digits)))
+    /// Kilometres with up to `digits` decimals, all of them where `fixed`.
+    static func km(_ meters: Double, digits: Int = 1, fixed: Bool = false) -> String {
+        (meters / 1000).formatted(.number.locale(german).precision(.fractionLength((fixed ? digits : 0)...digits)))
     }
 
     /// A length in metres under a kilometre, else in kilometres with one decimal (`formatLength`).

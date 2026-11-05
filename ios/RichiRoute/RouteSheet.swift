@@ -81,6 +81,8 @@ struct RouteTab: View {
     @State private var searching: Searching?
     /// The profile with the legs and the stretch it was made from, shown together until the next one is there.
     @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
+    /// The route's surfaces with the legs they were made from, likewise.
+    @State private var surfaces: (value: Surfaces, legs: [Leg])?
 
     /// The stop whose search is open.
     private struct Searching: Identifiable {
@@ -119,11 +121,14 @@ struct RouteTab: View {
                 Text("Wegpunkte").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
                 stops
             }
-            if planner.isComplete {
+            if planner.isComplete, let surfaces {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
                     Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
-                    surfaces
+                    SurfaceRows(surfaces: surfaces.value, legs: surfaces.legs, focused: planner.sectionRange) { range, line in
+                        planner.focusSection(range, line: line)
+                        if range != nil { halve() }
+                    }
                 }
             }
             // the map's credits, once, at the very end
@@ -137,8 +142,19 @@ struct RouteTab: View {
         .tint(Color.ink)
         // folded, the panel shows its start again, not wherever it was scrolled to
         .onChange(of: folded) { if folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
+        // a section on the map: its arrows and list in view above the half-lowered panel's foot, once they are there
+        .onChange(of: planner.sectionRange) {
+            if planner.sectionRange != nil { withAnimation { scroller.scrollTo(SurfaceRows.stepRow, anchor: .top) } }
+        }
         // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
         .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
+        }
+        // the surfaces of the route as it stands, asked again whenever a leg changes
+        .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
+            guard planner.isComplete, let engine = planner.engine else { return surfaces = nil }
+            let legs = legs
+            guard let value = try? await engine.surfaces(legs), !Task.isCancelled else { return }
+            surfaces = (value, legs)
         }
         // the profile of the route as it stands, or of its stretch: asked again whenever a leg or the stretch changes
         .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: planner.profileRange)) {
@@ -183,7 +199,7 @@ struct RouteTab: View {
                         figure("Höchster Punkt", planner.highestMeters.map { "\(Format.whole($0)) m" } ?? "unbekannt")
                     }
                 }
-                surfaceBar
+                if let surfaces { surfaceBar(surfaces.value) }
             } else {
                 Text(status).font(.subheadline).foregroundStyle(.secondary)
             }
@@ -198,19 +214,19 @@ struct RouteTab: View {
         return "Tipp: Antippen setzt Start und Ziel, ein Tippen auf die Route einen Zwischenstopp."
     }
 
-    private var surfaceBar: some View {
-        let parts = planner.surfaceMeters, total = parts.reduce(0) { $0 + $1.meters }
-        return GeometryReader { size in
+    private func surfaceBar(_ surfaces: Surfaces) -> some View {
+        GeometryReader { size in
             HStack(spacing: 0) {
-                ForEach(parts, id: \.surface) { part in
-                    Rectangle().fill(Color(MapStyle.shared.color(part.surface))).frame(width: size.size.width * part.meters / total)
+                ForEach(surfaces.totals, id: \.surface) { total in
+                    Rectangle().fill(Color(MapStyle.shared.color(total.surface)))
+                        .frame(width: size.size.width * total.meters / max(surfaces.distance, 1))
                 }
             }
         }
         .frame(height: 6)
         .clipShape(Capsule())
         .accessibilityElement()
-        .accessibilityLabel("Untergrund: " + parts.map { "\(percent($0.meters, of: total)) % \($0.surface.label)" }.joined(separator: ", "))
+        .accessibilityLabel("Untergrund: " + surfaces.totals.map { "\(surfaces.share($0.meters)) \($0.surface.label)" }.joined(separator: ", "))
     }
 
     private func problemView(_ problem: String) -> some View {
@@ -294,20 +310,4 @@ struct RouteTab: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var surfaces: some View {
-        let parts = planner.surfaceMeters, total = parts.reduce(0) { $0 + $1.meters }
-        return ForEach(parts, id: \.surface) { part in
-            HStack(spacing: 10) {
-                Circle().fill(Color(MapStyle.shared.color(part.surface))).frame(width: 10, height: 10)
-                Text(part.surface.label)
-                Spacer()
-                Text(Format.length(part.meters))
-                Text("\(percent(part.meters, of: total)) %").foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
-            }
-            .font(.subheadline)
-        }
-    }
-
-    private func percent(_ part: Double, of total: Double) -> Int { total > 0 ? Int((part / total * 100).rounded()) : 0 }
 }

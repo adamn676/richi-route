@@ -81,13 +81,31 @@ struct Engine: Sendable {
             let from: Double?
             let to: Double?
         }
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/profile")!)
+        let body = Body(legs: legs.map {
+            Body.Part(coordinates: $0.coordinates, elevations: $0.elevations, distanceMeters: $0.distanceMeters)
+        }, from: range?.lowerBound, to: range?.upperBound)
+        return try JSONDecoder().decode(Profile?.self, from: try await post("profile", body))
+    }
+
+    /// The route's surface sections and the metres of each group, as the planner lists them.
+    func surfaces(_ legs: [Leg]) async throws -> Surfaces {
+        struct Body: Encodable {
+            struct Part: Encodable {
+                let coordinates: [[Double]]
+                let surfaces: [Leg.Span]
+            }
+            let legs: [Part]
+        }
+        let body = Body(legs: legs.map { Body.Part(coordinates: $0.coordinates, surfaces: $0.surfaces) })
+        return try JSONDecoder().decode(Surfaces.self, from: try await post("surfaces", body))
+    }
+
+    private func post(_ path: String, _ body: some Encodable) async throws -> Data {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/\(path)")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Body(legs: legs.map {
-            Body.Part(coordinates: $0.coordinates, elevations: $0.elevations, distanceMeters: $0.distanceMeters)
-        }, from: range?.lowerBound, to: range?.upperBound))
-        return try JSONDecoder().decode(Profile?.self, from: try await ask(request))
+        request.httpBody = try JSONEncoder().encode(body)
+        return try await ask(request)
     }
 
     private func routing(_ path: String, _ points: [[Double]], extra: [URLQueryItem] = []) -> URLRequest {
