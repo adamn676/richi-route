@@ -119,7 +119,7 @@ struct PlannerMap: UIViewRepresentable {
             style.addSource(lines)
             style.addSource(pins)
             let colors = MapStyle.shared
-            let routed = NSPredicate(format: "style != 'waiting' AND style != 'air'")
+            let routed = NSPredicate(format: "NOT style IN {'waiting', 'air', 'progress'}")
 
             let outline = MLNLineStyleLayer(identifier: "route-outline", source: lines)
             outline.predicate = routed
@@ -132,11 +132,16 @@ struct PlannerMap: UIViewRepresentable {
             line.lineColor = NSExpression(mglJSONObject: bySurface)
             line.lineWidth = NSExpression(forConstantValue: 5)
             let pending = MLNLineStyleLayer(identifier: "route-pending", source: lines)
-            pending.predicate = NSCompoundPredicate(notPredicateWithSubpredicate: routed)
+            pending.predicate = NSPredicate(format: "style IN {'waiting', 'air'}")
             let waitingColor = dark ? "#9aa29e" : colors.hex("waiting")
             pending.lineColor = NSExpression(mglJSONObject: ["match", ["get", "style"], "air", colors.hex("air"), waitingColor])
             pending.lineWidth = NSExpression(forConstantValue: 3)
             pending.lineDashPattern = NSExpression(forConstantValue: [2, 2])
+            // the part of a beeline its search has covered, filled in
+            let filled = MLNLineStyleLayer(identifier: "route-progress", source: lines)
+            filled.predicate = NSPredicate(format: "style == 'progress'")
+            filled.lineColor = pending.lineColor
+            filled.lineWidth = NSExpression(forConstantValue: 3)
             // the stretch the profile is zoomed into, lifted beneath the route: in the planner's ink, on the dark map
             // as a soft light glow, which the white outline can't be taken for. Its line smoothed, as a blurred line
             // draws bright slashes across itself at a road's small jogs.
@@ -151,7 +156,7 @@ struct PlannerMap: UIViewRepresentable {
             }
             // under the map's names, as the planner draws it, so street and place names stay readable on the route
             let labels = style.layers.first { $0 is MLNSymbolStyleLayer }
-            for layer in [lifted, outline, line, pending] {
+            for layer in [lifted, outline, line, pending, filled] {
                 layer.lineCap = NSExpression(forConstantValue: "round")
                 layer.lineJoin = NSExpression(forConstantValue: "round")
                 if let labels { style.insertLayer(layer, below: labels) } else { style.addLayer(layer) }

@@ -50,6 +50,33 @@ fn serves_routes_and_loops_from_the_bundle_layout() {
     assert!(ok("/brouter").contains("\"track-length\""));
     assert!(ok("/leg").contains("\"distanceMeters\""), "the planner's leg");
     assert!(get("/route").starts_with("HTTP/1.1 404"));
+    // a leg the app follows (Wien to Graz, about a second here) reports how far it has come while it runs
+    let followed = std::thread::spawn(move || {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let query = "profile=richi-local-v1&lonlats=16.3725%2C48.2083%7C15.4395%2C47.0707&format=geojson&progress=w-g";
+        write!(stream, "GET /leg?{query} HTTP/1.1\r\n\r\n").unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer
+    });
+    let progress = || {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(stream, "GET /progress?id=w-g HTTP/1.1\r\n\r\n").unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer.rsplit("\r\n\r\n").next().and_then(|body| body.parse::<f64>().ok())
+    };
+    let mut seen = Vec::new();
+    while !followed.is_finished() {
+        seen.extend(progress());
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        followed.join().unwrap().contains("\"distanceMeters\""),
+        "the leg, its id left out of BRouter's parameters"
+    );
+    assert!(seen.iter().any(|&p| p > 0.0) && seen.is_sorted() && seen.iter().all(|&p| p <= 0.95), "{seen:?}");
+    assert_eq!(progress(), None, "forgotten once it ended");
     let name = |query: &str| {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
         write!(stream, "GET /name?{query} HTTP/1.1\r\n\r\n").unwrap();

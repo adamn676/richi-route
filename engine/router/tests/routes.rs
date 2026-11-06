@@ -4,11 +4,10 @@
 //! (defaults from `PORTING.md`); skipped when they are missing. `parity/route.sh` compares far more.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use brouter_router::{Answer, LocalRules, Rider, Router, RouterPool, SegmentStore, SurfaceFile};
+use brouter_router::{Answer, LocalRules, Rider, Router, RouterPool, SegmentStore, SurfaceFile, Watch};
 
 fn data_dir(var: &str, default: &str) -> PathBuf {
     std::env::var_os(var).map_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join(default), PathBuf::from)
@@ -72,11 +71,11 @@ fn terminated_requests_end_at_once() {
     let pool = RouterPool::new(Arc::new(SegmentStore::new(segments, 64 << 20)), profiles, 1, None, Rider::default());
     // Graz to Virgen, about three seconds
     let long = "profile=richi-local-v1&lonlats=15.393249%2C47.076551%7C12.456876%2C47.003344&format=geojson";
-    let (terminated, (sender, receiver)) = (Arc::new(AtomicBool::new(false)), mpsc::channel());
+    let (watch, (sender, receiver)) = (Arc::new(Watch::default()), mpsc::channel());
     let started = Instant::now();
-    pool.submit(long.into(), 60_000, Some(terminated.clone()), move |outcome, _| sender.send(outcome).unwrap());
+    pool.submit(long.into(), 60_000, Some(watch.clone()), move |outcome, _| sender.send(outcome).unwrap());
     std::thread::sleep(Duration::from_millis(300));
-    terminated.store(true, Relaxed);
+    watch.stop();
     match receiver.recv().expect("an answer") {
         Ok(Ok(Answer::Error(message))) => assert!(message.starts_with("operation killed by thread-priority-watchdog")),
         other => panic!("not ended: {other:?}"),
@@ -84,9 +83,16 @@ fn terminated_requests_end_at_once() {
     assert!(started.elapsed() < Duration::from_secs(1), "ended after {:?}", started.elapsed());
 
     let (sender, receiver) = mpsc::channel();
-    pool.submit(long.into(), 60_000, Some(Arc::new(AtomicBool::new(true))), move |outcome, _| {
-        sender.send(outcome).unwrap()
-    });
+    pool.submit(
+        long.into(),
+        60_000,
+        Some(Arc::new({
+            let watch = Watch::default();
+            watch.stop();
+            watch
+        })),
+        move |outcome, _| sender.send(outcome).unwrap(),
+    );
     pool.finish();
     assert!(receiver.recv().is_err(), "a request terminated before it starts gets no answer");
 }

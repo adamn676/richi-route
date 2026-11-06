@@ -206,6 +206,14 @@ struct RouteTab: View {
                 if let surfaces { surfaceBar(surfaces.value) }
             } else {
                 Text(status).font(.subheadline).foregroundStyle(.secondary)
+                if planner.isRouting {
+                    // looked at four times a second, so the bar comes after the first second and moves evenly
+                    TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                        if let progress = planner.routingProgress {
+                            ProgressView(value: progress).animation(.linear(duration: 0.25), value: progress)
+                        }
+                    }
+                }
             }
         }
         .padding(.vertical, 4)

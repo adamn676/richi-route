@@ -60,7 +60,7 @@ pub use local_rules::{LocalRules, VERSION_MISMATCH};
 pub use message_data::MessageData;
 pub use param_collector::{OsmNodeNamed, UrlParams, get_url_params, get_way_point_list, set_params};
 pub use path_element::{ElemIdx, OsmPathElement, PathElements};
-pub use pool::{Outcome, RouterPool};
+pub use pool::{Outcome, RouterPool, Watch};
 pub use preferences::Preferences;
 pub use profile_cache::ProfileCache;
 pub use request::{Answer, Rider, Router};

@@ -11,7 +11,7 @@
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::time::{Duration, Instant};
 
@@ -27,7 +27,7 @@ use crate::libm;
 use crate::param_collector::OsmNodeNamed;
 use crate::path::{GRAVITY, NewPath, OsmPath, PathEnv, PathIdx, Paths};
 use crate::path_element::{ElemIdx, OsmPathElement, PathElements};
-use crate::pool::Pool;
+use crate::pool::{Pool, Watch};
 use crate::profile_cache::ProfileCache;
 use crate::routing_context::RoutingContext;
 use crate::track::{DetachedTrack, OsmTrack};
@@ -81,6 +81,12 @@ const KEPT_PATHS: usize = (64 << 20) / std::mem::size_of::<OsmPath>();
 
 /// Estimated search bytes per allocated path slot, including the graph and open set.
 const BYTES_PER_PATH: usize = 145;
+
+/// The progress a search reports, fitted to the time of six routes of 100 to 840 km with the planner's parameters:
+/// the first pass takes about a fifth of a medium route's time, less of a long one's; the second ends with its keys
+/// about three quarters of the way to the first pass's cost, and covers its ground with time as an area does.
+const FIRST_PASS: f64 = 0.18;
+const SECOND_PASS_END: f64 = 0.75;
 
 /// Beyond this many paths a search stops with BRouter's memory error, as a search past Java's heap
 /// (`-Xmx`) would end: a runaway search fails alone instead of taking the program down. The default
@@ -152,7 +158,7 @@ pub(crate) struct Job {
     max_running_time: i64,
     /// The request's clock: Java times all searches of a request from its start.
     start_time: Instant,
-    terminated: Option<Arc<AtomicBool>>,
+    watch: Option<Arc<Watch>>,
 }
 
 #[derive(Clone, Copy)]
@@ -219,8 +225,8 @@ struct Searcher {
     start_time: Instant,
     max_running_time: i64,
     direct_segment: i32,
-    /// Java's `terminated`: set from another thread to end the request's searches (`terminate()`).
-    terminated: Option<Arc<AtomicBool>>,
+    /// Java's `terminated`, set from another thread to end the request's searches, and their progress.
+    watch: Option<Arc<Watch>>,
 }
 
 /// Runs a decoding step of the cache, failing with the profile error the decoder swallowed, if any
@@ -338,9 +344,9 @@ impl RoutingEngine {
         self.search.release(profiles)
     }
 
-    /// `terminate()` once `terminated` is set: the request's searches end at their next check.
-    pub(crate) fn set_terminated(&mut self, terminated: Option<Arc<AtomicBool>>) {
-        self.search.terminated = terminated;
+    /// The request's searches end at their next check once `watch` is stopped, and report their progress to it.
+    pub(crate) fn set_watch(&mut self, watch: Option<Arc<Watch>>) {
+        self.search.watch = watch;
     }
 
     pub(crate) fn set_pool(&mut self, pool: Option<&Pool>) {
@@ -373,7 +379,7 @@ impl RoutingEngine {
             island_node_pairs: search.island_node_pairs.clone(),
             max_running_time: search.max_running_time,
             start_time: search.start_time,
-            terminated: search.terminated.clone(),
+            watch: search.watch.clone(),
         }
     }
 
@@ -698,7 +704,7 @@ impl Searcher {
             start_time: Instant::now(),
             max_running_time,
             direct_segment: 1,
-            terminated: None,
+            watch: None,
         }
     }
 
@@ -1024,7 +1030,7 @@ impl Searcher {
             start_time,
             max_running_time,
             direct_segment,
-            terminated,
+            watch,
             ..
         } = self;
         let cache = nodes_cache.as_mut().expect("cache was reset");
@@ -1048,9 +1054,16 @@ impl Searcher {
         let mut open_border_list: Vec<PathIdx> = Vec::with_capacity(4096);
         let mut memory_panic_mode = false;
         let mut need_non_panic_processing = false;
+        // How far the search has come, for the rider waiting for it: the first pass by how near to the end it has
+        // got, the second by how far its keys, which grow from the start's, have come to the first pass's cost.
+        // Island checks and the final detail pass report nothing.
+        let reports = !detail_mode && *node_limit == 0;
+        let first_key = open_key(&paths[start_path1]);
+        let start_air = f64::from(paths[start_path1].airdistance.max(1));
+        let mut reached = (first_key, paths[start_path1].airdistance);
 
         let ended = || {
-            if terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
+            if watch.as_ref().is_some_and(|watch| watch.stopped()) {
                 let seconds = start_time.elapsed().as_secs();
                 return Some(error(format!("operation killed by thread-priority-watchdog after {seconds} seconds")));
             }
@@ -1072,6 +1085,19 @@ impl Searcher {
                 }
                 if let Some(e) = ended() {
                     return Err(e);
+                }
+                if let Some(watch) = watch.as_ref().filter(|_| reports) {
+                    watch.advance(
+                        match cost_cutting_track {
+                            None => FIRST_PASS * (1.0 - f64::from(reached.1) / start_air),
+                            Some(track) => {
+                                let covered =
+                                    f64::from(reached.0 - first_key) / f64::from((track.cost - first_key).max(1));
+                                FIRST_PASS + (1.0 - FIRST_PASS) * (covered / SECOND_PASS_END).clamp(0.0, 1.0).powf(1.5)
+                            }
+                        }
+                        .min(0.95),
+                    );
                 }
                 while turn.is_none() && paths.len() > SHARED_PATHS {
                     match LONG_SEARCH.try_lock() {
@@ -1103,6 +1129,7 @@ impl Searcher {
             if paths[pi].airdistance == -1 {
                 continue;
             }
+            reached = (open_key(&paths[pi]), paths[pi].airdistance);
 
             // Direct weaving is always on. Java looks for hollow link targets first; the answer only
             // matters when the memory check runs, otherwise the pre-pass below finds them itself.
@@ -1682,9 +1709,9 @@ pub(crate) fn run_pool_job(
         }
         Err(_) => return Err(Box::new(job)),
     };
-    let Job { kind, rc, island_node_pairs, max_running_time, start_time, terminated } = job;
+    let Job { kind, rc, island_node_pairs, max_running_time, start_time, watch } = job;
     let mut search = Searcher::new(segments, rc, profile, std::mem::take(arenas), island_node_pairs, max_running_time);
-    search.terminated = terminated;
+    search.watch = watch;
     let mut result = search.run_job(kind, start_time);
     result.outcome = match result.outcome {
         Ok(JobOutput::Section(track)) => Ok(JobOutput::Detached(track.detach(&search.elements))),

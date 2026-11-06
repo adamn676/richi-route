@@ -15,11 +15,10 @@ mod surfaces;
 
 use std::fmt::Write;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
-use brouter_router::{Answer, Outcome, RouterPool};
+use brouter_router::{Answer, Outcome, RouterPool, Watch};
 use brouter_util::jmath;
 
 pub use fit::{Course, course_fits};
@@ -128,7 +127,7 @@ impl LoopRequest {
         max_running_time: i64,
         gone: &impl Fn() -> bool,
     ) -> Routed<Failure> {
-        let terminated = Arc::new(AtomicBool::new(false));
+        let watch = Arc::new(Watch::default());
         let (sender, receiver) = mpsc::channel();
         let mut sender = Some(sender);
         let mut legs: Vec<_> = trips.iter().map(|_| None).collect();
@@ -138,7 +137,7 @@ impl LoopRequest {
                 let i = asked;
                 // the last trip takes the sender itself, so that a reply the pool drops disconnects the channel
                 let Some(reply) = (if i + 1 == trips.len() { sender.take() } else { sender.clone() }) else { break };
-                pool.submit(self.query(&trips[i]), max_running_time, Some(terminated.clone()), move |outcome, _| {
+                pool.submit(self.query(&trips[i]), max_running_time, Some(watch.clone()), move |outcome, _| {
                     let leg = match outcome {
                         Ok(Ok(Answer::GeoJson(geojson))) => Leg::from_geojson(&geojson).map_err(Failure::Internal),
                         outcome => Err(Failure::Engine(outcome)),
@@ -152,11 +151,11 @@ impl LoopRequest {
                     Ok(answer) => break answer,
                     Err(RecvTimeoutError::Timeout) if !gone() => {}
                     Err(RecvTimeoutError::Timeout) => {
-                        terminated.store(true, Relaxed);
+                        watch.stop();
                         return Err(Stop::Aborted);
                     }
                     Err(RecvTimeoutError::Disconnected) => {
-                        terminated.store(true, Relaxed);
+                        watch.stop();
                         return Err(Stop::Failed(Failure::Internal("the pool dropped a search".into())));
                     }
                 }

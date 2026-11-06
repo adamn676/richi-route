@@ -25,17 +25,16 @@
 //! (`richi_planner::profile_request`, `surfaces_request`). `POST /memory` with a number of megabytes sets what a route
 //! search may take from then on: the iPhone app sends what the phone has free right before it asks for a route.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use brouter_router::{
-    Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, get_url_params, limit_search_memory, panic_message,
+    Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, Watch, get_url_params, limit_search_memory, panic_message,
 };
 use richi_planner::{
     Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, leg_json, nearest_on_lines, place_name, places, places_json,
@@ -272,6 +271,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
         "/name" => return name(stream, query, places),
         "/places" => return search(stream, query, places),
         "/street" => return street(stream, query, places),
+        "/progress" => return progress(stream, query),
         _ => {}
     }
     let leg = match path {
@@ -279,6 +279,9 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
         "/leg" => true,
         _ => return send(stream, "404 Not Found", ""),
     };
+    // the app's id for the request, which BRouter's parameters leave out
+    let followed = Followed(parameter(query, "progress").map(str::to_string));
+    let query = query.split('&').filter(|pair| !pair.starts_with("progress=")).collect::<Vec<_>>().join("&");
     let file_name = match get_url_params(&format!("/brouter?{query}")) {
         Ok(params) if params.contains_key("lonlats") && params.contains_key("profile") => file_name(&params),
         Ok(_) => return send(stream, "404 Not Found", ""),
@@ -286,16 +289,19 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
     };
     // Java's watchdog stops the oldest search once every thread is busy; here a search stops as soon as
     // its client goes away, as the requests the planner abandons do
-    let terminated = Arc::new(AtomicBool::new(false));
+    let watch = Arc::new(Watch::default());
+    if let Some(id) = &followed.0 {
+        followed_requests().insert(id.clone(), watch.clone());
+    }
     let (sender, receiver) = mpsc::channel();
     let reply = move |outcome, _| sender.send(outcome).unwrap_or_default();
-    pool.submit(query.to_string(), max_running_time, Some(terminated.clone()), reply);
+    pool.submit(query, max_running_time, Some(watch.clone()), reply);
     let outcome: Outcome = loop {
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(outcome) => break outcome,
             Err(RecvTimeoutError::Timeout) if !client_gone(&stream) => {}
             // gone, or dropped by the pool after that
-            Err(_) => return terminated.store(true, Relaxed),
+            Err(_) => return watch.stop(),
         }
     };
     match outcome {
@@ -304,6 +310,33 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
             Err(reason) => internal_error(stream, reason),
         },
         outcome => answer(stream, outcome, file_name),
+    }
+}
+
+/// The routing requests the app follows by the id it gave them (`progress=…`), while they run.
+static FOLLOWED: Mutex<BTreeMap<String, Arc<Watch>>> = Mutex::new(BTreeMap::new());
+
+fn followed_requests() -> std::sync::MutexGuard<'static, BTreeMap<String, Arc<Watch>>> {
+    FOLLOWED.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A followed request, forgotten however it ends.
+struct Followed(Option<String>);
+
+impl Drop for Followed {
+    fn drop(&mut self) {
+        if let Some(id) = &self.0 {
+            followed_requests().remove(id);
+        }
+    }
+}
+
+/// `GET /progress?id=…`: how far a followed request has come, from 0 to 1; 404 once it has ended or before it began.
+fn progress(stream: TcpStream, query: &str) {
+    let watch = parameter(query, "id").and_then(|id| followed_requests().get(id).cloned());
+    match watch {
+        Some(watch) => send(stream, "200 OK", &format!("{:.3}", watch.progress())),
+        None => send(stream, "404 Not Found", ""),
     }
 }
 

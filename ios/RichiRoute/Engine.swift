@@ -39,10 +39,18 @@ struct Engine: Sendable {
     }
 
     /// The leg through `points` as the planner keeps it; a single point is asked as `[point, point]`, which
-    /// the engine snaps to the nearest road.
-    func leg(_ points: [[Double]]) async throws -> Leg {
+    /// the engine snaps to the nearest road. With an `id`, `progress(id)` tells how far its search has come.
+    func leg(_ points: [[Double]], id: String? = nil) async throws -> Leg {
         try await budget()
-        return try JSONDecoder().decode(Leg.self, from: try await ask(routing("leg", points.count == 1 ? points + points : points)))
+        let followed = id.map { [URLQueryItem(name: "progress", value: $0)] } ?? []
+        return try JSONDecoder().decode(Leg.self, from: try await ask(routing("leg", points.count == 1 ? points + points : points, extra: followed)))
+    }
+
+    /// How far the search for the leg asked with `id` has come, from 0 to 1; nil before it began and once it ended.
+    func progress(_ id: String) async -> Double? {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/progress")!
+        url.queryItems = [URLQueryItem(name: "id", value: id)]
+        return (try? await ask(URLRequest(url: url.url!))).flatMap { Double(String(decoding: $0, as: UTF8.self)) }
     }
 
     /// The search's budget from what the phone has free now, not at the start: maps and address indexes the rider

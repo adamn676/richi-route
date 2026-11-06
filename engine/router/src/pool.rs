@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -53,16 +53,15 @@ impl RouterPool {
     }
 
     /// Answers the request (see `Router::answer`) on a free thread and hands the outcome and the time
-    /// taken to `reply`, on that thread. Once `terminated` is set, a running request ends with BRouter's
-    /// termination error, and one not started yet is dropped without a reply.
+    /// taken to `reply`, on that thread. `watch` follows it and can stop it.
     pub fn submit(
         &self,
         query: String,
         max_running_time: i64,
-        terminated: Option<Arc<AtomicBool>>,
+        watch: Option<Arc<Watch>>,
         reply: impl FnOnce(Outcome, Duration) + Send + 'static,
     ) {
-        let request = Request { query, max_running_time, terminated, reply: Box::new(reply) };
+        let request = Request { query, max_running_time, watch, reply: Box::new(reply) };
         self.pool.queue().requests.push_back(request);
         self.pool.0.work.notify_one();
     }
@@ -105,8 +104,37 @@ struct Queue {
 struct Request {
     query: String,
     max_running_time: i64,
-    terminated: Option<Arc<AtomicBool>>,
+    watch: Option<Arc<Watch>>,
     reply: Reply,
+}
+
+/// What the client keeps of a request it submitted: a way to stop it, and how far its searches have come.
+#[derive(Default)]
+pub struct Watch {
+    stopped: AtomicBool,
+    /// In millionths, only ever growing.
+    progress: AtomicU32,
+}
+
+impl Watch {
+    /// Java's `terminate()`: a running request ends with BRouter's termination error at its searches' next check,
+    /// one not started yet without a reply.
+    pub fn stop(&self) {
+        self.stopped.store(true, Relaxed);
+    }
+
+    pub fn stopped(&self) -> bool {
+        self.stopped.load(Relaxed)
+    }
+
+    /// How far the request has come, from 0 to 1: an estimate that never goes back.
+    pub fn progress(&self) -> f64 {
+        f64::from(self.progress.load(Relaxed)) / 1e6
+    }
+
+    pub(crate) fn advance(&self, progress: f64) {
+        self.progress.fetch_max((progress.clamp(0.0, 1.0) * 1e6) as u32, Relaxed);
+    }
 }
 
 enum Task {
@@ -135,12 +163,7 @@ impl Pool {
                 Task::Request(request) => {
                     let start = Instant::now();
                     let outcome = catch_unwind(AssertUnwindSafe(|| {
-                        router.answer_in(
-                            &request.query,
-                            request.max_running_time,
-                            Some(self),
-                            request.terminated.clone(),
-                        )
+                        router.answer_in(&request.query, request.max_running_time, Some(self), request.watch.clone())
                     }));
                     let time = start.elapsed();
                     // the request adds no more searches, whatever its reply does; the last one of a closed
@@ -165,7 +188,7 @@ impl Pool {
                 return Some(Task::Batch(batch));
             }
             if let Some(request) = queue.requests.pop_front() {
-                if request.terminated.as_ref().is_some_and(|t| t.load(Relaxed)) {
+                if request.watch.as_ref().is_some_and(|watch| watch.stopped()) {
                     continue;
                 }
                 queue.answering += 1;

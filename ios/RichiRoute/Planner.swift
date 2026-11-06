@@ -42,6 +42,12 @@ final class Planner {
     private(set) var legs: [String: LegState] = [:]
     /// The leg requests running, by their ends; one no longer needed is cancelled, which stops its search.
     private var requests: [String: Task<Void, Never>] = [:]
+    /// How far each leg being routed has come, as the engine estimates it.
+    private var progress: [String: Double] = [:]
+    /// The legs routed since the planner last had none to route, and when that began: their progress together is
+    /// the panel's.
+    private var batch: Set<String> = []
+    private var batchStarted = ContinuousClock.now
     /// Stops waiting for their road, with the point asked about, and those placed where none is near.
     private(set) var snapping: [UUID: [Double]] = [:]
     private(set) var stopErrors: [UUID: String] = [:]
@@ -449,16 +455,32 @@ final class Planner {
             request.cancel()
             requests[key] = nil
             legs[key] = nil
+            progress[key] = nil
+            batch.remove(key)
         }
         guard let engine else { return }
         for pair in needed where legs[pair.key] == nil {
+            if !legs.values.contains(.routing) {
+                batch = []
+                batchStarted = .now
+            }
+            batch.insert(pair.key)
             legs[pair.key] = .routing
             let points = [pair.from.coord!, pair.to.coord!]
             requests[pair.key] = Task {
                 let started = ContinuousClock.now
+                let id = UUID().uuidString
+                let following = Task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        if let value = await engine.progress(id), !Task.isCancelled { progress[pair.key] = value }
+                    }
+                }
                 let state: LegState
-                do { state = .routed(try await engine.leg(points)) } catch { state = .failed(Self.failure(error).message) }
+                do { state = .routed(try await engine.leg(points, id: id)) } catch { state = .failed(Self.failure(error).message) }
+                following.cancel()
                 guard !Task.isCancelled else { return }
+                progress[pair.key] = nil
                 requests[pair.key] = nil
                 legs[pair.key] = state
                 remember()
@@ -500,6 +522,17 @@ final class Planner {
     }
 
     var isRouting: Bool { !snapping.isEmpty || legs.values.contains(.routing) }
+
+    /// How far the legs being routed have come together, weighed by their beelines; nil in the first second, so a
+    /// quick route shows no bar.
+    var routingProgress: Double? {
+        guard legs.values.contains(.routing), batchStarted.duration(to: .now) > .seconds(1) else { return nil }
+        let parts = pairs.filter { batch.contains($0.key) }.map { pair in
+            (Geo.distance(pair.from.coord!, pair.to.coord!), legs[pair.key] == .routing ? progress[pair.key] ?? 0 : 1)
+        }
+        let total = parts.reduce(0) { $0 + $1.0 }
+        return total > 0 ? parts.reduce(0) { $0 + $1.0 * $1.1 } / total : nil
+    }
 
     /// A route from Start to Ziel with every leg routed.
     var isComplete: Bool {
@@ -550,7 +583,13 @@ final class Planner {
                     lines.append(.init(coordinates: Array(leg.coordinates[span.fromIndex...span.toIndex]), style: span.surface.rawValue, leg: index))
                 }
             case .failed: lines.append(.init(coordinates: [pair.from.coord!, pair.to.coord!], style: "air", leg: index))
-            case .routing, nil: lines.append(.init(coordinates: [pair.from.coord!, pair.to.coord!], style: "waiting", leg: index))
+            case .routing, nil:
+                // the beeline fills in as the search comes on
+                let (from, to) = (pair.from.coord!, pair.to.coord!)
+                let done = progress[pair.key] ?? 0
+                let reached = [from[0] + (to[0] - from[0]) * done, from[1] + (to[1] - from[1]) * done]
+                if done > 0 { lines.append(.init(coordinates: [from, reached], style: "progress", leg: index)) }
+                lines.append(.init(coordinates: [reached, to], style: "waiting", leg: index))
             }
         }
         let shown = waypoints
