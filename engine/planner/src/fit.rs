@@ -5,7 +5,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::json::{Json, push_string};
-use crate::leg::{CLIMB_THRESHOLD, Coord, ascent, distance};
+use crate::leg::{CLIMB_THRESHOLD, Coord, along, ascent};
 
 /// A route by its track, at least two points: `[longitude, latitude]` with the height where known, and the
 /// points where it passes its stops.
@@ -178,17 +178,6 @@ impl Course {
         fit.message(3, 21, &[(253, U32(end)), (0, Enum(0)), (1, Enum(9))]); // event: timer stop_disable_all
         fit.finish()
     }
-}
-
-/// The meters along the track to each point.
-fn along(coordinates: &[Coord]) -> Vec<f64> {
-    let mut meters = 0.0;
-    let mut along = Vec::with_capacity(coordinates.len());
-    for (i, &coord) in coordinates.iter().enumerate() {
-        meters += i.checked_sub(1).map_or(0.0, |previous| distance(coordinates[previous], coord));
-        along.push(meters);
-    }
-    along
 }
 
 /// Where a track of `along` meters is cut into the fewest parts of at most `MAX_COURSE_METERS`, as even as
@@ -441,6 +430,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::leg::distance;
 
     /// A message's global number, and its fields' numbers and bytes.
     type Message = (u16, Vec<(u8, Vec<u8>)>);

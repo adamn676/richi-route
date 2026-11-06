@@ -23,7 +23,7 @@ struct PlannerView: View {
                 planner.showPoint = show
             } covered: { covered in
                 offMap = !covered
-            }
+            } chooseLoop: { planner.chooseLoop($0) }
         }
         .ignoresSafeArea()
         .overlay(alignment: .top) {
@@ -69,7 +69,7 @@ struct PlannerView: View {
         .overlay(alignment: .topTrailing) {
             VStack(spacing: 12) {
                 if !planner.routedLegs.isEmpty {
-                    MapButton(label: "Auf Route zoomen", symbol: "viewfinder") { planner.frame() }
+                    MapButton(label: "Auf Route zoomen", symbol: "viewfinder") { planner.frame(whole: true) }
                 }
                 MapButton(label: "Mein Standort", symbol: "location") { locating += 1 }
                 // each only while it can do something; redo keeps its place under undo
@@ -162,6 +162,23 @@ struct PickHint: View {
         }
         .foregroundStyle(Color.ink)
         .glass(in: Capsule())
+    }
+}
+
+/// The panel's one way to close what is open (the loops, a surface's sections, a stretch of the profile), the same
+/// everywhere: the whole route shows again.
+struct CloseButton: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill").font(.title2).symbolRenderingMode(.hierarchical).foregroundStyle(.secondary)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .padding(.trailing, -12)
+        .accessibilityLabel(label)
     }
 }
 

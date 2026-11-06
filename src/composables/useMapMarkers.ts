@@ -39,7 +39,15 @@ export function useMapMarkers(mapRef: Ref<MaplibreMap | null>) {
       }
     }
 
+    // A round trip's Ziel lies under its Start: one marker.
+    const [start, end] = [routeStore.waypoints[0], routeStore.waypoints.at(-1)];
+    const roundTrip = start !== end && start?.coord && end?.coord && start.coord[0] === end.coord[0] && start.coord[1] === end.coord[1];
     for (const point of waypoints) {
+      if (roundTrip && point.id === end.id) {
+        waypointMarkers.get(point.id)?.remove();
+        waypointMarkers.delete(point.id);
+        continue;
+      }
       const index = routeStore.waypoints.findIndex(item => item.id === point.id);
       let marker = waypointMarkers.get(point.id);
       if (!marker) {

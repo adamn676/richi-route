@@ -25,12 +25,12 @@ import {
   type Waypoint,
 } from '../domain/route-model.ts';
 import { routingEngine } from '../services/route.service.ts';
-import { forwardGeocode, reverseGeocode, type Place } from '../services/geocoding.service.ts';
+import { forwardGeocode, houseAt, reverseGeocode, type Place } from '../services/geocoding.service.ts';
 import { pointOnStreet } from '../services/street-point.service.ts';
+import { routingPolicyVersion } from '../config/routing-policy.ts';
 import type { RouteDraft } from '../domain/route-draft.ts';
 import type { GpxTrack } from '../domain/gpx-track.ts';
 import { sectionSurfaces, type GpxSection } from '../domain/gpx-route.ts';
-import { loopSections } from '../domain/loop-suggestions.ts';
 import { lookupGpxSurfaces } from '../services/gpx-surfaces.service.ts';
 import { saveSurfaceReport } from '../services/surface-corrections.service.ts';
 import { applyReport, osmSurfaces, type CorrectedSurface } from '../domain/surface-corrections.ts';
@@ -211,6 +211,9 @@ function cancelRequests(store: RouteStore): void {
   operations.surfaces = undefined;
   store.surfaceEstimate = null;
 }
+
+// Farther than this from the nearest road, a point was not set on one.
+const offRoadMeters = 10;
 
 export const useRouteStore = defineStore('route', {
   state: () => ({
@@ -403,8 +406,9 @@ export const useRouteStore = defineStore('route', {
     },
     // Shows a suggested loop as the route; it already has its surfaces. Trying another loop replaces it without a
     // further undo step. The suggestions keep the map's view, so the loops stay comparable.
-    openLoop(loop: LegGeometry, replace = false) {
-      this._openSections([loopSections(loop)], { remember: !replace, fit: false });
+    // A chosen loop opens like a GPX track, in the engine's sections of about 5 km between shaping points.
+    openLoop(sections: LegGeometry[], replace = false) {
+      this._openSections([sections.map(section => ({ ...section, routingPolicy: routingPolicyVersion }))], { remember: !replace, fit: false });
     },
     // Replaces the route with fixed sections, as one undoable step: start and end stops with shaping points between
     // the sections. Gaps between segments get routed.
@@ -526,14 +530,25 @@ export const useRouteStore = defineStore('route', {
         ...(point.type === 'stop' && point.kind !== 'via' ? { routingCoord: coord } : {}),
       } : point);
 
+      const stop = this.points.find(point => point.id === id)?.type === 'stop';
       void routingEngine.snap(coord, controller.signal)
-        .then((snapped) => {
+        .then(async (snapped) => {
+          // A stop set on or beside a house, off the roads: its street, as when the house is found in the search, not the
+          // path behind it; Start and Ziel are then also routed from there.
+          let street: Coord | null = null;
+          if (stop && distanceMeters(coord, snapped) > offRoadMeters) {
+            const house = await houseAt(coord, controller.signal).catch(() => null);
+            street = house && await pointOnStreet(house.coord, house.street, controller.signal).catch(() => null);
+            if (street) snapped = await routingEngine.snap(street, controller.signal).catch(() => { street = null; return snapped; });
+          }
           if (operations.snaps.get(id) !== controller) return;
           validCoord(snapped);
           const current = this.points.find((point) => point.id === id);
           if (current?.coord && sameCoord(current.coord, coord)) {
-            this.points = this.points.map((point) =>
-              point.id === id ? { ...point, coord: [...snapped] } : point);
+            this.points = this.points.map((point) => point.id === id ? {
+              ...point, coord: [...snapped],
+              ...(street && point.type === 'stop' && point.kind !== 'via' ? { routingCoord: street } : {}),
+            } : point);
           }
         })
         .catch((error: unknown) => {

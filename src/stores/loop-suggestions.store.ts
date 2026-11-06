@@ -56,7 +56,7 @@ export const useLoopSuggestionsStore = defineStore('loop-suggestions', () => {
     if (!suggestion) return;
     if (index === selected.value) { deselect(); return; }
     if (selected.value === null) undoDepth = route.undoStack.length;
-    route.openLoop(suggestion.leg, selected.value !== null);
+    route.openLoop(suggestion.sections, selected.value !== null);
     selected.value = index;
   }
   // Back to the route before the first loop was shown, keeping the suggestions.

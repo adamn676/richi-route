@@ -100,6 +100,9 @@ struct RouteTab: View {
     var body: some View {
         ScrollViewReader { scroller in
         List {
+            if let loops = planner.loops {
+                LoopsView(planner: planner, loops: loops)
+            } else {
             Section { summary.id(Self.top) }
             if let problem = planner.problem {
                 Section { problemView(problem) }
@@ -137,6 +140,7 @@ struct RouteTab: View {
                         if range != nil { halve() }
                     }
                 }
+            }
             }
             // the map's credits, once, at the very end
             Text("© OpenStreetMap · Österr. Adressregister")
@@ -280,6 +284,14 @@ struct RouteTab: View {
             }
             .onDelete { offsets in offsets.map { rows[$0].id }.forEach(planner.remove) }
             .onMove { source, destination in planner.moveStops(from: IndexSet(source.map(place)), to: place(destination)) }
+            if planner.stops.count == 2, planner.stops[0].coord != nil, planner.stops[1].coord == nil {
+                Button {
+                    planner.openLoops()
+                    halve()
+                } label: {
+                    Label("Runde vorschlagen", systemImage: "arrow.triangle.capsulepath")
+                }
+            }
             if planner.hasRoute {
                 // its search first, so a Zwischenstopp is added once chosen, never empty
                 Button { searching = Searching(id: UUID(), index: waypoints.count - 1, count: waypoints.count + 1) } label: {

@@ -69,6 +69,17 @@ pub fn distance(from: Coord, to: Coord) -> f64 {
     2.0 * 6_371_008.8 * jmath::asin(a.min(1.0).sqrt())
 }
 
+/// The metres to each point from the first.
+pub fn along(coordinates: &[Coord]) -> Vec<f64> {
+    let mut meters = 0.0;
+    let mut along = Vec::with_capacity(coordinates.len());
+    for (i, &coord) in coordinates.iter().enumerate() {
+        meters += i.checked_sub(1).map_or(0.0, |previous| distance(coordinates[previous], coord));
+        along.push(meters);
+    }
+    along
+}
+
 /// `pathMeters`.
 pub fn path_distance(coordinates: &[Coord]) -> f64 {
     coordinates.windows(2).fold(0.0, |sum, step| sum + distance(step[0], step[1]))
@@ -88,8 +99,23 @@ pub const CLIMB_THRESHOLD: f64 = 5.0;
 
 /// The last of `cumulativeAscent(elevations, routerClimbThreshold)`.
 pub fn ascent(elevations: &[f64]) -> f64 {
-    let (mut low, mut high, mut ascent) = (elevations.first().copied(), None::<f64>, 0.0);
-    for &elevation in elevations.iter().skip(1) {
+    climbs(elevations).fold(0.0, |ascent, climbed| ascent + climbed)
+}
+
+/// `cumulativeAscent(elevations, routerClimbThreshold)`: the climbing so far at each point.
+fn cumulative_ascent(elevations: &[f64]) -> Vec<f64> {
+    let so_far = climbs(elevations).scan(0.0, |ascent, climbed| {
+        *ascent += climbed;
+        Some(*ascent)
+    });
+    std::iter::once(0.0).chain(so_far).collect()
+}
+
+/// What each point after the first climbs: a rise counts once it climbs past the threshold above the last low, and
+/// then in full.
+fn climbs(elevations: &[f64]) -> impl Iterator<Item = f64> + '_ {
+    let (mut low, mut high) = (elevations.first().copied(), None::<f64>);
+    elevations.iter().skip(1).map(move |&elevation| {
         let mut climbed = 0.0;
         if let Some(top) = high {
             if elevation > top {
@@ -105,9 +131,57 @@ pub fn ascent(elevations: &[f64]) -> f64 {
             climbed = elevation - low.unwrap_or_default();
             high = Some(elevation);
         }
-        ascent += climbed;
+        climbed
+    })
+}
+
+/// `gpxSectionMeters`.
+const SECTION_METERS: f64 = 5000.0;
+
+impl Leg {
+    /// A chosen loop as the planner opens it (`loopSections`), like a GPX track: sections of about 5 km between
+    /// shaping points, each with its heights, surfaces and share of the climbing, so the totals stay the loop's.
+    pub fn sections(&self) -> Vec<Leg> {
+        let distances = along(&self.coordinates);
+        let walked = distances[distances.len() - 1];
+        let scale = if walked > 0.0 { self.distance / walked } else { 0.0 };
+        let climbed = self.elevations.as_deref().map(cumulative_ascent);
+        // `sectionCuts`: every 5 km, but not within 2.5 km of the end
+        let last = distances.len() - 1;
+        let mut cuts = vec![0];
+        for i in 1..last {
+            if distances[i] - distances[cuts[cuts.len() - 1]] >= SECTION_METERS
+                && distances[last] - distances[i] >= SECTION_METERS / 2.0
+            {
+                cuts.push(i);
+            }
+        }
+        if last > 0 {
+            cuts.push(last);
+        }
+        cuts.windows(2)
+            .map(|cut| {
+                let (from, to) = (cut[0], cut[1]);
+                Leg {
+                    coordinates: self.coordinates[from..=to].to_vec(),
+                    elevations: self.elevations.as_ref().map(|heights| heights[from..=to].to_vec()),
+                    distance: (distances[to] - distances[from]) * scale,
+                    ascent: climbed.as_ref().map(|climbed| climbed[to] - climbed[from]),
+                    // `clipSpans`
+                    surfaces: self
+                        .surfaces
+                        .iter()
+                        .filter(|span| span.to > from && span.from < to)
+                        .map(|span| Span {
+                            from: span.from.max(from) - from,
+                            to: span.to.min(to) - from,
+                            ..span.clone()
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
     }
-    ascent
 }
 
 /// The material does not matter on a road bike, only whether it is paved; cobblestones are paved but rough.
@@ -493,5 +567,30 @@ mod tests {
     fn climbing_counts_past_the_threshold() {
         assert_eq!(ascent(&[300.0, 303.0, 301.0, 307.0, 310.0, 304.0, 309.0]), 10.0);
         assert_eq!(ascent(&[]), 0.0);
+    }
+
+    #[test]
+    fn a_loop_opens_in_sections_of_about_five_kilometres() {
+        // 12 km due north in 120 steps of about 100 m, climbing 1 m a step, paved for the first half
+        let coordinates: Vec<Coord> = (0..=120).map(|i| [15.0, 47.0 + f64::from(i) * 0.0009]).collect();
+        let kind = Kind { surface: Surface::Paved, tag: Some("asphalt".into()) };
+        let leg = Leg {
+            elevations: Some((0..=120).map(f64::from).collect()),
+            distance: path_distance(&coordinates) * 1.01,
+            ascent: Some(120.0),
+            surfaces: vec![Span { from: 0, to: 62, kind, osm: None }],
+            coordinates,
+        };
+        let sections = leg.sections();
+        assert_eq!(
+            sections.iter().map(|s| s.coordinates.len() - 1).collect::<Vec<_>>(),
+            [50, 70],
+            "no cut within 2.5 km of the end"
+        );
+        assert_eq!(sections[0].coordinates[50], sections[1].coordinates[0]);
+        assert!((sections.iter().map(|s| s.distance).sum::<f64>() - leg.distance).abs() < 1e-6, "scaled to the leg's");
+        assert_eq!(sections.iter().map(|s| s.ascent.unwrap()).sum::<f64>(), 120.0);
+        assert_eq!((sections[0].surfaces[0].from, sections[0].surfaces[0].to), (0, 50));
+        assert_eq!((sections[1].surfaces[0].from, sections[1].surfaces[0].to), (0, 12));
     }
 }

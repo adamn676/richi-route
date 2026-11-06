@@ -58,8 +58,13 @@ final class Planner {
     private var chosen: [UUID: String] = [:]
     /// The map's centre, which searches prefer places near.
     @ObservationIgnored var focus: [Double]?
+    /// The loops suggested from the Start while the rider chooses (`Loops.swift`), and their search.
+    var loops: Loops?
+    @ObservationIgnored var loopSearch: Task<Void, Never>?
     /// Counts the requests to frame the route; the map frames it when the count changes.
     private(set) var framing = 0
+    /// Whether that framing shows the whole route rather than the stretch chosen.
+    private var framesWhole = false
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
@@ -295,6 +300,8 @@ final class Planner {
     func choose(_ id: UUID, at coord: [Double], name: String?) {
         chosen[id] = name
         move(id, to: coord)
+        // the map shows it, until the route it completes is there to show (`setWaypointPlace`)
+        if !isComplete { frame() }
     }
 
     /// Puts a stop at `coord`; an `id` the route has not yet is a new Zwischenstopp, before the Ziel (as the planner's
@@ -339,6 +346,28 @@ final class Planner {
 
     func newRoute() { replace(with: nil) }
 
+    /// A suggested loop as the route, one undo step: from the Start through a Formpunkt every 5 km back to it, its
+    /// sections routed already.
+    func takeLoop(_ index: Int) {
+        guard let found = loops?.found, found.indices.contains(index), let start = stops.first, let home = start.coord else { return }
+        var route = [start], from = home
+        for section in found[index].loop.sections.dropLast() {
+            guard let end = section.coordinates.last else { continue }
+            legs[Self.key(from, end)] = .routed(section)
+            onRoad.insert(end)
+            route.append(Stop(end, shape: true))
+            from = end
+        }
+        // the Ziel on the Start, so the route is "Runde ab …"
+        if let last = found[index].loop.sections.last { legs[Self.key(from, home)] = .routed(last) }
+        route.append(Stop(home))
+        change {
+            stops = route
+            return nil
+        }
+        frame()
+    }
+
     var canUndo: Bool { !undos.isEmpty }
     var canRedo: Bool { !redos.isEmpty }
 
@@ -363,11 +392,16 @@ final class Planner {
         update()
     }
 
-    func frame() { framing += 1 }
+    /// `whole`: the whole route, also while a stretch of it is shown ("Auf Route zoomen", `fitRoute`).
+    func frame(whole: Bool = false) {
+        framesWhole = whole
+        framing += 1
+    }
 
     /// `edit` changes the stops and returns the one it placed, whose road is then looked up.
     private func change(_ edit: () -> UUID?) {
         picking = nil
+        closeLoops()
         let before = stops
         let placed = edit()
         guard stops != before else { return }
@@ -384,6 +418,7 @@ final class Planner {
     /// clears their errors.
     private func restore(_ saved: [Stop]) {
         picking = nil
+        closeLoops()
         stops = saved
         let ids = Set(stops.map(\.id))
         stopErrors = stopErrors.filter { ids.contains($0.key) }
@@ -397,15 +432,24 @@ final class Planner {
 
     // MARK: Snapping and routing
 
+    /// Farther than this from the nearest road, a point was not set on one.
+    private static let offRoadMeters = 10.0
+
     private func snap(_ id: UUID) {
-        guard let engine, let coord = stops.first(where: { $0.id == id })?.coord else { return }
+        guard let engine, let placed = stops.first(where: { $0.id == id }), let coord = placed.coord else { return }
         stopErrors[id] = nil
         guard !onRoad.contains(coord) else { return }
         snapping[id] = coord
         Task {
             let result: Result<[Double], Engine.Failure>
             do {
-                let snapped = try await engine.leg([coord]).coordinates.first
+                var snapped = try await engine.leg([coord]).coordinates.first
+                // a stop set on or beside a house, off the roads: its street, as when the house is found in the search,
+                // not the path behind it
+                if !placed.shape, let road = snapped, Geo.distance(coord, road) > Self.offRoadMeters,
+                   let street = await engine.point(near: coord), let onStreet = try? await engine.leg([street]).coordinates.first {
+                    snapped = onStreet
+                }
                 result = if let snapped, Geo.distance(coord, snapped) <= Self.maxSnapMeters {
                     .success(snapped)
                 } else {
@@ -565,9 +609,11 @@ final class Planner {
     /// are one; nil until both ends have one.
     var title: String? {
         guard let first = stops.first?.coord.flatMap({ names[$0] }), let last = stops.last?.coord.flatMap({ names[$0] }) else { return nil }
-        let place = { (name: String) in name.split(separator: ",").first.map(String.init) ?? name }
-        return place(first) == place(last) ? "Runde ab \(place(first))" : "\(place(first)) → \(place(last))"
+        return Self.place(first) == Self.place(last) ? "Runde ab \(Self.place(first))" : "\(Self.place(first)) → \(Self.place(last))"
     }
+
+    /// A stop's place without its town: "Herrengasse 16" of "Herrengasse 16, 8010 Graz".
+    static func place(_ name: String) -> String { name.split(separator: ",").first.map(String.init) ?? name }
 
     static func label(at index: Int, of count: Int) -> String {
         index == 0 ? "Start" : index == count - 1 ? "Ziel" : "Zwischenstopp \(index)"
@@ -593,14 +639,20 @@ final class Planner {
             }
         }
         let shown = waypoints
+        // a round trip's Ziel lies under its Start: one marker
+        let roundTrip = shown.count > 1 && shown[0].coord == shown[shown.count - 1].coord
         let pins = stops.compactMap { stop in
-            stop.coord.map { coord in
+            roundTrip && stop.id == shown[shown.count - 1].id ? nil : stop.coord.map { coord in
                 let badge = shown.firstIndex(of: stop).map { Self.badge(at: $0, of: shown.count) }
                 return MapContent.Pin(stop: stop.id, coord: coord, badge: badge, error: stopErrors[stop.id] != nil)
             }
         }
         let stretch = current(section) ?? current(zoom)
-        return MapContent(lines: lines, pins: pins, framing: framing, stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [])
+        let suggested = (loops?.found ?? []).enumerated().map { index, found in
+            MapContent.Loop(coordinates: found.loop.leg.coordinates, chosen: index == loops?.chosen, label: found.figures)
+        }
+        return MapContent(lines: lines, pins: pins, framing: framing, framesWhole: framesWhole, stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [],
+                          loops: suggested)
     }
 
     private func stretch(_ range: ClosedRange<Double>, parts: [[Int]], ends: [[Double]], legs chosenOn: [Leg]) -> Stretch {
@@ -667,8 +719,17 @@ struct MapContent: Equatable {
     let lines: [Line]
     let pins: [Pin]
     let framing: Int
+    var framesWhole = false
     /// The stretch the profile is zoomed into, which framing then shows alone.
     var stretch: [[Double]] = []
     /// The route along the stretch, which the light map shows over the rest of the route, faded.
     var focused: [Line] = []
+    /// Loops suggested from the Start, which framing then shows.
+    var loops: [Loop] = []
+
+    struct Loop: Equatable {
+        let coordinates: [[Double]]
+        let chosen: Bool
+        let label: String
+    }
 }

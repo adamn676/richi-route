@@ -235,15 +235,7 @@ struct ElevationProfile: View {
             }
             Spacer(minLength: 0)
             if range != nil {
-                Button {
-                    zoom(nil)
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.body.weight(.medium))
-                        .frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .padding(.trailing, -12)
-                .accessibilityLabel("Ganzes Profil zeigen")
+                CloseButton(label: "Ausschnitt schließen") { zoom(nil) }
             } else if pointed == nil && selection == nil {
                 Text("Zum Zoomen halten und ziehen").font(.caption).foregroundStyle(.secondary)
             }

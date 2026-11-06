@@ -5,7 +5,7 @@
 use std::fmt::Write;
 
 use crate::json::{Json, push_number, push_string};
-use crate::leg::{Coord, distance};
+use crate::leg::{Coord, along};
 
 /// The groups in the planner's order, from paved to unknown.
 const SURFACES: [&str; 5] = ["paved", "likelyPaved", "rough", "unpaved", "unknown"];
@@ -39,10 +39,7 @@ pub fn sections<'a>(legs: &[Surfaced<'a>]) -> (Vec<Section<'a>>, f64) {
     let mut pieces = Vec::new();
     let mut offset = 0.0;
     for (index, leg) in legs.iter().enumerate() {
-        let mut distances = vec![0.0];
-        for step in leg.coordinates.windows(2) {
-            distances.push(distances[distances.len() - 1] + distance(step[0], step[1]));
-        }
+        let distances = along(&leg.coordinates);
         let mut add = |from: usize, to: usize, surface: &'a str, corrected: bool| {
             if to > from && distances[to] != distances[from] {
                 let (from_meters, to_meters) = (offset + distances[from], offset + distances[to]);

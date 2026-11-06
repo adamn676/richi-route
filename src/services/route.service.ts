@@ -85,7 +85,8 @@ export function traceGpxPortion(points: Coord[], signal: AbortSignal) {
 }
 
 // A loop suggested by the routing service, with the points whose towns name it (`along`).
-export interface LoopFound { leg: LegGeometry; heading: string; cells: string[]; back: boolean; along: Coord[] }
+// `sections`: the leg cut into about 5 km between shaping points, as a chosen loop opens.
+export interface LoopFound { leg: LegGeometry; sections: LegGeometry[]; heading: string; cells: string[]; back: boolean; along: Coord[] }
 
 // A whole loop search on the engine's twelve threads: three rounds of twelve round trips and up to 24 rides out and
 // back, five turns of searches of at most a minute each.

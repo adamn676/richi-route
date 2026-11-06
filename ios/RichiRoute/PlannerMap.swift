@@ -19,6 +19,8 @@ struct PlannerMap: UIViewRepresentable {
     let pointer: (_ show: @escaping ([Double]?) -> Void) -> Void
     /// Reports, once the map has drawn, whether it has an offline map where the rider looks.
     let covered: (Bool) -> Void
+    /// A suggested loop tapped on the map, by its place among them.
+    let chooseLoop: (Int) -> Void
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
@@ -56,6 +58,7 @@ struct PlannerMap: UIViewRepresentable {
         context.coordinator.shape = shape
         context.coordinator.moved = moved
         context.coordinator.covered = covered
+        context.coordinator.chooseLoop = chooseLoop
         context.coordinator.bottomInset = bottomInset
         context.coordinator.show(content, on: map)
         context.coordinator.locate(locating, on: map)
@@ -86,6 +89,8 @@ struct PlannerMap: UIViewRepresentable {
         private var waiting: MapContent?
         private var located = 0
         var covered: (Bool) -> Void = { _ in }
+        var chooseLoop: (Int) -> Void = { _ in }
+        private var loops: MLNShapeSource?
         /// The layers drawn from the offline areas' maps.
         private var areaLayers: Set<String> = []
 
@@ -113,7 +118,7 @@ struct PlannerMap: UIViewRepresentable {
             let dark = map.traitCollection.userInterfaceStyle == .dark
             guard dark != self.dark else { return }
             self.dark = dark
-            (lines, pins, stretch, focused, arrows, focus) = (nil, nil, nil, nil, nil, nil)
+            (lines, pins, stretch, focused, arrows, loops, focus) = (nil, nil, nil, nil, nil, nil, nil)
             map.styleJSON = MapStyle.shared.json(dark: dark)
         }
 
@@ -166,7 +171,38 @@ struct PlannerMap: UIViewRepresentable {
                 return layer
             }
             let routeArrows = arrowLayer("route-arrows", false)
-            var layers: [MLNStyleLayer] = [outline, line, routeArrows, pending, filled]
+            // loops suggested from the Start, as Apple Maps shows other routes: the chosen one strong, the others light,
+            // each with its distance and climbing
+            let loops = MLNShapeSource(identifier: "loops", shape: nil)
+            style.addSource(loops)
+            let loopLines = { (id: String, chosen: Bool) in
+                let layer = MLNLineStyleLayer(identifier: id, source: loops)
+                layer.predicate = NSPredicate(format: "$geometryType == 'LineString' AND chosen == %@", NSNumber(value: chosen))
+                return layer
+            }
+            // the chosen loop in the ink, the others grey; their figures a little darker, to read
+            let (strong, grey, greyText) = dark ? (MapStyle.lightInkHex, "#6c7370", "#9aa29e") : (MapStyle.inkHex, "#9aa29e", "#6c7370")
+            let others = loopLines("loop-others", false)
+            others.lineColor = NSExpression(forConstantValue: MapStyle.color(hex: grey))
+            others.lineWidth = NSExpression(forConstantValue: 4)
+            let loopOutline = loopLines("loop-outline", true)
+            loopOutline.lineColor = outline.lineColor
+            loopOutline.lineWidth = outline.lineWidth
+            let loopLine = loopLines("loop-line", true)
+            loopLine.lineColor = NSExpression(forConstantValue: MapStyle.color(hex: strong))
+            loopLine.lineWidth = line.lineWidth
+            let figures = MLNSymbolStyleLayer(identifier: "loop-figures", source: loops)
+            figures.predicate = NSPredicate(format: "$geometryType == 'Point'")
+            figures.text = NSExpression(forKeyPath: "label")
+            figures.textFontNames = NSExpression(forConstantValue: ["Noto Sans Medium"])
+            figures.textFontSize = NSExpression(forConstantValue: 14)
+            figures.textColor = NSExpression(mglJSONObject: ["case", ["get", "chosen"], strong, greyText])
+            figures.textHaloColor = NSExpression(forConstantValue: dark ? UIColor(red: 0x1e / 255, green: 0x22 / 255, blue: 0x21 / 255, alpha: 1) : .white)
+            figures.textHaloWidth = NSExpression(forConstantValue: 2)
+            figures.symbolSortKey = NSExpression(mglJSONObject: ["case", ["get", "chosen"], 1, 0])
+            figures.textAllowsOverlap = NSExpression(forConstantValue: true)
+            self.loops = loops
+            var layers: [MLNStyleLayer] = [others, loopOutline, loopLine, outline, line, routeArrows, pending, filled]
             faded = []
             if dark {
                 let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
@@ -193,7 +229,8 @@ struct PlannerMap: UIViewRepresentable {
                 ends.circleColor = NSExpression(forConstantValue: UIColor.white)
                 ends.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
                 ends.circleStrokeWidth = NSExpression(forConstantValue: 2.5)
-                layers.insert(contentsOf: [raisedOutline, raised, arrowLayer("focused-arrows", true), ends], at: 3)
+                // over the route and its arrows
+                layers.insert(contentsOf: [raisedOutline, raised, arrowLayer("focused-arrows", true), ends], at: layers.firstIndex(of: routeArrows)! + 1)
                 faded = [outline, line, routeArrows]
                 self.focused = focused
             }
@@ -215,6 +252,8 @@ struct PlannerMap: UIViewRepresentable {
             dots.circleColor = NSExpression(forConstantValue: UIColor.white)
             dots.circleStrokeColor = NSExpression(mglJSONObject: ["case", ["get", "error"], MapStyle.dangerHex, MapStyle.inkHex])
             dots.circleStrokeWidth = NSExpression(forConstantValue: 4)
+            // as on the planner, only zoomed in to edit the route, so a long one is not a chain of dots
+            dots.minimumZoomLevel = 11
             let circles = MLNCircleStyleLayer(identifier: "stop-circles", source: pins)
             circles.predicate = stop
             circles.circleRadius = NSExpression(forConstantValue: 12)
@@ -232,6 +271,7 @@ struct PlannerMap: UIViewRepresentable {
             style.addLayer(dots)
             style.addLayer(circles)
             style.addLayer(badges)
+            style.addLayer(figures)
             // the profile's point under the finger, as the planner's
             let focus = MLNShapeSource(identifier: "focus", shape: nil)
             style.addSource(focus)
@@ -283,7 +323,16 @@ struct PlannerMap: UIViewRepresentable {
                 (layer as? MLNSymbolStyleLayer)?.iconOpacity = opacity
             }
             let routed = content.lines.filter { !["waiting", "air", "progress"].contains($0.style) }
-            arrows?.shape = MLNShapeCollectionFeature(shapes: Self.runs(routed).map { Self.run($0, focused: false) }
+            loops?.shape = MLNShapeCollectionFeature(shapes: content.loops.enumerated().flatMap { index, loop -> [MLNShape] in
+                let line = MLNPolylineFeature(coordinates: loop.coordinates.map(Self.coordinate), count: UInt(loop.coordinates.count))
+                line.attributes = ["index": index, "chosen": loop.chosen]
+                // its figures halfway round, where a loop is farthest out
+                let figures = Self.dot(loop.coordinates[loop.coordinates.count / 2])
+                figures.attributes = ["index": index, "chosen": loop.chosen, "label": loop.label]
+                return [line, figures]
+            })
+            let chosenLoop = content.loops.filter(\.chosen).map { Self.run($0.coordinates, focused: false) }
+            arrows?.shape = MLNShapeCollectionFeature(shapes: chosenLoop + Self.runs(routed).map { Self.run($0, focused: false) }
                 + Self.runs(content.focused).map { Self.run($0, focused: true) })
         }
 
@@ -417,7 +466,14 @@ struct PlannerMap: UIViewRepresentable {
 
         /// The route with its stops, or the stretch the profile is zoomed into.
         private func bounds(of content: MapContent) -> MLNCoordinateBounds? {
-            let points = content.stretch.isEmpty ? content.lines.flatMap(\.coordinates) + content.pins.map(\.coord) : content.stretch
+            let points: [[Double]]
+            if !content.loops.isEmpty {
+                points = content.loops.flatMap(\.coordinates)
+            } else if content.stretch.isEmpty || content.framesWhole {
+                points = content.lines.flatMap(\.coordinates) + content.pins.map(\.coord)
+            } else {
+                points = content.stretch
+            }
             guard let first = points.first else { return nil }
             var bounds = MLNCoordinateBounds(sw: Self.coordinate(first), ne: Self.coordinate(first))
             for point in points {
@@ -428,7 +484,13 @@ struct PlannerMap: UIViewRepresentable {
         }
 
         private func frame(_ content: MapContent, on map: MLNMapView) {
-            guard let bounds = bounds(of: content) else { return }
+            guard var bounds = bounds(of: content) else { return }
+            // a stop alone with its streets around it, not as close as the map goes
+            let room = 0.003
+            if bounds.ne.latitude - bounds.sw.latitude < room && bounds.ne.longitude - bounds.sw.longitude < room {
+                bounds.sw = CLLocationCoordinate2D(latitude: bounds.sw.latitude - room, longitude: bounds.sw.longitude - room)
+                bounds.ne = CLLocationCoordinate2D(latitude: bounds.ne.latitude + room, longitude: bounds.ne.longitude + room)
+            }
             // below the bars at the top (a hint or a confirmation) and beside the buttons
             let padding = UIEdgeInsets(top: 130, left: 40, bottom: bottomInset + 40, right: 72)
             map.setVisibleCoordinateBounds(bounds, edgePadding: padding, animated: true, completionHandler: nil)
@@ -448,6 +510,11 @@ struct PlannerMap: UIViewRepresentable {
             guard let map = gesture.view as? MLNMapView else { return }
             let point = gesture.location(in: map)
             guard stop(at: point, on: map) == nil else { return }
+            let near = CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28)
+            if let loop = map.visibleFeatures(in: near, styleLayerIdentifiers: ["loop-figures", "loop-line", "loop-others"])
+                .compactMap({ ($0.attribute(forKey: "index") as? NSNumber)?.intValue }).first {
+                return chooseLoop(loop)
+            }
             let coord = map.convert(point, toCoordinateFrom: map)
             tap([coord.longitude, coord.latitude], leg(at: point, on: map))
         }

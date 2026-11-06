@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { forwardGeocode, reverseGeocode } from '../src/services/geocoding.service.ts';
+import { forwardGeocode, houseAt, reverseGeocode } from '../src/services/geocoding.service.ts';
 
 const feature = (name = 'Hauptplatz', coord = [15.4385, 47.071]) => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: coord },
@@ -93,6 +93,19 @@ test('reverse lookup names the street and town, with the house number only when 
   assert.equal(await reverseGeocode(at, signal()), 'Gollersattel, 8164 Gutenberg');
   body = { features: [] };
   assert.equal(await reverseGeocode(at, signal()), null);
+});
+
+test('a point on or beside a house belongs to its street; elsewhere to none', async t => {
+  const at = [15.4743, 47.0908];
+  let body;
+  t.mock.method(globalThis, 'fetch', async () => Response.json(body));
+  const result = (properties, coord) => ({ features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties }] });
+  body = result({ type: 'house', street: 'Musterweg', housenumber: '12' }, [15.4744, 47.0908]);
+  assert.deepEqual(await houseAt(at, signal()), { street: 'Musterweg', coord: [15.4744, 47.0908] });
+  body = result({ type: 'house', street: 'Deckerweg', housenumber: '31' }, [15.4755, 47.0908]);
+  assert.equal(await houseAt(at, signal()), null, 'a house 90 m away');
+  body = result({ type: 'street', name: 'Hahnhofweg' }, at);
+  assert.equal(await houseAt(at, signal()), null, 'no house there');
 });
 
 test('an address knows its street; a street result does not need one', async t => {

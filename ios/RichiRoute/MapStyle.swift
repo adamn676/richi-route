@@ -51,14 +51,18 @@ struct MapStyle: Sendable {
     static let inkHex = "#121816"
     static let danger = UIColor(red: 0xa3 / 255, green: 0x26 / 255, blue: 0x1b / 255, alpha: 1)
     static let dangerHex = "#a3261b"
+    /// The ink in Dark Mode, light enough to read on the dark map and panel.
+    static let lightInkHex = "#e6ebe9"
+
+    static func color(hex: String) -> UIColor {
+        let rgb = Int(hex.dropFirst(), radix: 16) ?? 0x808080
+        return UIColor(red: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255, blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+    }
 
     func color(_ surface: Surface) -> UIColor { color(surface.rawValue) }
 
     /// A route colour by its name in the metadata: a surface, `air` for a failed leg, `waiting` while it is routed.
-    func color(_ name: String) -> UIColor {
-        let rgb = Int(hex(name).dropFirst(), radix: 16) ?? 0x808080
-        return UIColor(red: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255, blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
-    }
+    func color(_ name: String) -> UIColor { Self.color(hex: hex(name)) }
 
     /// The same as `#rrggbb`, for style expressions.
     func hex(_ name: String) -> String { colors[name] ?? "#808080" }
@@ -67,7 +71,7 @@ struct MapStyle: Sendable {
 extension Color {
     /// The ink and the error colour for text and controls: the planner's own, and in Dark Mode light enough to read
     /// on the dark panel.
-    static let ink = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0xe6 / 255, green: 0xeb / 255, blue: 0xe9 / 255, alpha: 1) : MapStyle.ink })
+    static let ink = Color(UIColor { $0.userInterfaceStyle == .dark ? MapStyle.color(hex: MapStyle.lightInkHex) : MapStyle.ink })
     static let danger = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0xff / 255, green: 0x8a / 255, blue: 0x7a / 255, alpha: 1) : MapStyle.danger })
 }
 

@@ -99,7 +99,10 @@ struct SurfaceRows: View {
             if matching.count > 1 {
                 stepButton("chevron.left", "Voriger Abschnitt") { step(by: -1, in: matching, from: position) }
                 stepButton("chevron.right", "Nächster Abschnitt") { step(by: 1, in: matching, from: position) }
-                    .padding(.trailing, -12)
+            }
+            CloseButton(label: "Abschnitte schließen") {
+                open = nil
+                focus(nil, [])
             }
         }
         .padding(.leading, 20)

@@ -201,6 +201,19 @@ export async function reverseGeocode(coord: Coord, signal: AbortSignal): Promise
   return label || null;
 }
 
+// The house a point is on or beside (an address within 30 m): its street and where it is; null elsewhere.
+export async function houseAt(coord: Coord, signal: AbortSignal): Promise<{ street: string; coord: Coord } | null> {
+  const [feature] = await search('/reverse', new URLSearchParams({
+    lat: String(coord[1]), lon: String(coord[0]), lang: 'de', limit: '1', radius: '0.1',
+  }), signal);
+  const properties = record(record(feature)?.properties);
+  const found = record(record(feature)?.geometry)?.coordinates;
+  const street = optionalText(properties?.street);
+  if (!street || !optionalText(properties?.housenumber) || !Array.isArray(found)) return null;
+  const house: Coord = [Number(found[0]), Number(found[1])];
+  return distanceMeters(coord, house) <= 30 ? { street, coord: house } : null;
+}
+
 // The town at a point, for naming a loop by where it leads.
 export async function townAt(coord: Coord, signal: AbortSignal): Promise<string | undefined> {
   const [feature] = await search('/reverse', new URLSearchParams([

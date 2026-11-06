@@ -10,7 +10,8 @@
 //! (`richi_planner::leg_json`), or the same failure.
 //!
 //! `GET /name?lat=…&lon=…` names a point as the planner does (`richi_planner::place_name`), and `GET /places?q=…` answers
-//! its suggestions for a search (`richi_planner::places_json`), and `GET /street?lat=…&lon=…&name=…` where an address
+//! its suggestions for a search (`richi_planner::places_json`), `GET /town?lat=…&lon=…` the town a point lies in, and
+//! `GET /street?lat=…&lon=…&name=…` where an address
 //! meets its own street, from the address search of the offline areas (`Places`, the iPhone app's), `{"name":null}`,
 //! `[]` and `{"point":null}` without them.
 //!
@@ -37,8 +38,8 @@ use brouter_router::{
     Answer, Outcome, RouterPool, UrlParams, VERSION_MISMATCH, Watch, get_url_params, limit_search_memory, panic_message,
 };
 use richi_planner::{
-    Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, leg_json, nearest_on_lines, place_name, places, places_json,
-    profile_request, push_number, push_string, suggestions_json, surfaces_request,
+    Failure, LoopRequest, SEARCH_LIMIT, Stop, course_fits, house, leg_json, nearest_on_lines, place_name, places,
+    places_json, profile_request, push_number, push_string, suggestions_json, surfaces_request, town_query,
 };
 use richi_search::index::Index;
 use richi_search::photon;
@@ -144,6 +145,18 @@ impl Places {
     pub fn name(&self, at: [f64; 2]) -> Option<String> {
         let query = format!("lat={}&lon={}&lang=de&limit=1&radius=0.3", at[1], at[0]);
         self.near(at).find_map(|area| place_name(&area.ask("/reverse", &query)?, at))
+    }
+
+    /// The town a point lies in or near, which names a loop after where it leads (`townAt`).
+    pub fn town(&self, at: [f64; 2]) -> Option<String> {
+        self.near(at).find_map(|area| richi_planner::town(&area.ask("/reverse", &town_query(at))?))
+    }
+
+    /// The point on the street of the house `at` is on or beside, as `on_street` gives it; none away from houses.
+    pub fn house_street(&self, at: [f64; 2]) -> Option<[f64; 2]> {
+        let query = format!("lat={}&lon={}&lang=de&limit=1&radius=0.1", at[1], at[0]);
+        let (street, found) = self.near(at).find_map(|area| house(&area.ask("/reverse", &query)?, at))?;
+        self.on_street(found, &street)
     }
 
     /// The point on `street` nearest an address at `at`, within 150 m (`pointOnStreet`): a house's centre can lie
@@ -271,6 +284,7 @@ fn respond(stream: TcpStream, pool: &RouterPool, places: Option<&Places>, max_ru
         "/name" => return name(stream, query, places),
         "/places" => return search(stream, query, places),
         "/street" => return street(stream, query, places),
+        "/town" => return town_of(stream, query, places),
         "/progress" => return progress(stream, query),
         _ => {}
     }
@@ -367,13 +381,21 @@ fn search(stream: TcpStream, query: &str, places: Option<&Places>) {
 }
 
 /// `GET /street?lat=…&lon=…&name=…`: where an address meets its own street, as `{"point":[lon,lat]}`, null where the
-/// street is not within reach.
+/// street is not within reach; without a name, the street of the house the point is on or beside.
 fn street(stream: TcpStream, query: &str, places: Option<&Places>) {
-    let (Some(at), Some(name)) = (coordinate(query), parameter(query, "name").and_then(decode)) else {
-        return send(stream, "400 Bad Request", "lat, lon and name\n");
+    let Some(at) = coordinate(query) else {
+        return send(stream, "400 Bad Request", "lat and lon\n");
     };
     let mut body = String::from("{\"point\":");
-    match places.and_then(|places| places.on_street(at, &name)) {
+    let name = match parameter(query, "name").map(decode) {
+        Some(None) => return send(stream, "400 Bad Request", "a readable name\n"),
+        name => name.flatten(),
+    };
+    let point = places.and_then(|places| match name {
+        Some(name) => places.on_street(at, &name),
+        None => places.house_street(at),
+    });
+    match point {
         Some([lon, lat]) => {
             body.push('[');
             push_number(&mut body, lon);
@@ -381,6 +403,20 @@ fn street(stream: TcpStream, query: &str, places: Option<&Places>) {
             push_number(&mut body, lat);
             body.push(']');
         }
+        None => body.push_str("null"),
+    }
+    body.push('}');
+    send_body(stream, "200 OK", "application/json; charset=utf-8", "", body.as_bytes());
+}
+
+/// `GET /town?lat=…&lon=…`: the town a point lies in or near, as `{"town":…}`, null where none is.
+fn town_of(stream: TcpStream, query: &str, places: Option<&Places>) {
+    let Some(at) = coordinate(query) else {
+        return send(stream, "400 Bad Request", "lat and lon\n");
+    };
+    let mut body = String::from("{\"town\":");
+    match places.and_then(|places| places.town(at)) {
+        Some(town) => push_string(&mut body, &town),
         None => body.push_str("null"),
     }
     body.push('}');

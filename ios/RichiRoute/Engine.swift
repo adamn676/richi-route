@@ -6,7 +6,8 @@ struct Engine: Sendable {
 
     let port: UInt16
     let profile: String
-    let parameters: [URLQueryItem]
+    /// The profile's parameters, as the planner sends them.
+    let parameters: [String: String]
     /// The rules' revision and search coefficients a routed leg is kept with (`routingPolicyVersion`): a leg saved
     /// under another is routed again.
     let policy: String?
@@ -26,8 +27,7 @@ struct Engine: Sendable {
                   let profile = json["profile"] as? String,
                   let parameters = json["parameters"] as? [String: Any] else { return nil }
             let port = richi_engine_start(2, searchMB())
-            return port == 0 ? nil : Engine(port: port, profile: profile, parameters: parameters.sorted { $0.key < $1.key }
-                .map { URLQueryItem(name: "profile:\($0.key)", value: "\($0.value)") }, policy: json["routingPolicy"] as? String)
+            return port == 0 ? nil : Engine(port: port, profile: profile, parameters: parameters.mapValues { "\($0)" }, policy: json["routingPolicy"] as? String)
         }.value
     }
 
@@ -60,11 +60,17 @@ struct Engine: Sendable {
     }
 
     /// The planner's name for a point on a road ("Herrengasse 16, 8010 Graz"), nil where the areas know none.
-    func name(_ coord: [Double]) async -> String? {
-        var url = URLComponents(string: "http://127.0.0.1:\(port)/name")!
+    func name(_ coord: [Double]) async -> String? { await text("name", at: coord) }
+
+    /// The town a point lies in or near, which names a loop after where it leads (`townAt`).
+    func town(_ coord: [Double]) async -> String? { await text("town", at: coord) }
+
+    /// The engine's `/name` or `/town` for a point: `{key: text or null}`.
+    private func text(_ key: String, at coord: [Double]) async -> String? {
+        var url = URLComponents(string: "http://127.0.0.1:\(port)/\(key)")!
         url.queryItems = [URLQueryItem(name: "lat", value: "\(coord[1])"), URLQueryItem(name: "lon", value: "\(coord[0])")]
         guard let data = try? await ask(URLRequest(url: url.url!)) else { return nil }
-        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["name"] as? String
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?[key] as? String
     }
 
     /// The planner's suggestions for a search, places near `near` first.
@@ -75,13 +81,45 @@ struct Engine: Sendable {
         return try JSONDecoder().decode([Place].self, from: try await ask(URLRequest(url: url.url!)))
     }
 
-    /// Where an address at `near` meets its own `street`, nil where the street is not within 150 m.
-    func point(on street: String, near: [Double]) async -> [Double]? {
+    /// Where an address at `near` meets its own `street`, nil where the street is not within 150 m; without a street,
+    /// that of the house `near` is on or beside, nil away from houses.
+    func point(on street: String? = nil, near: [Double]) async -> [Double]? {
         var url = URLComponents(string: "http://127.0.0.1:\(port)/street")!
-        url.queryItems = [URLQueryItem(name: "lat", value: "\(near[1])"), URLQueryItem(name: "lon", value: "\(near[0])"),
-                          URLQueryItem(name: "name", value: street)]
+        url.queryItems = [URLQueryItem(name: "lat", value: "\(near[1])"), URLQueryItem(name: "lon", value: "\(near[0])")]
+            + (street.map { [URLQueryItem(name: "name", value: $0)] } ?? [])
         guard let data = try? await ask(URLRequest(url: url.url!)) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["point"] as? [Double]
+    }
+
+    /// A suggested loop as the engine's `/loops` gives it (`engine/planner/src/loops.rs`): its leg and the same in
+    /// sections of about 5 km, its compass direction, the squares it passes for later searches to avoid, whether it
+    /// rides out and back, and the points whose towns name it.
+    struct Loop: Decodable, Equatable, Sendable {
+        let leg: Leg
+        let sections: [Leg]
+        let heading: String
+        let cells: [String]
+        let back: Bool
+        let along: [[Double]]
+    }
+
+    /// Three loops from `start` for a distance and climbing, avoiding the squares of loops suggested before there,
+    /// each with its weight.
+    func loops(from start: [Double], meters: Double, ascent: Double, earlier: [(cells: [String], weight: Double)]) async throws -> [Loop] {
+        struct Body: Encodable {
+            struct Target: Encodable { let meters: Double, ascent: Double }
+            struct Earlier: Encodable { let cells: [String], weight: Double }
+            let profile: String
+            let parameters: [String: String]
+            let start: [Double]
+            let target: Target
+            let random: [Double]
+            let earlier: [Earlier]
+        }
+        try await budget()
+        let body = Body(profile: profile, parameters: parameters, start: start, target: .init(meters: meters, ascent: ascent),
+                        random: (0..<13).map { _ in Double.random(in: 0..<1) }, earlier: earlier.map { .init(cells: $0.cells, weight: $0.weight) })
+        return try JSONDecoder().decode([Loop].self, from: try await post("loops", body))
     }
 
     /// The route's elevation profile from its legs, as the planner draws it, whole or the stretch `range`; nil without
@@ -121,6 +159,8 @@ struct Engine: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
+        // a long loop's search takes a while
+        request.timeoutInterval = 150
         return try await ask(request)
     }
 
@@ -131,7 +171,7 @@ struct Engine: Sendable {
             URLQueryItem(name: "lonlats", value: points.map { "\($0[0]),\($0[1])" }.joined(separator: "|")),
             URLQueryItem(name: "format", value: "geojson"),
             URLQueryItem(name: "alternativeidx", value: "0"),
-        ] + extra + parameters
+        ] + extra + parameters.sorted { $0.key < $1.key }.map { URLQueryItem(name: "profile:\($0.key)", value: $0.value) }
         var request = URLRequest(url: url.url!)
         request.timeoutInterval = 150
         return request

@@ -4,7 +4,7 @@ import { traceLoops } from './route.service.ts';
 import { townAt } from './geocoding.service.ts';
 
 // `cells` are the squares a loop passes through, for later searches to avoid; `back` marks a ride out and back.
-export interface LoopSuggestion { leg: LegGeometry; heading: string; place?: string; cells: string[]; back: boolean }
+export interface LoopSuggestion { leg: LegGeometry; sections: LegGeometry[]; heading: string; place?: string; cells: string[]; back: boolean }
 // The routing service's loops and the town lookups, replaceable for tests; loops suggested before from the same start,
 // each weighted by how recent it is; and the dice.
 export interface LoopSearch {
@@ -22,11 +22,11 @@ export async function suggestLoops(start: Coord, target: LoopTarget, signal: Abo
   const lookup = (coord: Coord) => town(coord, signal).catch(() => undefined);
   const [home, ...along] = await Promise.all([lookup(start), ...found.map(loop => Promise.all(loop.along.map(lookup)))]);
   const used = new Set([home]);
-  return found.map(({ leg, heading, cells, back }, i) => {
+  return found.map(({ leg, sections, heading, cells, back }, i) => {
     const counts = new Map<string, number>();
     for (const town of along[i]) if (town && !used.has(town)) counts.set(town, (counts.get(town) ?? 0) + 1);
     const place = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
     used.add(place);
-    return { leg, heading, place, cells, back };
+    return { leg, sections, heading, place, cells, back };
   });
 }

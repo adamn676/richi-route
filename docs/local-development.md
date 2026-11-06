@@ -393,7 +393,12 @@ street with `/street`), the rider's position, or a tap on the map; holding a
 marker drags it, and holding the route drags it into a Formpunkt, as on the planner. A stop's row, held and dragged,
 changes places with another, Start and Ziel too; the planner's arrows show which way the route runs; a zoomed stretch
 or a surface section is raised with its ends marked while the rest fades, as on the planner (on the dark map, a soft
-glow beneath it). The route being planned is kept in the planner's file format
+glow beneath it). With only a Start set, **Runde vorschlagen** asks for the distance and the climbing, each on a
+slider in the planner's steps or typed, and **Runden vorschlagen** then suggests three loops from it, as Apple Maps
+shows other routes: the settings fold into one line (**Ändern** opens them again), the loops are one line each, the
+chosen one strong on the map with its arrows, the others grey, each with its distance and climbing; **Fahren** takes
+one as the route, from the Start through a Formpunkt every 5 km. **⛶** shows the whole route, also while a stretch
+or a surface's sections are shown; their **⊗**, as the loops', closes them. The route being planned is kept in the planner's file format
 (the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
 the saved routes in that format and the last three replaced without saving, for
 seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first
@@ -873,7 +878,10 @@ An address with a house number starts on its own street: the planner takes the
 nearest point on the road of that name from its map tiles (within 150 m), since
 a building's centre can lie nearer a path behind it. A house beside a park, for
 example, can lie nearer a footpath in the park than its street, and park paths
-often carry no bicycle restriction in OpenStreetMap.
+often carry no bicycle restriction in OpenStreetMap. A stop set on the map off the
+roads (more than 10 m from the nearest) on or beside a house, within 30 m of its
+address, goes onto that address's street the same way (`houseAt`; in the iPhone app
+the engine's `/street` without a name); elsewhere it takes the nearest road.
 
 A stop placed or moved on the map, and the start and end of an imported GPX
 track, get the street they lie on from `/geocoding/reverse` once snapped, such as
@@ -965,7 +973,8 @@ closes the suggestions; the × beside the heading returns to the start alone. On
 up while choosing. The last target is remembered in this browser.
 
 The routing engine suggests the loops (`engine/planner`, asked once at `/loops` with a JSON `POST`, which
-other web pages cannot send unasked; the iPhone app shares them); the planner names them. They come from BRouter's round-trip mode (`engineMode=4`) with the
+other web pages cannot send unasked; the iPhone app shares them, and each loop comes with its sections of about
+5 km, which the app opens as the planner does); the planner names them. They come from BRouter's round-trip mode (`engineMode=4`) with the
 planner's profile: a loop through points on an arc around the start, which with
 five points comes out about 6.2 times the arc's radius. Where a circle point snaps onto a dead end, the loop
 rides in and back out; the planner cuts every stretch that returns to a point

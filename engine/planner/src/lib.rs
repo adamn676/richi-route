@@ -28,7 +28,9 @@ use leg::push_coords;
 pub use leg::{Coord, Leg};
 pub use loops::{Earlier, Stop, Suggestion, Target};
 use loops::{Routed, Trip, suggest_loops};
-pub use place::{Category, Place, SEARCH_LIMIT, nearest_on_lines, place_name, places, places_json};
+pub use place::{
+    Category, Place, SEARCH_LIMIT, house, nearest_on_lines, place_name, places, places_json, town, town_query,
+};
 pub use profile::profile_request;
 pub use surfaces::surfaces_request;
 
@@ -230,7 +232,14 @@ pub fn suggestions_json(suggestions: &[Suggestion]) -> String {
         }
         let _ = write!(out, "],\"back\":{},\"along\":", suggestion.back);
         push_coords(&mut out, &suggestion.along);
-        out.push('}');
+        out.push_str(",\"sections\":[");
+        for (j, section) in suggestion.leg.sections().iter().enumerate() {
+            if j > 0 {
+                out.push(',');
+            }
+            section.push_json(&mut out);
+        }
+        out.push_str("]}");
     }
     out.push(']');
     out
@@ -293,7 +302,7 @@ mod tests {
             Suggestion { leg, heading: "Süden", cells: vec!["1,-2".into()], back: true, along: vec![[15.5, 47.25]] };
         assert_eq!(
             suggestions_json(&[suggestion]),
-            r#"[{"leg":{"coordinates":[[15,47],[15.5,47.25]],"elevations":null,"distanceMeters":1.5,"ascentMeters":null,"surfaces":[]},"heading":"Süden","cells":["1,-2"],"back":true,"along":[[15.5,47.25]]}]"#
+            r#"[{"leg":{"coordinates":[[15,47],[15.5,47.25]],"elevations":null,"distanceMeters":1.5,"ascentMeters":null,"surfaces":[]},"heading":"Süden","cells":["1,-2"],"back":true,"along":[[15.5,47.25]],"sections":[{"coordinates":[[15,47],[15.5,47.25]],"elevations":null,"distanceMeters":1.5,"ascentMeters":null,"surfaces":[]}]}]"#
         );
         assert_eq!(suggestions_json(&[]), "[]");
     }

@@ -24,7 +24,7 @@ function loop(meters, direction) {
   const leg = { coordinates, elevations: coordinates.map((_, i) => 300 + climb / 2 * (1 - Math.cos(i / steps * 2 * Math.PI))),
     distanceMeters: meters, ascentMeters: climb, surfaces: [{ fromIndex: 0, toIndex: steps, surface: 'paved', surfaceTag: 'asphalt' }] };
   const along = Array.from({ length: 8 }, (_, k) => coordinates[Math.round((k + 1) * steps / 9)]);
-  return { leg, heading: 'Norden', cells: [String(direction)], back: false, along };
+  return { leg, sections: [leg], heading: 'Norden', cells: [String(direction)], back: false, along };
 }
 await context.addInitScript(origin => { if (location.origin === origin) localStorage.setItem('richiroute.review-basemap', 'street'); }, origin);
 await context.route('**/*', route => {

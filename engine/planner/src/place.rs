@@ -331,32 +331,73 @@ fn parse_place(feature: &Json) -> Option<Place> {
 /// How near a house must be to lend its number, in metres.
 const HOUSE_METRES: f64 = 30.0;
 
-/// The name for `at` from the search's answer to `/reverse` (Photon's GeoJSON), or None when it found nothing.
-pub fn place_name(answer: &str, at: Coord) -> Option<String> {
+/// The first place in a reverse search's answer (Photon's GeoJSON), read by `read` with its texts and where it is.
+fn first_place<T>(answer: &str, read: impl FnOnce(&Texts, Option<Coord>) -> Option<T>) -> Option<T> {
     let json = Json::parse(answer).ok()?;
     let feature = json.get("features")?.array()?.first()?;
-    let properties = feature.get("properties")?;
-    let text = |key: &str| properties.get(key).and_then(Json::str).map(str::trim).filter(|t| !t.is_empty());
-    let found = feature.get("geometry").and_then(|g| g.get("coordinates")).and_then(Json::array);
-    let near = found
-        .and_then(|c| Some([c.first()?.number()?, c.get(1)?.number()?]))
-        .is_some_and(|found| distance(at, found) <= HOUSE_METRES);
-    let street = text(if text("type") == Some("street") { "name" } else { "street" });
-    // a town's own entry names the town itself
-    let city = text("city").or(if street.is_some() { None } else { text("name") });
-    let first = match street {
-        Some(street) => Some(match text("housenumber").filter(|_| near) {
-            Some(number) => format!("{street} {number}"),
-            None => street.to_string(),
-        }),
-        None => text("name").map(str::to_string),
-    };
-    // village addresses repeat the town as the street name ("Mortantsch 21, 8160 Mortantsch")
-    let first = first.filter(|first| Some(first.as_str()) != city);
-    let town = [text("postcode"), city].into_iter().flatten().collect::<Vec<_>>().join(" ");
-    let name =
-        [first.unwrap_or_default(), town].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(", ");
-    (!name.is_empty()).then_some(name)
+    let at = feature
+        .get("geometry")
+        .and_then(|geometry| geometry.get("coordinates"))
+        .and_then(Json::array)
+        .and_then(|c| Some([c.first()?.number()?, c.get(1)?.number()?]));
+    read(&Texts(feature.get("properties")?), at)
+}
+
+/// A place's texts, blank ones as none.
+struct Texts<'a>(&'a Json);
+
+impl Texts<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(Json::str).map(str::trim).filter(|text| !text.is_empty())
+    }
+}
+
+/// The name for `at` from the search's answer to `/reverse`, or None when it found nothing.
+pub fn place_name(answer: &str, at: Coord) -> Option<String> {
+    first_place(answer, |text, found| {
+        let near = found.is_some_and(|found| distance(at, found) <= HOUSE_METRES);
+        let street = text.get(if text.get("type") == Some("street") { "name" } else { "street" });
+        // a town's own entry names the town itself
+        let city = text.get("city").or(if street.is_some() { None } else { text.get("name") });
+        let first = match street {
+            Some(street) => Some(match text.get("housenumber").filter(|_| near) {
+                Some(number) => format!("{street} {number}"),
+                None => street.to_string(),
+            }),
+            None => text.get("name").map(str::to_string),
+        };
+        // village addresses repeat the town as the street name ("Mortantsch 21, 8160 Mortantsch")
+        let first = first.filter(|first| Some(first.as_str()) != city);
+        let town = [text.get("postcode"), city].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        let name = [first.unwrap_or_default(), town]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ");
+        (!name.is_empty()).then_some(name)
+    })
+}
+
+/// The house `at` is on or beside (an address within 30 m) from the search's answer to `/reverse`: its street and
+/// where it is; none elsewhere (`houseAt`).
+pub fn house(answer: &str, at: Coord) -> Option<(String, Coord)> {
+    first_place(answer, |text, found| {
+        text.get("housenumber")?;
+        let found = found.filter(|&found| distance(at, found) <= HOUSE_METRES)?;
+        Some((text.get("street")?.to_string(), found))
+    })
+}
+
+/// The town from the search's answer to `/reverse` asked for towns (`townAt`).
+pub fn town(answer: &str) -> Option<String> {
+    first_place(answer, |text, _| {
+        text.get("city").or(if text.get("type") == Some("city") { text.get("name") } else { None }).map(str::to_string)
+    })
+}
+
+/// The `/reverse` query for the town a point lies in or near, within 3 km (`townAt`).
+pub fn town_query(at: Coord) -> String {
+    format!("lat={}&lon={}&lang=de&limit=1&radius=3&layer=city&layer=locality&layer=district", at[1], at[0])
 }
 
 #[cfg(test)]
@@ -535,5 +576,23 @@ mod tests {
         assert_eq!(name(locality, AT).as_deref(), Some("Gollersattel, 8164 Gutenberg"));
         assert_eq!(place_name(r#"{"features":[]}"#, AT), None);
         assert_eq!(name(r#""type":"street","name":"  ""#, AT), None, "blank texts count as none");
+    }
+
+    #[test]
+    fn a_town_is_its_city_or_a_city_itself() {
+        let in_town = r#""type":"locality","name":"Rinnegg","city":"Stattegg""#;
+        assert_eq!(town(&answer(in_town, AT)).as_deref(), Some("Stattegg"));
+        assert_eq!(town(&answer(r#""type":"city","name":"Gleisdorf""#, AT)).as_deref(), Some("Gleisdorf"));
+        assert_eq!(town(&answer(r#""type":"district","name":"Andritz""#, AT)), None);
+    }
+
+    #[test]
+    fn a_point_on_or_beside_a_house_belongs_to_its_street() {
+        let near = [15.4744, 47.0908];
+        let house = r#""type":"house","street":"Musterweg","housenumber":"12","postcode":"8020","city":"Graz""#;
+        assert_eq!(super::house(&answer(house, near), AT), Some(("Musterweg".into(), near)));
+        assert_eq!(super::house(&answer(house, [15.4755, 47.0908]), AT), None, "a house 90 m away");
+        let street = r#""type":"street","name":"Hahnhofweg","postcode":"8010","city":"Graz""#;
+        assert_eq!(super::house(&answer(street, AT), AT), None, "no house there");
     }
 }

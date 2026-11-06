@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loopSections } from '../src/domain/loop-suggestions.ts';
 import { suggestLoops } from '../src/services/loop-suggestions.service.ts';
 import { distanceMeters } from '../src/domain/route-model.ts';
 
@@ -21,7 +20,7 @@ function circle(radius, direction, { steps = 200 } = {}) {
     elevations: coordinates.map((_, i) => 300 + climb / 2 * (1 - Math.cos(i / steps * 2 * Math.PI))) };
 }
 // As the routing service answers: the leg, its heading, squares, whether it rides out and back, and points to name it by.
-const found = (direction, along, back = false) => ({ leg: circle(5000, direction), heading: 'Norden', cells: [`${direction},0`], back, along });
+const found = (direction, along, back = false) => ({ leg: circle(5000, direction), sections: [], heading: 'Norden', cells: [`${direction},0`], back, along });
 const towns = { 0: 'Nordhausen', 90: 'Ostdorf', 180: 'Südheim', 270: 'Westfeld' };
 async function town([lon, lat]) {
   if (Math.abs(lon - start[0]) < .002 && Math.abs(lat - start[1]) < .002) return 'Graz';
@@ -61,13 +60,3 @@ test('a routing service that fails everywhere reports why', async () => {
   await assert.rejects(suggestLoops(start, { meters: 40000, ascent: 300 }, new AbortController().signal, { loops, town }), /nicht erreichbar/);
 });
 
-test('a chosen loop becomes sections that keep the totals', () => {
-  const leg = circle(5000, 90, { steps: 400 });
-  const sections = loopSections(leg);
-  assert.ok(sections.length > 2 && sections.slice(0, -1).every(section => section.distanceMeters >= 5000));
-  assert.ok(Math.abs(sections.reduce((sum, section) => sum + section.distanceMeters, 0) - leg.distanceMeters) < 1e-6);
-  assert.deepEqual(sections[0].coordinates[0], start);
-  assert.deepEqual(sections.at(-1).coordinates.at(-1), start);
-  assert.ok(sections.every(section => section.surfaces.length === 1 && section.surfaces[0].toIndex === section.coordinates.length - 1));
-  assert.ok(sections.every(section => section.elevations.length === section.coordinates.length));
-});

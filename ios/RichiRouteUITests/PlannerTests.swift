@@ -51,7 +51,11 @@ final class PlannerTests: XCTestCase {
             .press(forDuration: 0.8, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)))
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForExistence(timeout: 10), "no zoomed stretch")
         shot(app, "2c-stretch")
-        app.buttons["Ganzes Profil zeigen"].tap()
+        // the whole route again, the stretch still marked
+        app.buttons["Auf Route zoomen"].tap()
+        sleep(1)
+        shot(app, "2c-whole")
+        app.buttons["Ausschnitt schließen"].tap()
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForNonExistence(timeout: 10))
 
         // a surface opens its sections, the first on the map; the arrows step through them, a second tap closes them
@@ -66,7 +70,8 @@ final class PlannerTests: XCTestCase {
             app.buttons["Nächster Abschnitt"].tap()
             XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Befestigt · 2 von'")).firstMatch.waitForExistence(timeout: 5))
         }
-        paved.tap()
+        // closed by its ×, the whole route again
+        app.buttons["Abschnitte schließen"].tap()
         XCTAssertTrue(count.waitForNonExistence(timeout: 5))
 
         // undo and redo on the map
@@ -314,6 +319,52 @@ final class PlannerTests: XCTestCase {
                       "the deleted route's name still on the open route")
         XCTAssertEqual(figures.label, ordered, "the open route changed")
         shot(app, "e5-deleted")
+    }
+
+    /// Suggests loops from a Start, as a rider does: the distance on its slider and the climbing typed, nothing
+    /// suggested before asked; the three loops in reach at half height, one chosen and taken as the route.
+    @MainActor
+    func testSuggestsLoops() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        sleep(2)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()
+        let open = app.buttons["Runde vorschlagen"]
+        XCTAssertTrue(open.waitForExistence(timeout: 30), "no loops offered with only a Start")
+        open.tap()
+        let suggest = app.buttons["Runden vorschlagen"], take = app.buttons.matching(identifier: "Fahren")
+        XCTAssertTrue(suggest.waitForExistence(timeout: 5))
+        XCTAssertFalse(take.firstMatch.exists, "suggested before asked")
+        // the distance on its slider, as a finger: the knob, inset by its half width, drawn to the left
+        let distance = app.sliders["Distanz"]
+        let knob = 14 / distance.frame.width
+        distance.coordinate(withNormalizedOffset: CGVector(dx: knob + distance.normalizedSliderPosition * (1 - 2 * knob), dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: distance.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow,
+                   thenHoldForDuration: 0.2)
+        XCTAssertNotEqual(app.textFields["Distanz"].value as? String, "80", "the slider did not move")
+        // the climbing typed (a tap on its line selects the figure), and suggested at once, without leaving the field
+        app.staticTexts["Höhenmeter"].tap()
+        app.typeText("1000")
+        suggest.tap()
+        XCTAssertTrue(take.firstMatch.waitForExistence(timeout: 90), "no loops found")
+        XCTAssertEqual(take.count, 3)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'km · 1.000 hm'")).firstMatch.exists, "the settings not folded")
+        XCTAssertTrue(take.element(boundBy: 2).isHittable, "the third loop out of reach at half height")
+        shot(app, "l1-loops")
+        app.staticTexts.matching(NSPredicate(format: "label MATCHES '[0-9]+ km · .+ hm' AND NOT label ENDSWITH ' 1.000 hm'")).element(boundBy: 2).tap()
+        shot(app, "l2-chosen")
+        take.element(boundBy: 2).tap()
+        XCTAssertTrue(take.firstMatch.waitForNonExistence(timeout: 5))
+        let title = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Runde ab '")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "the loop not the route")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' km'")).firstMatch.waitForExistence(timeout: 30))
+        shot(app, "l3-taken")
+        // one undo step back to the Start alone
+        app.buttons["Rückgängig"].tap()
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
     }
 
     @MainActor
