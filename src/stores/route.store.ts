@@ -720,6 +720,8 @@ export const useRouteStore = defineStore('route', {
       if (from === -1 || to < 0 || to >= order.length) throw new Error('Der Stopp kann nicht weiter verschoben werden.');
       if (from === to) return;
       order.splice(to, 0, ...order.splice(from, 1));
+      // an unplaced stop, still to be searched, never becomes Start or Ziel
+      if (!order[0].coord || !order.at(-1)!.coord) return;
       const updated = [...this.points];
       const last = order.length - 1;
       slots.forEach((slot, i) => { updated[slot] = { ...order[i], kind: i === 0 ? 'start' : i === last ? 'end' : 'via' }; });

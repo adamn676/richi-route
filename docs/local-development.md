@@ -390,7 +390,10 @@ on the map, held still first it marks a stretch to zoom into, as the planner's
 profile on touch. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own
 street with `/street`), the rider's position, or a tap on the map; holding a
-marker drags it, and holding the route drags it into a Formpunkt, as on the planner. The route being planned is kept in the planner's file format
+marker drags it, and holding the route drags it into a Formpunkt, as on the planner. A stop's row, held and dragged,
+changes places with another, Start and Ziel too; the planner's arrows show which way the route runs; a zoomed stretch
+or a surface section is raised with its ends marked while the rest fades, as on the planner (on the dark map, a soft
+glow beneath it). The route being planned is kept in the planner's file format
 (the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
 the saved routes in that format and the last three replaced without saving, for
 seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first
@@ -601,8 +604,10 @@ still for a moment picks the route up to drag it.
 
 The **Route** tab lists the stops beside their markers; the + below them
 (**Zwischenstopp hinzufügen**) adds an empty stop to fill by search or on the
-map. An intermediate stop changes its place among the others by dragging its
-grip, or with the arrow keys on the grip. Its trash can removes it, and the
+map. Any stop, Start and Ziel too, changes its place among the others by
+dragging its grip, or with the arrow keys on the grip, as in Apple Maps: the
+first is then the Start, the last the Ziel; a stop not yet placed stays between
+them. An intermediate stop's trash can removes it, and the
 notice at the panel's foot brings it back (**Rückgängig**) until the next
 change. Until the saved route has loaded, the list shows its shape instead of
 the empty start. Tooltips appear after the pointer has rested half a second on a
@@ -1100,7 +1105,8 @@ there, until Escape, another click or leaving the chart. Dragging across the
 profile with a mouse, or after a long press on phones, zooms into that stretch:
 the profile shows its own detail, axes and colours, the header its length,
 climbing, mean gradient and steepest climb held over 100 m, the axis its exact
-ends, and the map frames its course while the rest of the route fades. A double
+ends, and the map frames its course, raised in its surfaces' colours with its
+ends marked, while the rest of the route fades. A double
 click, Escape or the zoom-out button shows the whole profile again; so does a
 changed route. A right-click on the map, or
 a long press on phones, offers Street View for any point. Without a key these
@@ -1218,8 +1224,9 @@ of grade 2 to 5 as unpaved. The routing engine groups them as it answers a leg
 and select it again to close them. A section runs on across stops and shaping
 points, and a piece of under 10 m (GPS jitter, a kerb) takes the surface around
 it, so a section ends only where the surface really changes; corrected stretches
-stay their own. Select a section to frame it on the map, drawn in its colour
-above the route, which fades meanwhile; select it again to remove the highlight.
+stay their own. Select a section to frame it on the map, raised in its colour
+with its ends marked, while the rest of the route fades; select it again to
+remove the highlight.
 The arrows beside the group's name step to the previous or next section, round
 to the start again. **Weitere Abschnitte** shows ten more entries. Lengths
 follow the drawn coordinates and can differ slightly from the engine's total. Tags describe the map data, not the current condition of a

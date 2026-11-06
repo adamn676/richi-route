@@ -81,15 +81,15 @@ final class Planner {
     var profileRange: ClosedRange<Double>? { current(zoom)?.range }
     var sectionRange: ClosedRange<Double>? { current(section)?.range }
 
-    /// `parts` are the route's points it covers on each leg, `[leg, first, last]`; `ends`, where it begins and ends
-    /// between two of them.
-    func zoomProfile(_ range: ClosedRange<Double>?, parts: [[Int]] = [], ends: [[Double]] = []) {
-        zoom = range.map { stretch($0, parts: parts, ends: ends) }
+    /// `parts` are the points it covers on each of `legs`, the legs it was chosen on, `[leg, first, last]`; `ends`,
+    /// where it begins and ends between two of them.
+    func zoomProfile(_ range: ClosedRange<Double>?, parts: [[Int]] = [], ends: [[Double]] = [], legs: [Leg] = []) {
+        zoom = range.map { stretch($0, parts: parts, ends: ends, legs: legs) }
         frame()
     }
 
-    func focusSection(_ range: ClosedRange<Double>?, parts: [[Int]] = []) {
-        section = range.map { stretch($0, parts: parts, ends: []) }
+    func focusSection(_ range: ClosedRange<Double>?, parts: [[Int]] = [], legs: [Leg] = []) {
+        section = range.map { stretch($0, parts: parts, ends: [], legs: legs) }
         frame()
     }
 
@@ -603,10 +603,9 @@ final class Planner {
         return MapContent(lines: lines, pins: pins, framing: framing, stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [])
     }
 
-    private func stretch(_ range: ClosedRange<Double>, parts: [[Int]], ends: [[Double]]) -> Stretch {
-        var pieces = parts.flatMap { part -> [MapContent.Line] in
-            guard pairs.indices.contains(part[0]), case .routed(let leg) = legs[pairs[part[0]].key] else { return [] }
-            return Self.lines(of: leg, at: part[0], within: part[1]...part[2])
+    private func stretch(_ range: ClosedRange<Double>, parts: [[Int]], ends: [[Double]], legs chosenOn: [Leg]) -> Stretch {
+        var pieces = parts.flatMap { part in
+            chosenOn.indices.contains(part[0]) ? Self.lines(of: chosenOn[part[0]], at: part[0], within: part[1]...part[2]) : []
         }
         if ends.count == 2, !pieces.isEmpty {
             pieces[0].coordinates[0] = ends[0]
@@ -614,7 +613,9 @@ final class Planner {
         }
         var line: [[Double]] = []
         for piece in pieces { line += piece.coordinates.dropFirst(line.last == piece.coordinates.first ? 1 : 0) }
-        return Stretch(route: pairs.map(\.key), range: range, pieces: pieces, line: line)
+        // chosen on legs the route no longer has (the panel had not caught up), it is never the current one
+        let route = routedLegs.compactMap { $0 } == chosenOn ? pairs.map(\.key) : []
+        return Stretch(route: route, range: range, pieces: pieces, line: line)
     }
 
     /// A leg as the map draws it, by its surfaces; only its points `within`, when given.

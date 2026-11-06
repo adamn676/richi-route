@@ -83,8 +83,8 @@ struct RouteTab: View {
     @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
     /// Whether many Zwischenstopps show one by one rather than as one row.
     @State private var viasOpen = false
-    /// The route's surfaces, likewise.
-    @State private var surfaces: Surfaces?
+    /// The route's surfaces with the legs they were made from, likewise.
+    @State private var surfaces: (value: Surfaces, legs: [Leg])?
 
     /// The stop whose search is open, by its place among the stops and their number with it: a new Zwischenstopp
     /// is one not on the route yet, before the Ziel.
@@ -112,7 +112,8 @@ struct RouteTab: View {
                     } zoom: { range in
                         let (profile, legs) = (shown.profile, shown.legs)
                         planner.zoomProfile(range, parts: range.map { profile.parts(from: $0.lowerBound, to: $0.upperBound) } ?? [],
-                                            ends: range.map { [$0.lowerBound, $0.upperBound].compactMap { profile.point(at: $0, legs: legs)?.coordinate } } ?? [])
+                                            ends: range.map { [$0.lowerBound, $0.upperBound].compactMap { profile.point(at: $0, legs: legs)?.coordinate } } ?? [],
+                                            legs: legs)
                         if range != nil {
                             halve()
                             withAnimation { scroller.scrollTo(Self.profileRow, anchor: .top) }
@@ -131,8 +132,8 @@ struct RouteTab: View {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
                     Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
-                    SurfaceRows(surfaces: surfaces, focused: planner.sectionRange) { range, parts in
-                        planner.focusSection(range, parts: parts)
+                    SurfaceRows(surfaces: surfaces.value, focused: planner.sectionRange) { range, parts in
+                        planner.focusSection(range, parts: parts, legs: surfaces.legs)
                         if range != nil { halve() }
                     }
                 }
@@ -158,8 +159,9 @@ struct RouteTab: View {
         // the surfaces of the route as it stands, asked again whenever a leg changes
         .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
             guard planner.isComplete, let engine = planner.engine else { return surfaces = nil }
+            let legs = legs
             guard let value = try? await engine.surfaces(legs), !Task.isCancelled else { return }
-            surfaces = value
+            surfaces = (value, legs)
         }
         // the profile of the route as it stands, or of its stretch: asked again whenever a leg or the stretch changes
         .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: planner.profileRange)) {
@@ -204,7 +206,7 @@ struct RouteTab: View {
                         figure("Höchster Punkt", planner.highestMeters.map { "\(Format.whole($0)) m" } ?? "unbekannt")
                     }
                 }
-                if let surfaces { surfaceBar(surfaces) }
+                if let surfaces { surfaceBar(surfaces.value) }
             } else {
                 Text(status).font(.subheadline).foregroundStyle(.secondary)
                 if planner.isRouting {

@@ -78,8 +78,9 @@ struct PlannerMap: UIViewRepresentable {
         private var pins: MLNShapeSource?
         private var stretch: MLNShapeSource?
         private var focused: MLNShapeSource?
+        private var arrows: MLNShapeSource?
         /// The route's outline and line, faded on the light map while a stretch is brought out.
-        private var faded: [MLNLineStyleLayer] = []
+        private var faded: [MLNStyleLayer] = []
         private var focus: MLNShapeSource?
         private var shown: MapContent?
         private var waiting: MapContent?
@@ -112,7 +113,7 @@ struct PlannerMap: UIViewRepresentable {
             let dark = map.traitCollection.userInterfaceStyle == .dark
             guard dark != self.dark else { return }
             self.dark = dark
-            (lines, pins, stretch, focused, focus) = (nil, nil, nil, nil, nil)
+            (lines, pins, stretch, focused, arrows, focus) = (nil, nil, nil, nil, nil, nil)
             map.styleJSON = MapStyle.shared.json(dark: dark)
         }
 
@@ -149,7 +150,23 @@ struct PlannerMap: UIViewRepresentable {
             // on a wider outline, its ends marked, and the rest fades, as the planner draws it. On the dark map a soft light
             // glow lies beneath it, which the white outline can't be taken for; its line smoothed, as a blurred line draws
             // slashes across itself at a road's small jogs, and the blur hides the smoothing.
-            var layers: [MLNStyleLayer] = [outline, line, pending, filled]
+            // which way the route runs: the planner's arrows, evenly along each calculated stretch of it, turned with it
+            let arrows = MLNShapeSource(identifier: "arrows", shape: nil)
+            style.addSource(arrows)
+            style.setImage(Self.arrow, forName: "route-arrow")
+            let arrowLayer = { (id: String, focused: Bool) in
+                let layer = MLNSymbolStyleLayer(identifier: id, source: arrows)
+                layer.predicate = NSPredicate(format: "focused == %@", NSNumber(value: focused))
+                layer.symbolPlacement = NSExpression(forConstantValue: "line")
+                layer.symbolSpacing = NSExpression(forConstantValue: 110)
+                layer.iconImageName = NSExpression(forConstantValue: "route-arrow")
+                layer.iconRotationAlignment = NSExpression(forConstantValue: "map")
+                layer.iconAllowsOverlap = NSExpression(forConstantValue: true)
+                layer.iconIgnoresPlacement = NSExpression(forConstantValue: true)
+                return layer
+            }
+            let routeArrows = arrowLayer("route-arrows", false)
+            var layers: [MLNStyleLayer] = [outline, line, routeArrows, pending, filled]
             faded = []
             if dark {
                 let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
@@ -176,8 +193,8 @@ struct PlannerMap: UIViewRepresentable {
                 ends.circleColor = NSExpression(forConstantValue: UIColor.white)
                 ends.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
                 ends.circleStrokeWidth = NSExpression(forConstantValue: 2.5)
-                layers.insert(contentsOf: [raisedOutline, raised, ends], at: 2)
-                faded = [outline, line]
+                layers.insert(contentsOf: [raisedOutline, raised, arrowLayer("focused-arrows", true), ends], at: 3)
+                faded = [outline, line, routeArrows]
                 self.focused = focused
             }
             // under the map's names, as the planner draws it, so street and place names stay readable on the route
@@ -225,6 +242,7 @@ struct PlannerMap: UIViewRepresentable {
             dot.circleStrokeWidth = NSExpression(forConstantValue: 3)
             style.addLayer(dot)
             self.focus = focus
+            self.arrows = arrows
 
             self.lines = lines
             self.pins = pins
@@ -259,7 +277,52 @@ struct PlannerMap: UIViewRepresentable {
                 return dot
             }
             focused?.shape = MLNShapeCollectionFeature(shapes: content.focused.map(Self.feature) + ends)
-            for layer in faded { layer.lineOpacity = NSExpression(forConstantValue: content.focused.isEmpty ? 1 : 0.35) }
+            let opacity = NSExpression(forConstantValue: content.focused.isEmpty ? 1 : 0.35)
+            for layer in faded {
+                (layer as? MLNLineStyleLayer)?.lineOpacity = opacity
+                (layer as? MLNSymbolStyleLayer)?.iconOpacity = opacity
+            }
+            let routed = content.lines.filter { !["waiting", "air", "progress"].contains($0.style) }
+            arrows?.shape = MLNShapeCollectionFeature(shapes: Self.runs(routed).map { Self.run($0, focused: false) }
+                + Self.runs(content.focused).map { Self.run($0, focused: true) })
+        }
+
+        /// Lines joined where one ends where the next begins, so that the arrows run evenly over their joins.
+        private static func runs(_ lines: [MapContent.Line]) -> [[[Double]]] {
+            var runs: [[[Double]]] = []
+            for line in lines {
+                if let last = runs.last?.last, last == line.coordinates.first {
+                    runs[runs.count - 1] += line.coordinates.dropFirst()
+                } else {
+                    runs.append(line.coordinates)
+                }
+            }
+            return runs
+        }
+
+        private static func run(_ coordinates: [[Double]], focused: Bool) -> MLNPolylineFeature {
+            let feature = MLNPolylineFeature(coordinates: coordinates.map(coordinate), count: UInt(coordinates.count))
+            feature.attributes = ["focused": focused]
+            return feature
+        }
+
+        /// The planner's arrow (`src/utils/route-arrows.ts`): white with a dark outline and a soft shadow, pointing along
+        /// the line.
+        private static let arrow = UIGraphicsImageRenderer(size: CGSize(width: 18, height: 18)).image { context in
+            let path = UIBezierPath(), middle: CGFloat = 9
+            path.move(to: CGPoint(x: middle + 6.5, y: middle))
+            path.addLine(to: CGPoint(x: middle - 4.5, y: middle - 5.5))
+            path.addLine(to: CGPoint(x: middle - 1.8, y: middle))
+            path.addLine(to: CGPoint(x: middle - 4.5, y: middle + 5.5))
+            path.close()
+            path.lineJoinStyle = .round
+            path.lineWidth = 1.2
+            context.cgContext.setShadow(offset: CGSize(width: 0, height: 0.8), blur: 1.8, color: UIColor(white: 0, alpha: 0.3).cgColor)
+            UIColor.white.setFill()
+            path.fill()
+            context.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+            UIColor(red: 0x1c / 255, green: 0x24 / 255, blue: 0x21 / 255, alpha: 1).setStroke()
+            path.stroke()
         }
 
         private static func feature(_ line: MapContent.Line) -> MLNPolylineFeature {

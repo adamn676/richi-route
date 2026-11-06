@@ -18,7 +18,7 @@ active development and tested around Graz and Styria, Austria.
   with its shape, distance and climbing; pick one to see it as a route and keep it. Suggestions stay on paved roads;
   where no paved loop exists, as in a valley closed by mountains, they ride out and back.
 - Plan a route through any number of stops; set them by address or on the map.
-- Drag the route onto the road you prefer and reorder stops in the list, with undo and redo.
+- Drag the route onto the road you prefer and reorder stops in the list, Start and Ziel too, with undo and redo.
 
 **Check before you ride**
 
@@ -32,8 +32,8 @@ active development and tested around Graz and Styria, Austria.
 
 **Keep and share**
 
-- **Speichern** keeps a route in **Meine Routen** (the planner's second tab, where you reopen, rename and duplicate
-  routes), or downloads it as GPX for your bike computer, as a FIT course for a Garmin (copied into its
+- **Speichern** keeps a route in **Meine Routen** (the planner's second tab, where you reopen, rename, duplicate and
+  delete routes), or downloads it as GPX for your bike computer, as a FIT course for a Garmin (copied into its
   `Garmin/NewFiles` folder; over 400 km in parts) or as a RichiRoute file to keep it editable.
 - Open a GPX track or a RichiRoute file as the route, from the open button or by dropping it on the page; a GPX
   track keeps its exact path and heights.
@@ -53,8 +53,9 @@ there, and **Richi Fahrten** shows the roads you rode on the map (see
   and aerial overview cover Europe; detailed aerial photos cover Austria, Switzerland and France.
 - **Your data:** routes are stored in your browser. There are no accounts and no cloud sync; download RichiRoute
   files to keep copies, because clearing the browser's data removes saved routes.
-- **Not yet:** using it offline on a phone, without the computer. A native iPhone app is in its first test: the
-  routing engine and the offline map run on the phone ([iPhone app](docs/local-development.md#iphone-app)).
+- **On a phone:** a native iPhone app plans routes without the computer and without a connection: the routing engine,
+  the map and the address search run on the phone. It is in testing and not yet released
+  ([iPhone app](docs/local-development.md#iphone-app)).
 
 ## Getting started
 
@@ -105,7 +106,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 |---|---|
 | `src/` | The planner: Vue 3, Vuetify 4, Pinia, MapLibre GL JS 6, TypeScript, built with Vite 8 |
 | `engine/` | The routing engine, a Rust port of BRouter 1.7.10 that answers exactly as BRouter does ([porting notes](engine/PORTING.md)), and on top of it (`engine/planner`) the routed legs with their surfaces and climbing, the loop suggestions and FIT courses, shared by planner and iPhone app |
-| `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, in its first test ([iPhone app](docs/local-development.md#iphone-app)) |
+| `ios/` | The native iPhone app (SwiftUI, MapLibre Native) with the routing engine inside, planning offline, in testing ([iPhone app](docs/local-development.md#iphone-app)) |
 | `garmin/` | A Connect IQ app for the Garmin Edge 840 that receives routes from the iPhone app over Bluetooth, in its first test ([Garmin Edge test](docs/local-development.md#garmin-edge-test)) |
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |

@@ -309,4 +309,8 @@ test('a stop moved to the top is the Start, the former Start a Zwischenstopp; sh
   store.undo();
   store.undo();
   assert.equal(JSON.stringify(store.points), before);
+  // a Zwischenstopp not yet placed stays between them
+  const empty = store.addIntermediateStopAndPrepare(), points = JSON.stringify(store.points);
+  store.moveWaypointTo(empty, 0);
+  assert.equal(JSON.stringify(store.points), points);
 });
