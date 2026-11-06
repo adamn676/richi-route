@@ -255,20 +255,28 @@ struct RouteTab: View {
     /// disclosure does, and opens by itself when one is added.
     private var stops: some View {
         let waypoints = planner.waypoints, vias = Array(waypoints.dropFirst().dropLast())
-        let grouped = vias.count >= Self.groupedFrom
+        let grouped = vias.count >= Self.groupedFrom, last = waypoints.count - 1
+        // all in one list, each stop dragged anywhere, as in Apple Maps: one let go at the top is the new Start
+        var rows = [StopListRow(id: waypoints[0].id, index: 0)]
+        if grouped { rows.append(StopListRow(id: Self.foldedID, index: nil)) }
+        if !grouped || viasOpen { rows += vias.indices.map { StopListRow(id: vias[$0].id, index: $0 + 1) } }
+        rows.append(StopListRow(id: waypoints[last].id, index: last))
+        // a row's place among the stops: the folded Zwischenstopps' row before the first, the end after the Ziel
+        let place = { (row: Int) in row < rows.count ? rows[row].index ?? 1 : waypoints.count }
         return Group {
-            stopRow(waypoints[0], at: 0, removable: false)
-            if grouped { viasRow(vias.count) }
-            if !grouped || viasOpen {
-                ForEach(Array(vias.enumerated()), id: \.element.id) { index, stop in
-                    stopRow(stop, at: index + 1, removable: true)
-                        .listRowBackground(planner.picking == stop.id ? Color.ink.opacity(0.08) : nil)
+            ForEach(rows) { row in
+                if let index = row.index {
+                    let fixed = index == 0 || index == last
+                    stopRow(waypoints[index], at: index, removable: !fixed)
+                        .listRowBackground(planner.picking == row.id ? Color.ink.opacity(0.08) : nil)
+                        .moveDisabled(!planner.hasRoute)
+                        .deleteDisabled(fixed)
+                } else {
+                    viasRow(vias.count).moveDisabled(true).deleteDisabled(true)
                 }
-                .onDelete { offsets in offsets.map { vias[$0].id }.forEach(planner.remove) }
-                .onMove { source, destination in planner.moveStops(from: IndexSet(source.map { $0 + 1 }), to: destination + 1) }
             }
-            stopRow(waypoints[waypoints.count - 1], at: waypoints.count - 1, removable: false)
-                .listRowBackground(planner.picking == waypoints.last?.id ? Color.ink.opacity(0.08) : nil)
+            .onDelete { offsets in offsets.map { rows[$0].id }.forEach(planner.remove) }
+            .onMove { source, destination in planner.moveStops(from: IndexSet(source.map(place)), to: place(destination)) }
             if planner.hasRoute {
                 // its search first, so a Zwischenstopp is added once chosen, never empty
                 Button { searching = Searching(id: UUID(), index: waypoints.count - 1, count: waypoints.count + 1) } label: {
@@ -280,6 +288,13 @@ struct RouteTab: View {
     }
 
     private static let groupedFrom = 4
+    private static let foldedID = UUID()
+
+    /// A row of the stops: a stop, by its place in `waypoints`, or (no place) the row the Zwischenstopps fold into.
+    private struct StopListRow: Identifiable {
+        let id: UUID
+        let index: Int?
+    }
 
     private func viasRow(_ count: Int) -> some View {
         Button {
@@ -317,9 +332,8 @@ struct RouteTab: View {
     /// A stop: tapping it replaces it by a tap on the map; a Zwischenstopp also has its × to remove it.
     private func stopRow(_ stop: Planner.Stop, at index: Int, removable: Bool) -> some View {
         let count = planner.waypoints.count, error = planner.stopErrors[stop.id]
-        // held and dragged, a Zwischenstopp changes places with another, as in Apple Maps: its grip shows that, where
-        // there is another to change with
-        let movable = removable && count > 3
+        // held and dragged, a stop changes places with another, as in Apple Maps: its grip shows that
+        let movable = planner.hasRoute
         return HStack(spacing: 12) {
             // an empty Start or Ziel as an empty ring, as the planner's
             Text(Planner.badge(at: index, of: count))

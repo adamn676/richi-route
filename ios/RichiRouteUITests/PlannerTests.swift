@@ -177,6 +177,145 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
     }
 
+    /// Moves a Formpunkt, reorders two Zwischenstopps around it, and renames, duplicates and deletes the route in
+    /// "Meine Routen".
+    @MainActor
+    func testEditsStopsAndSavedRoutes() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launch()
+        let grabber = app.buttons["Sheet Grabber"]
+        let raise = { grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))) }
+        let lower = { grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))) }
+        let map = { (x: Double, y: Double) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        sleep(2)
+        map(0.25, 0.3).tap()
+        sleep(1)
+        map(0.75, 0.42).tap()
+        let figures = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' km'")).firstMatch
+        XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route")
+        // the distance once the route has changed from `before`
+        let distance = { (before: String) -> String in
+            let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND label != %@", before), object: figures)
+            XCTAssertEqual(XCTWaiter().wait(for: [changed], timeout: 60), .completed, "the route still \(before)")
+            return figures.label
+        }
+        let direct = figures.label
+
+        // a Formpunkt dragged out of the route, then held and dragged on; one undo puts it back
+        map(0.567, 0.356).press(forDuration: 0.6, thenDragTo: map(0.52, 0.46))
+        let shaped = distance(direct)
+        sleep(1)
+        map(0.52, 0.46).press(forDuration: 0.6, thenDragTo: map(0.42, 0.55))
+        let moved = distance(shaped)
+        shot(app, "e1-formpunkt-moved")
+        app.buttons["Rückgängig"].tap()
+        XCTAssertEqual(distance(moved), shaped, "undo did not put the Formpunkt back")
+
+        // two Zwischenstopps, the farther first, held and dragged into the other order; the Formpunkt keeps its place
+        for (index, spot) in [(0.62, 0.2), (0.3, 0.22)].enumerated() {
+            let before = figures.label
+            raise()
+            let add = app.buttons["Zwischenstopp hinzufügen"]
+            for _ in 0..<4 where !add.isHittable { app.swipeUp() }
+            add.tap()
+            app.buttons["Auf der Karte wählen"].tap()
+            XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForExistence(timeout: 5))
+            map(spot.0, spot.1).tap()
+            _ = distance(before)
+        }
+        raise()
+        let first = app.buttons["Zwischenstopp 1 entfernen"], second = app.buttons["Zwischenstopp 2 entfernen"]
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        // a stop's name: the widest text in the row of its badge or × button
+        let name = { (inRow: XCUIElement) -> String in
+            app.staticTexts.allElementsBoundByIndex.filter { abs($0.frame.midY - inRow.frame.midY) < 12 }
+                .max { $0.frame.width < $1.frame.width }?.label ?? ""
+        }
+        let start = app.staticTexts["S"].firstMatch
+        let names = (name(first), name(second))
+        XCTAssertNotEqual(names.0, names.1)
+        let ordered = figures.label
+        shot(app, "e2-stops")
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' → '")).firstMatch
+        let before = title.label
+        // the second dragged up to the top, and held there until the rows have made room: the new Start, as in Apple Maps
+        second.coordinate(withNormalizedOffset: CGVector(dx: -4, dy: 0.5)).press(
+            forDuration: 1, thenDragTo: start.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.4)), withVelocity: .slow,
+            thenHoldForDuration: 0.5)
+        // the route's name follows its new Start
+        let newStart = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", names.1.components(separatedBy: ",")[0]), object: title)
+        XCTAssertEqual(XCTWaiter().wait(for: [newStart], timeout: 10), .completed, "not the new Start: \(title.label)")
+        XCTAssertTrue(figures.waitForExistence(timeout: 60))
+        XCTAssertEqual(name(start), names.1)
+        XCTAssertEqual(name(app.buttons["Zwischenstopp 2 entfernen"]), names.0)
+        shot(app, "e3-reordered")
+        app.buttons["Weitere Aktionen"].tap()
+        let unshape = app.buttons["Formpunkte entfernen"]
+        XCTAssertTrue(unshape.waitForExistence(timeout: 5), "the Formpunkt lost in reordering")
+        // the menu closed by a tap beside it, which the panel below does not take
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.25)).tap()
+        XCTAssertTrue(unshape.waitForNonExistence(timeout: 5))
+        lower()
+        app.buttons["Rückgängig"].tap()
+        XCTAssertTrue(app.staticTexts[before].waitForExistence(timeout: 10), "undo did not restore the Start")
+        XCTAssertTrue(figures.waitForExistence(timeout: 60))
+        XCTAssertEqual(figures.label, ordered)
+        raise()
+        XCTAssertEqual(name(app.buttons["Zwischenstopp 1 entfernen"]), names.0, "undo did not restore the order")
+
+        // saved, then in "Meine Routen" renamed, which the open route takes on, duplicated, and the copy and then the
+        // route itself deleted, which leaves the route open but no longer saved
+        app.buttons["Weitere Aktionen"].tap()
+        app.buttons["In „Meine Routen“ speichern …"].tap()
+        let field = app.textFields["Routenname"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        for _ in 0..<3 where !(field.value as? String ?? "").isEmpty {
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count + 5))
+        }
+        // names of this run's own, clear of routes earlier runs left
+        let saved = "Runde \(Int.random(in: 1000...9999))", renamed = "Umbenannt \(Int.random(in: 1000...9999))"
+        let copy = renamed + " (Kopie)"
+        field.typeText(saved + "\n")
+        XCTAssertTrue(app.staticTexts[saved].waitForExistence(timeout: 5))
+        raise()
+        app.buttons["Meine Routen"].tap()
+        let entry = { (label: String) in app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label + ",")).firstMatch }
+        XCTAssertTrue(entry(saved).waitForExistence(timeout: 5))
+        entry(saved).press(forDuration: 1)
+        app.buttons["Umbenennen"].tap()
+        let rename = app.alerts["Route umbenennen"].textFields.firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5))
+        rename.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: saved.count + 5) + renamed)
+        app.alerts.buttons["Umbenennen"].tap()
+        XCTAssertTrue(entry(renamed).waitForExistence(timeout: 5), "not renamed")
+        XCTAssertFalse(entry(saved).exists)
+        entry(renamed).press(forDuration: 1)
+        app.buttons["Duplizieren"].tap()
+        XCTAssertTrue(entry(copy).waitForExistence(timeout: 5), "no copy")
+        shot(app, "e4-renamed-copied")
+        entry(copy).swipeLeft()
+        app.buttons["Löschen"].tap()
+        app.alerts.buttons["Endgültig löschen"].tap()
+        XCTAssertTrue(entry(copy).waitForNonExistence(timeout: 5), "copy not deleted")
+        XCTAssertTrue(entry(renamed).exists, "the original went with the copy")
+        app.buttons["Route"].tap()
+        XCTAssertTrue(app.staticTexts[renamed].waitForExistence(timeout: 5), "the open route kept its old name")
+        app.buttons["Meine Routen"].tap()
+        entry(renamed).swipeLeft()
+        app.buttons["Löschen"].tap()
+        app.alerts.buttons["Endgültig löschen"].tap()
+        XCTAssertTrue(entry(renamed).waitForNonExistence(timeout: 5))
+        app.buttons["Route"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' → '")).firstMatch.waitForExistence(timeout: 5),
+                      "the deleted route's name still on the open route")
+        XCTAssertEqual(figures.label, ordered, "the open route changed")
+        shot(app, "e5-deleted")
+    }
+
     @MainActor
     private func shot(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())

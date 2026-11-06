@@ -314,12 +314,11 @@ final class Planner {
         }
     }
 
-    /// Reorders Zwischenstopps among themselves (offsets into `waypoints`); Start, Ziel and the Formpunkte keep their
+    /// Reorders the stops (offsets into `waypoints`), Start and Ziel too, as Apple Maps does; the Formpunkte keep their
     /// places (`moveWaypointTo`).
     func moveStops(from source: IndexSet, to destination: Int) {
         var order = waypoints
-        guard source.allSatisfy({ $0 > 0 && $0 < order.count - 1 }) else { return }
-        order.move(fromOffsets: source, toOffset: min(max(destination, 1), order.count - 1))
+        order.move(fromOffsets: source, toOffset: destination)
         change {
             var next = order.makeIterator()
             stops = stops.map { $0.shape ? $0 : next.next()! }

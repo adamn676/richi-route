@@ -293,3 +293,20 @@ test('clearing a start takes its point and the shaping of its section, as one un
   assert.equal(store.waypoints.find(p => p.id === empty).userInput, '', 'A stop without a point only loses its text');
   assert.equal(store.undoStack.length, steps);
 });
+
+test('a stop moved to the top is the Start, the former Start a Zwischenstopp; shaping stays put, undo restores', async t => {
+  setActivePinia(createPinia());
+  intercept(t);
+  const store = useRouteStore();
+  store.resetRoute([[15.4, 47], [15.41, 47], [15.42, 47], [15.43, 47]], [1]);
+  await settle();
+  const before = JSON.stringify(store.points);
+  store.moveWaypointTo(store.waypoints[1].id, 0);
+  assert.deepEqual(store.points.map(p => p.type === 'stop' ? [p.kind, p.coord] : p.type),
+    [['start', [15.42, 47]], 'shape', ['via', [15.4, 47]], ['end', [15.43, 47]]]);
+  store.moveWaypointTo(store.waypoints[0].id, 2);
+  assert.deepEqual(store.waypoints.map(p => [p.kind, p.coord]), [['start', [15.4, 47]], ['via', [15.43, 47]], ['end', [15.42, 47]]]);
+  store.undo();
+  store.undo();
+  assert.equal(JSON.stringify(store.points), before);
+});

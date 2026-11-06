@@ -42,9 +42,9 @@
           @enter="(_el: Element, done: () => void) => done()" @leave="(_el: Element, done: () => void) => done()">
           <li v-for="(point, index) in routeStore.waypoints" :key="point.id" class="planner__stop" :data-stop="point.id"
             :class="{ 'planner__stop--lifted': stopDrag?.id === point.id }"
-            :style="point.kind === 'via' && stopDrag ? { translate: `0 ${offset(viaIds.indexOf(point.id))}px` } : undefined">
-            <button v-if="point.kind === 'via'" type="button" class="planner__grip" :aria-label="`${stopLabel(point.kind, index)} verschieben`"
-              @pointerdown="startDrag($event, point.id, viaIds)" @keydown.up.prevent="nudge(point.id, -1)" @keydown.down.prevent="nudge(point.id, 1)">
+            :style="stopDrag ? { translate: `0 ${offset(index)}px` } : undefined">
+            <button v-if="hasEndpoints" type="button" class="planner__grip" :aria-label="`${stopLabel(point.kind, index)} verschieben`"
+              @pointerdown="startDrag($event, point.id, stopIds)" @keydown.up.prevent="nudge(index, -1)" @keydown.down.prevent="nudge(index, 1)">
               <IconGripVertical :size="14" aria-hidden="true" />
             </button>
             <span class="planner__badge" :class="{ 'planner__badge--empty': !point.coord, 'planner__badge--error': routeStore.stopError(point) }" aria-hidden="true">{{ stopBadge(point.kind, index) }}</span>
@@ -75,7 +75,7 @@
           v-tooltip:end="'Zwischenstopp hinzufügen'" @click="addStop"><span class="planner__add-mark" aria-hidden="true"><IconPlus :size="14" /></span></button>
       </div>
       <!-- Until the rider has changed a route on the map once, it says how; offered loops take the map's clicks instead. -->
-      <p v-if="routeStore.route && !shaped && !routeStore.shapingPoints.length && !viaIds.length && !loops.suggestions" class="text-body-small text-medium-emphasis">
+      <p v-if="routeStore.route && !shaped && !routeStore.shapingPoints.length && routeStore.waypoints.length === 2 && !loops.suggestions" class="text-body-small text-medium-emphasis">
         {{ touch ? 'Tipp: Route auf der Karte gedrückt halten und ziehen, um sie zu formen; Antippen setzt einen Zwischenstopp.'
           : 'Tipp: Route auf der Karte ziehen, um sie zu formen; ein Klick darauf setzt einen Zwischenstopp.' }}</p>
     </section>
@@ -177,7 +177,6 @@ function chooseFile(event: Event) {
   input.value = '';
   if (file) emit('open-file', file);
 }
-const viaIds = computed(() => routeStore.waypoints.filter((point) => point.kind === 'via').map((point) => point.id));
 // The offer to undo a removal ends with the next step in the history; the route's recalculation is none.
 const removed = ref(false);
 let removal: unknown;
@@ -192,10 +191,11 @@ function restoreStop() {
   routeStore.undo();
 }
 // Moving a stop keeps the focus where it is: on its grip, which moves along.
+const stopIds = computed(() => routeStore.waypoints.map((point) => point.id));
 const { drag: stopDrag, settling: stopSettling, start: startDrag, offset } = useStopDragging((id, to) => run(() => routeStore.moveWaypointTo(id, to)));
-function nudge(id: string, direction: -1 | 1) {
-  const to = viaIds.value.indexOf(id) + direction;
-  if (to >= 0 && to < viaIds.value.length) void run(() => routeStore.moveWaypointTo(id, to));
+function nudge(index: number, direction: -1 | 1) {
+  const to = index + direction;
+  if (to >= 0 && to < stopIds.value.length) void run(() => routeStore.moveWaypointTo(stopIds.value[index], to));
 }
 const hasEndpoints = computed(() => {
   const stops = routeStore.waypoints;

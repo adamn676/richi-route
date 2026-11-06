@@ -11,7 +11,7 @@ interface Drag {
   height: number;
 }
 
-// Dragging an intermediate stop by its grip: the row follows the pointer, the others make room, and the drop moves the stop
+// Dragging a stop by its grip: the row follows the pointer, the others make room, and the drop moves the stop
 // as one step; the list's move transition then snaps the rows into place. Escape puts it back.
 export function useStopDragging(move: (id: string, to: number) => void) {
   const drag = ref<Drag | null>(null);

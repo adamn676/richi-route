@@ -711,16 +711,18 @@ export const useRouteStore = defineStore('route', {
       }
     },
 
-    // The intermediate stop to another place among them, as one step; shaping points stay where they are.
+    // A stop to another place among them, Start and Ziel too, as in Apple Maps, as one step: the first is then the Start,
+    // the last the Ziel. Shaping points stay where they are.
     moveWaypointTo(id: string, to: number) {
-      const slots = this.points.flatMap((point, i) => point.type === 'stop' && point.kind === 'via' ? [i] : []);
-      const order = slots.map((slot) => this.points[slot]);
+      const slots = this.points.flatMap((point, i) => point.type === 'stop' ? [i] : []);
+      const order = slots.map((slot) => this.points[slot] as Waypoint);
       const from = order.findIndex((point) => point.id === id);
       if (from === -1 || to < 0 || to >= order.length) throw new Error('Der Stopp kann nicht weiter verschoben werden.');
       if (from === to) return;
       order.splice(to, 0, ...order.splice(from, 1));
       const updated = [...this.points];
-      slots.forEach((slot, i) => { updated[slot] = order[i]; });
+      const last = order.length - 1;
+      slots.forEach((slot, i) => { updated[slot] = { ...order[i], kind: i === 0 ? 'start' : i === last ? 'end' : 'via' }; });
       this._remember();
       this.points = updated;
       this._reconcile();
