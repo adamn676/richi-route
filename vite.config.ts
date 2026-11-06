@@ -16,7 +16,8 @@ export default defineConfig({
   resolve: { alias: { '@': file('./src') } },
   server: {
     host: '127.0.0.1', port: 5173, strictPort: true,
-    watch: { ignored: ['**/.cache/**', '**/experiments/routing/.local/**'] },
+    // Rust build output: tens of thousands of files, more than Linux lets one process watch
+    watch: { ignored: ['**/.cache/**', '**/experiments/routing/.local/**', '**/target/**'] },
     proxy: {
       '/routing': { target: `http://127.0.0.1:${process.env.ROUTING_PORT ?? 17777}`, rewrite: path => path.replace(/^\/routing/, '') },
       '/geocoding': { target: `http://127.0.0.1:${process.env.SEARCH_PORT ?? 2322}`, rewrite: path => path.replace(/^\/geocoding/, '') },
