@@ -12,6 +12,9 @@ struct Loops: Equatable {
     struct Found: Equatable {
         let loop: Engine.Loop
         let name: String
+        /// Its surfaces and profile, to judge it by before riding it; there shortly after the loops.
+        var surfaces: Surfaces?
+        var profile: Profile?
 
         /// Its distance and climbing, as the list and the map give them.
         var figures: String { "\(Format.km(loop.leg.distanceMeters, digits: 0)) km · \(Format.whole(loop.leg.ascentMeters ?? 0)) hm" }
@@ -53,10 +56,24 @@ extension Planner {
                 LoopHistory.add(found.map(\.cells), at: place)
                 loops?.result = .found(named)
                 frame()
+                await details(of: named, engine: engine)
             } catch {
                 guard !Task.isCancelled else { return }
                 loops?.result = .failed((error as? Engine.Failure)?.message ?? "Runden konnten nicht berechnet werden.")
             }
+        }
+    }
+
+    /// The loops' surfaces and profiles, one loop after the other from the first, which is shown first; a new search
+    /// stops it, so the engine is free for that.
+    private func details(of found: [Loops.Found], engine: Engine) async {
+        for (index, leg) in found.map(\.loop.leg).enumerated() {
+            async let surfaces = engine.surfaces([leg])
+            async let profile = engine.profile([leg])
+            let (s, p) = (try? await surfaces, try? await profile)
+            guard !Task.isCancelled, case .found(var list)? = loops?.result, list.indices.contains(index) else { return }
+            (list[index].surfaces, list[index].profile) = (s, p)
+            loops?.result = .found(list)
         }
     }
 

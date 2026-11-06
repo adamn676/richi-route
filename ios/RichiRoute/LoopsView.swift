@@ -50,20 +50,44 @@ struct LoopsView: View {
                 case .failed(let message): Text(message).foregroundStyle(.secondary)
                 case .found(let found) where found.isEmpty:
                     Text("Von hier ließ sich keine Runde auf befestigten Straßen finden. Etwas kürzer probieren?").foregroundStyle(.secondary)
-                case .found(let found): ForEach(found.indices, id: \.self) { index in row(found[index], at: index) }
+                case .found(let found):
+                    ForEach(found.indices, id: \.self) { index in row(found[index], at: index) }
+                    // under all three, which stay beside the map at half height
+                    preview(found[loops.chosen])
                 }
             }
         }
     }
 
+    /// The chosen loop's surfaces, then its profile, which points on the map.
+    @ViewBuilder private func preview(_ found: Loops.Found) -> some View {
+        if found.surfaces != nil || found.profile != nil {
+            VStack(alignment: .leading, spacing: 12) {
+                if let surfaces = found.surfaces {
+                    // the rows below say it all to VoiceOver
+                    SurfaceBar(surfaces: surfaces).accessibilityHidden(true)
+                    // which colour is which, as the route's "Untergrund"; its sections open once it is the route
+                    ForEach(surfaces.totals, id: \.surface) { SurfaceTotal(total: $0, surfaces: surfaces) }
+                }
+                if let profile = found.profile {
+                    ElevationProfile(profile: profile, legs: [found.loop.leg]) { planner.showPoint($0?.coordinate) }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     private var start: String { planner.stops.first?.coord.flatMap { planner.names[$0] }.map(Planner.place) ?? "Start" }
 
-    /// A loop on one line: a tap shows it strong on the map; "Fahren" takes it, as Apple Maps' "Los".
+    /// A loop as Apple Maps' route cards: its figures, under them where it goes; a tap shows it strong on the map,
+    /// "Fahren" takes it, as Apple Maps' "Los".
     private func row(_ found: Loops.Found, at index: Int) -> some View {
         HStack(spacing: 8) {
-            Text(found.figures).font(.subheadline.weight(.semibold)).monospacedDigit()
-            Text(found.name + (found.loop.back ? ", hin und zurück" : ""))
-                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(found.figures).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Text(found.name + (found.loop.back ? ", hin und zurück" : ""))
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
             Spacer(minLength: 0)
             Button("Fahren") { planner.takeLoop(index) }
                 .buttonStyle(.borderedProminent)

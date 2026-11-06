@@ -31,6 +31,43 @@ struct Surfaces: Decodable, Equatable, Sendable {
     }
 }
 
+/// The route's surfaces at a glance: one bar, each surface's share in its colour.
+struct SurfaceBar: View {
+    let surfaces: Surfaces
+
+    var body: some View {
+        GeometryReader { size in
+            HStack(spacing: 0) {
+                ForEach(surfaces.totals, id: \.surface) { total in
+                    Rectangle().fill(Color(MapStyle.shared.color(total.surface)))
+                        .frame(width: size.size.width * total.meters / max(surfaces.distance, 1))
+                }
+            }
+        }
+        .frame(height: 6)
+        .clipShape(Capsule())
+        .accessibilityElement()
+        .accessibilityLabel("Untergrund: " + surfaces.totals.map { "\(surfaces.share($0.meters)) \($0.surface.label)" }.joined(separator: ", "))
+    }
+}
+
+/// A surface's share of the route: its colour, name, length and percentage.
+struct SurfaceTotal: View {
+    let total: Surfaces.Total
+    let surfaces: Surfaces
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(Color(MapStyle.shared.color(total.surface))).frame(width: 10, height: 10)
+            Text(total.surface.label).foregroundStyle(.primary)
+            Spacer()
+            Text(Format.length(total.meters)).foregroundStyle(.primary)
+            Text(surfaces.share(total.meters)).foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
+        }
+        .font(.subheadline)
+    }
+}
+
 /// The surface groups, each a row that opens its sections beneath it, as a disclosure does; opening one shows its
 /// first section on the map, the arrows step through them, round to the first again (the planner's `SurfaceDetails`).
 struct SurfaceRows: View {
@@ -68,17 +105,12 @@ struct SurfaceRows: View {
             }
         } label: {
             HStack(spacing: 10) {
-                Circle().fill(Color(MapStyle.shared.color(total.surface))).frame(width: 10, height: 10)
-                Text(total.surface.label).foregroundStyle(.primary)
-                Spacer()
-                Text(Format.length(total.meters)).foregroundStyle(.primary)
-                Text(surfaces.share(total.meters)).foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
+                SurfaceTotal(total: total, surfaces: surfaces)
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(isOpen ? 90 : 0))
             }
-            .font(.subheadline)
             .contentShape(Rectangle())
         }
         .animation(.easeOut(duration: 0.2), value: isOpen)

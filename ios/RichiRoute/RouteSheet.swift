@@ -251,7 +251,7 @@ struct RouteTab: View {
                         figure("Höchster Punkt", planner.highestMeters.map { "\(Format.whole($0)) m" } ?? "unbekannt")
                     }
                 }
-                if let surfaces { surfaceBar(surfaces.value) }
+                if let surfaces { SurfaceBar(surfaces: surfaces.value) }
             } else {
                 Text(status).font(.subheadline).foregroundStyle(.secondary)
                 if planner.isRouting {
@@ -281,21 +281,6 @@ struct RouteTab: View {
         if planner.engine == nil { return "Routing-Engine startet …" }
         if planner.isRouting { return "Wird berechnet …" }
         return "Tipp: Antippen setzt Start und Ziel, ein Tippen auf die Route einen Zwischenstopp."
-    }
-
-    private func surfaceBar(_ surfaces: Surfaces) -> some View {
-        GeometryReader { size in
-            HStack(spacing: 0) {
-                ForEach(surfaces.totals, id: \.surface) { total in
-                    Rectangle().fill(Color(MapStyle.shared.color(total.surface)))
-                        .frame(width: size.size.width * total.meters / max(surfaces.distance, 1))
-                }
-            }
-        }
-        .frame(height: 6)
-        .clipShape(Capsule())
-        .accessibilityElement()
-        .accessibilityLabel("Untergrund: " + surfaces.totals.map { "\(surfaces.share($0.meters)) \($0.surface.label)" }.joined(separator: ", "))
     }
 
     private func problemView(_ problem: String) -> some View {

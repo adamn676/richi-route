@@ -171,9 +171,10 @@ struct ElevationProfile: View {
     let profile: Profile
     let legs: [Leg]
     /// The stretch shown, nil for the whole route.
-    let range: ClosedRange<Double>?
+    var range: ClosedRange<Double>? = nil
     let focus: (Profile.Point?) -> Void
-    let zoom: (ClosedRange<Double>?) -> Void
+    /// Zooms into a marked stretch; without it, a held finger only points.
+    var zoom: ((ClosedRange<Double>?) -> Void)?
 
     /// The point under the finger with its height as the line shows it, worked out once per move.
     @State private var pointed: (point: Profile.Point, height: Double?)?
@@ -235,8 +236,8 @@ struct ElevationProfile: View {
             }
             Spacer(minLength: 0)
             if range != nil {
-                CloseButton(label: "Ausschnitt schließen") { zoom(nil) }
-            } else if pointed == nil && selection == nil {
+                CloseButton(label: "Ausschnitt schließen") { zoom?(nil) }
+            } else if zoom != nil && pointed == nil && selection == nil {
                 Text("Zum Zoomen halten und ziehen").font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -346,7 +347,7 @@ struct ElevationProfile: View {
     /// at least 50 m and a hundredth of what is shown (as the planner).
     private func touched(_ state: UIGestureRecognizer.State, _ mode: ProfileTouchRecognizer.Mode, at position: CGFloat, width: CGFloat) {
         let at = from + Double(min(max(position, 0), width) / max(width, 1)) * (to - from)
-        switch (state, mode) {
+        switch (state, zoom == nil ? .point : mode) {
         case (.began, .select):
             selection = (at, at)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -363,7 +364,7 @@ struct ElevationProfile: View {
             }
             guard let chosen = marked else { return }
             selection = nil
-            if state == .ended && chosen.upperBound - chosen.lowerBound >= max(50, (to - from) / 100) { zoom(chosen) }
+            if state == .ended && chosen.upperBound - chosen.lowerBound >= max(50, (to - from) / 100) { zoom?(chosen) }
         }
     }
 }
