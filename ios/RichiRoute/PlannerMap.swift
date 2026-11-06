@@ -10,6 +10,12 @@ struct PlannerMap: UIViewRepresentable {
     let bottomInset: CGFloat
     /// Counts the requests to follow the rider's position.
     let locating: Int
+    let basemap: Basemap
+    let cycleRoutes: Bool
+    /// Where Street View was asked for.
+    let pin: LookPin?
+    /// Whether the next tap shows Street View, after its button.
+    let pickingStreetView: Bool
     let tap: (_ coord: [Double], _ leg: Int?) -> Void
     let move: (_ stop: UUID, _ coord: [Double]) -> Void
     let shape: (_ coord: [Double], _ leg: Int) -> Void
@@ -21,6 +27,8 @@ struct PlannerMap: UIViewRepresentable {
     let covered: (Bool) -> Void
     /// A suggested loop tapped on the map, by its place among them.
     let chooseLoop: (Int) -> Void
+    /// A tap for Street View, or on its pin: Street View there; none clears the pin.
+    let look: ([Double]?) -> Void
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero)
@@ -44,6 +52,7 @@ struct PlannerMap: UIViewRepresentable {
         map.addGestureRecognizer(tapping)
         let holding = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.dragged(_:)))
         holding.minimumPressDuration = 0.25
+        holding.allowableMovement = Coordinator.tremble
         holding.delegate = context.coordinator
         map.addGestureRecognizer(holding)
         pointer { [weak map, weak coordinator = context.coordinator] point in
@@ -59,8 +68,12 @@ struct PlannerMap: UIViewRepresentable {
         context.coordinator.moved = moved
         context.coordinator.covered = covered
         context.coordinator.chooseLoop = chooseLoop
+        context.coordinator.look = look
+        context.coordinator.pickingStreetView = pickingStreetView
+        context.coordinator.show(pin, on: map)
         context.coordinator.bottomInset = bottomInset
         context.coordinator.show(content, on: map)
+        context.coordinator.layers(basemap, cycleRoutes: cycleRoutes, on: map)
         context.coordinator.locate(locating, on: map)
     }
 
@@ -72,8 +85,16 @@ struct PlannerMap: UIViewRepresentable {
         var move: (_ stop: UUID, _ coord: [Double]) -> Void
         var shape: (_ coord: [Double], _ leg: Int) -> Void
         var moved: (_ center: [Double]) -> Void
-        /// What a held finger drags: a stop or Formpunkt, or the route on a leg from where it was picked up.
-        private enum Held { case stop(UUID), route(leg: Int, from: CGPoint) }
+        /// What a held finger holds, and where it came down: a stop or Formpunkt, the route on a leg, or an empty spot.
+        private enum Held {
+            case stop(UUID, from: CGPoint), route(leg: Int, from: CGPoint), place(from: CGPoint)
+
+            var from: CGPoint {
+                switch self {
+                case .stop(_, let from), .route(_, let from), .place(let from): from
+                }
+            }
+        }
         private var held: Held?
         var bottomInset: CGFloat = 0
         var dark = false
@@ -90,7 +111,18 @@ struct PlannerMap: UIViewRepresentable {
         private var located = 0
         var covered: (Bool) -> Void = { _ in }
         var chooseLoop: (Int) -> Void = { _ in }
+        var look: ([Double]?) -> Void = { _ in }
+        var pickingStreetView = false
         private var loops: MLNShapeSource?
+        /// The offline map's own layers, and the base map and cycle routes shown with it.
+        private var mapLayers: [MLNStyleLayer] = []
+        /// The planner's lowest layer: the online maps go under the route.
+        private var lowest: MLNStyleLayer?
+        private var choice: (basemap: Basemap, cycleRoutes: Bool) = (.map, false)
+        /// What of that choice the style shows; none once a change of appearance loads it afresh.
+        private var shownBasemap: Basemap?
+        private var shownCycleRoutes: Bool?
+
         /// The layers drawn from the offline areas' maps.
         private var areaLayers: Set<String> = []
 
@@ -104,6 +136,8 @@ struct PlannerMap: UIViewRepresentable {
 
         /// Whether the middle of the map above the panel shows an offline map.
         func mapViewDidBecomeIdle(_ map: MLNMapView) {
+            // an online map shows where the offline one would be missing
+            guard choice.basemap == .map else { return covered(true) }
             let middle = CGPoint(x: map.bounds.midX, y: (map.safeAreaInsets.top + map.bounds.height - bottomInset) / 2)
             let near = CGRect(x: middle.x - 30, y: middle.y - 30, width: 60, height: 60)
             covered(!areaLayers.isEmpty && !map.visibleFeatures(in: near, styleLayerIdentifiers: areaLayers).isEmpty)
@@ -113,16 +147,84 @@ struct PlannerMap: UIViewRepresentable {
             moved([map.centerCoordinate.longitude, map.centerCoordinate.latitude])
         }
 
+        /// The online base map under the route (the offline map's own layers hidden: under terrain all of them, under
+        /// aerial photos all but its names), and the signed cycle routes over it; each set again only when it changes.
+        func layers(_ basemap: Basemap, cycleRoutes: Bool, on map: MLNMapView) {
+            choice = (basemap, cycleRoutes)
+            guard let style = map.style, let lowest else { return }
+            if shownCycleRoutes != cycleRoutes {
+                shownCycleRoutes = cycleRoutes
+                raster("cycle-routes", cycleRoutes ? [Basemap.cycleRoutes] : [], maximumZoom: 18, bounds: nil, below: lowest, on: style)
+            }
+            if shownBasemap != basemap {
+                shownBasemap = basemap
+                for layer in mapLayers { layer.isVisible = basemap == .map || basemap == .aerial && layer is MLNSymbolStyleLayer }
+                raster("online-base", basemap.tiles, maximumZoom: basemap.maximumZoom, bounds: basemap.bounds,
+                       below: style.layer(withIdentifier: "cycle-routes") ?? lowest, on: style)
+            }
+        }
+
+        private func raster(_ id: String, _ tiles: [String], maximumZoom: Int, bounds: MLNCoordinateBounds?, below: MLNStyleLayer,
+                            on style: MLNStyle) {
+            if let layer = style.layer(withIdentifier: id) { style.removeLayer(layer) }
+            if let source = style.source(withIdentifier: id) { style.removeSource(source) }
+            guard !tiles.isEmpty else { return }
+            var options: [MLNTileSourceOption: Any] = [.tileSize: 256, .maximumZoomLevel: maximumZoom]
+            if let bounds { options[.coordinateBounds] = NSValue(mlnCoordinateBounds: bounds) }
+            let source = MLNRasterTileSource(identifier: id, tileURLTemplates: tiles, options: options)
+            style.addSource(source)
+            style.insertLayer(MLNRasterStyleLayer(identifier: id, source: source), below: below)
+        }
+
+        private var pin: MLNPointAnnotation?
+        private var pinView: PinView?
+        private var shownPin: LookPin?
+
+        /// Drops the pin where Street View was asked for, shows its note, and fades it away when it goes.
+        func show(_ look: LookPin?, on map: MLNMapView) {
+            guard look != shownPin else { return }
+            shownPin = look
+            if let pin, look?.coordinate != [pin.coordinate.longitude, pin.coordinate.latitude] {
+                let view = pinView
+                (self.pin, pinView) = (nil, nil)
+                UIView.animate(withDuration: 0.2) { view?.alpha = 0 } completion: { _ in map.removeAnnotation(pin) }
+            }
+            guard let look else { return }
+            if pin == nil {
+                let pin = MLNPointAnnotation()
+                pin.coordinate = Self.coordinate(look.coordinate)
+                self.pin = pin
+                map.addAnnotation(pin)
+            }
+            pinView?.show(look.state)
+        }
+
+        func mapView(_ map: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+            guard annotation === pin, let shownPin else { return nil }
+            let view = PinView(state: shownPin.state)
+            pinView = view
+            return view
+        }
+
+        /// Whether a finger is on the pin, its head or its needle.
+        private func onPin(_ point: CGPoint, on map: MLNMapView) -> Bool {
+            guard let pin else { return false }
+            let foot = map.convert(pin.coordinate, toPointTo: map)
+            return abs(point.x - foot.x) <= 22 && point.y <= foot.y + 6 && point.y >= foot.y - 56
+        }
+
         /// Swaps in the light or dark map when the phone changes its appearance.
         func restyle(_ map: MLNMapView) {
             let dark = map.traitCollection.userInterfaceStyle == .dark
             guard dark != self.dark else { return }
             self.dark = dark
             (lines, pins, stretch, focused, arrows, loops, focus) = (nil, nil, nil, nil, nil, nil, nil)
+            (mapLayers, lowest) = ([], nil)
             map.styleJSON = MapStyle.shared.json(dark: dark)
         }
 
         func mapView(_ map: MLNMapView, didFinishLoading style: MLNStyle) {
+            mapLayers = style.layers
             let lines = MLNShapeSource(identifier: "route", shape: nil)
             let pins = MLNShapeSource(identifier: "stops", shape: nil)
             style.addSource(lines)
@@ -289,6 +391,9 @@ struct PlannerMap: UIViewRepresentable {
             areaLayers = Set(style.layers.compactMap { layer in
                 (layer as? MLNForegroundStyleLayer)?.sourceIdentifier?.hasPrefix("map-") == true ? layer.identifier : nil
             })
+            lowest = layers.first
+            (shownBasemap, shownCycleRoutes) = (nil, nil)
+            self.layers(choice.basemap, cycleRoutes: choice.cycleRoutes, on: map)
             // after a change of appearance the route is drawn again where it was; what came meanwhile follows
             if let shown { fill(shown) }
             if let waiting {
@@ -399,7 +504,7 @@ struct PlannerMap: UIViewRepresentable {
         private func draw(_ stops: [MapContent.Pin]) {
             pins?.shape = MLNShapeCollectionFeature(shapes: stops.map { pin in
                 let feature = MLNPointFeature()
-                feature.coordinate = Self.coordinate(pin.coord)
+                feature.coordinate = Self.coordinate(pin.stop == carriedStop?.id ? carriedStop?.coord ?? pin.coord : pin.coord)
                 feature.attributes = ["badge": pin.badge ?? "", "shape": pin.badge == nil, "error": pin.error, "stop": pin.stop.uuidString]
                 return feature
             })
@@ -419,49 +524,113 @@ struct PlannerMap: UIViewRepresentable {
                 .compactMap { ($0.attribute(forKey: "leg") as? NSNumber)?.intValue }.first
         }
 
-        /// A long press starts only on a marker or the route, so elsewhere the map keeps its own gestures.
-        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
-            guard gesture is UILongPressGestureRecognizer, let map = gesture.view as? MLNMapView else { return true }
-            let point = gesture.location(in: map)
-            return stop(at: point, on: map) != nil || leg(at: point, on: map) != nil
+        /// A held finger and the map's own panning and zooming go together; holding a marker or the route stops the
+        /// panning.
+        func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            gesture is UILongPressGestureRecognizer
+                && (other is UIPanGestureRecognizer || other is UIPinchGestureRecognizer || other is UIRotationGestureRecognizer)
         }
 
-        /// Holding a marker or the route lifts it (a light tap) and the finger drags it: letting go places the marker
-        /// there, or a Formpunkt where the route was dragged (as the planner, only once it moved).
+        /// A finger held on a marker or the route and moved carries the marker, or a new Formpunkt, above the finger:
+        /// letting go places it where it rides. Held on an empty spot and moved, the map pans; let go without moving,
+        /// anywhere, it was a tap. A second finger lets go of what is carried.
         @objc func dragged(_ gesture: UILongPressGestureRecognizer) {
-            guard let map = gesture.view as? MLNMapView, let shown else { return }
+            guard let map = gesture.view as? MLNMapView else { return }
             let point = gesture.location(in: map)
-            let at = map.convert(point, toCoordinateFrom: map)
-            let coord = [at.longitude, at.latitude]
-            switch (gesture.state, held) {
-            case (.began, _):
+            switch gesture.state {
+            case .began:
                 if let stop = stop(at: point, on: map) {
-                    held = .stop(stop)
+                    held = .stop(stop, from: point)
                 } else if let leg = leg(at: point, on: map) {
                     held = .route(leg: leg, from: point)
+                } else {
+                    held = .place(from: point)
                 }
-                map.isScrollEnabled = false
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            case (.changed, .stop(let id)):
-                draw(shown.pins.map { pin in
-                    var pin = pin
-                    if pin.stop == id { pin.coord = coord }
-                    return pin
-                })
-            case (.changed, .route):
-                focus?.shape = Self.dot(coord)
+                if case .place = held {} else { map.isScrollEnabled = false }
+            case .changed:
+                guard let held else { return }
+                if gesture.numberOfTouches > 1 {
+                    // cancelled: the gesture ends as `.cancelled`
+                    gesture.isEnabled = false
+                    gesture.isEnabled = true
+                    return
+                }
+                if case .place = held { return }
+                if !carrying {
+                    // a held finger trembles a few points; only a clear move carries
+                    guard hypot(point.x - held.from.x, point.y - held.from.y) >= Self.tremble else { return }
+                    carrying = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    raise(at: point, on: map)
+                }
+                carry(to: point, on: map)
             default:
                 map.isScrollEnabled = true
-                defer { held = nil }
-                let done = gesture.state == .ended
+                raising?.cancel()
+                let target = carried(point, on: map)
+                let (held, carrying) = (held, carrying)
+                (self.held, self.carrying, carriedStop, raised, lastCarried) = (nil, false, nil, 0, nil)
+                focus?.shape = nil
+                if let shown { draw(shown.pins) }
+                guard gesture.state == .ended, let held else { return }
+                if !carrying {
+                    // a hold let go where it began was a slow tap
+                    if hypot(point.x - held.from.x, point.y - held.from.y) < Self.tremble { tapped(at: point, on: map) }
+                    return
+                }
                 switch held {
-                case .stop(let id): if done { move(id, coord) } else { draw(shown.pins) }
-                case .route(let leg, let from):
-                    focus?.shape = nil
-                    if done && hypot(point.x - from.x, point.y - from.y) >= 6 { shape(coord, leg) }
-                case nil: break
+                case .stop(let id, _): move(id, target)
+                case .route(let leg, _): shape(target, leg)
+                case .place: break
                 }
             }
+        }
+
+        /// How far a held finger may tremble and still count as still, as UIKit allows a long press.
+        static let tremble: CGFloat = 12
+        private var carrying = false
+
+        /// How far above the finger a carried marker or Formpunkt rides, so the finger never hides where it lands.
+        private static let lift: CGFloat = 48
+        private var raised: CGFloat = 0
+        private var raising: Task<Void, Never>?
+
+        /// Lifts what the finger picked up to its place above the finger, eased over a moment, as Apple Maps lifts a pin.
+        private func raise(at point: CGPoint, on map: MLNMapView) {
+            raising?.cancel()
+            raising = Task { @MainActor [weak self, weak map] in
+                for step in 1...8 {
+                    guard let self, let map, !Task.isCancelled else { return }
+                    let done = Double(step) / 8
+                    raised = Self.lift * CGFloat(1 - (1 - done) * (1 - done))
+                    carry(to: lastCarried ?? point, on: map)
+                    try? await Task.sleep(for: .milliseconds(16))
+                }
+            }
+        }
+
+        private var lastCarried: CGPoint?
+
+        /// Draws what is carried at its place above the finger.
+        private func carry(to point: CGPoint, on map: MLNMapView) {
+            lastCarried = point
+            let target = carried(point, on: map)
+            switch held {
+            case .stop(let id, _):
+                carriedStop = (id, target)
+                if let shown { draw(shown.pins) }
+            case .route: focus?.shape = Self.dot(target)
+            case .place, nil: break
+            }
+        }
+
+        /// The stop being carried and where it rides, kept through a redraw of the route meanwhile.
+        private var carriedStop: (id: UUID, coord: [Double])?
+
+        /// Where what is carried would land: above the finger by as much as it is raised.
+        private func carried(_ point: CGPoint, on map: MLNMapView) -> [Double] {
+            let at = map.convert(CGPoint(x: point.x, y: point.y - raised), toCoordinateFrom: map)
+            return [at.longitude, at.latitude]
         }
 
         /// The route with its stops, or the stretch the profile is zoomed into.
@@ -508,15 +677,23 @@ struct PlannerMap: UIViewRepresentable {
         /// taps, as the planner's.
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
             guard let map = gesture.view as? MLNMapView else { return }
-            let point = gesture.location(in: map)
+            tapped(at: gesture.location(in: map), on: map)
+        }
+
+        private func tapped(at point: CGPoint, on map: MLNMapView) {
+            // a tap on the pin shows its Street View again; while Street View is chosen, a tap shows it there; any other
+            // tap clears the pin
+            if onPin(point, on: map), let pin { return look([pin.coordinate.longitude, pin.coordinate.latitude]) }
+            let at = map.convert(point, toCoordinateFrom: map)
+            if pickingStreetView { return look([at.longitude, at.latitude]) }
+            if pin != nil { look(nil) }
             guard stop(at: point, on: map) == nil else { return }
             let near = CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28)
             if let loop = map.visibleFeatures(in: near, styleLayerIdentifiers: ["loop-figures", "loop-line", "loop-others"])
                 .compactMap({ ($0.attribute(forKey: "index") as? NSNumber)?.intValue }).first {
                 return chooseLoop(loop)
             }
-            let coord = map.convert(point, toCoordinateFrom: map)
-            tap([coord.longitude, coord.latitude], leg(at: point, on: map))
+            tap([at.longitude, at.latitude], leg(at: point, on: map))
         }
 
         private static func dot(_ point: [Double]) -> MLNPointFeature {
@@ -529,4 +706,28 @@ struct PlannerMap: UIViewRepresentable {
             CLLocationCoordinate2D(latitude: point[1], longitude: point[0])
         }
     }
+}
+
+/// The pin where Street View was asked for, on the map: drawn by SwiftUI, its foot on the spot, letting touches through
+/// to the map.
+private final class PinView: MLNAnnotationView {
+    private let mark: UIHostingController<LookPinMark>
+
+    init(state: LookPin.State) {
+        mark = UIHostingController(rootView: LookPinMark(state: state))
+        super.init(reuseIdentifier: nil)
+        frame = CGRect(origin: .zero, size: LookPinMark.size)
+        mark.view.frame = bounds
+        mark.view.backgroundColor = .clear
+        addSubview(mark.view)
+        // never selected or touched: the map's own taps find the pin
+        isUserInteractionEnabled = false
+        isEnabled = false
+        scalesWithViewingDistance = false
+        centerOffset = CGVector(dx: 0, dy: -LookPinMark.size.height / 2 + 2)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show(_ state: LookPin.State) { mark.rootView = LookPinMark(state: state) }
 }

@@ -46,3 +46,4 @@ ios/build
 
 # Edge app build output
 garmin/bin
+ios/Secrets.xcconfig

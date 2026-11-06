@@ -1,0 +1,4 @@
+// The Google key for Street View where Apple has no Look Around (Maps Embed API and Street View Static API, restricted
+// to the website https://adamn676.github.io/*): in Secrets.xcconfig beside this file, `GOOGLE_MAPS_KEY = …`, kept out
+// of git; without it, only Apple's imagery shows.
+#include? "Secrets.xcconfig"

@@ -2,6 +2,11 @@ import SwiftUI
 
 @main
 struct RichiRouteApp: App {
+    init() {
+        // the UI tests start from the same map each time
+        if CommandLine.arguments.contains("-fresh") { [Basemap.key, Basemap.cycleRoutesKey].forEach(UserDefaults.standard.removeObject) }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {

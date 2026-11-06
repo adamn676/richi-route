@@ -30,6 +30,9 @@ packages:
 
 targets:
   RichiRoute:
+    configFiles:
+      Debug: RichiRoute.xcconfig
+      Release: RichiRoute.xcconfig
     type: application
     platform: iOS
     sources:
@@ -51,6 +54,7 @@ targets:
       path: RichiRoute/Info.plist
       properties:
         CFBundleDisplayName: RichiRoute
+        GoogleMapsKey: $(GOOGLE_MAPS_KEY)
         CFBundleShortVersionString: "0.1"
         CFBundleVersion: "1"
         UILaunchScreen: {}

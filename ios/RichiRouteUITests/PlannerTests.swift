@@ -209,11 +209,13 @@ final class PlannerTests: XCTestCase {
         }
         let direct = figures.label
 
-        // a Formpunkt dragged out of the route, then held and dragged on; one undo puts it back
+        // a Formpunkt dragged out of the route, landing where it rode above the finger, then held there and dragged
+        // on; one undo puts it back
+        let lift = 48 / app.frame.height
         map(0.567, 0.356).press(forDuration: 0.6, thenDragTo: map(0.52, 0.46))
         let shaped = distance(direct)
         sleep(1)
-        map(0.52, 0.46).press(forDuration: 0.6, thenDragTo: map(0.42, 0.55))
+        map(0.52, 0.46 - lift).press(forDuration: 0.6, thenDragTo: map(0.42, 0.55))
         let moved = distance(shaped)
         shot(app, "e1-formpunkt-moved")
         app.buttons["Rückgängig"].tap()
@@ -365,6 +367,171 @@ final class PlannerTests: XCTestCase {
         // one undo step back to the Start alone
         app.buttons["Rückgängig"].tap()
         XCTAssertTrue(open.waitForExistence(timeout: 10))
+    }
+
+    /// Chooses the map as on Apple Maps' card: aerial photos with the map's names, the terrain map, the signed cycle
+    /// routes over it, and back to the offline map.
+    @MainActor
+    func testChoosesTheMap() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        // a route, which stays over the online maps
+        sleep(2)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.3)).tap()
+        sleep(1)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.42)).tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' km'")).firstMatch.waitForExistence(timeout: 60))
+        app.buttons["Karte wählen"].tap()
+        let aerial = app.buttons["Satellit"]
+        XCTAssertTrue(aerial.waitForExistence(timeout: 5))
+        aerial.tap()
+        sleep(4)
+        shot(app, "m1-aerial")
+        app.buttons["Gelände"].tap()
+        // the switch itself, at the card's right; the card keeps the tap from the map
+        let routes = app.switches["Radrouten"]
+        routes.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertEqual(routes.value as? String, "1")
+        sleep(4)
+        shot(app, "m2-terrain-routes")
+        XCTAssertTrue(app.staticTexts["Kartendarstellung: © OpenTopoMap (CC-BY-SA) · SRTM\nRadrouten: Waymarked Trails (CC BY-SA)"].exists,
+                      "the credits on the map")
+        routes.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        // the card's empty heading row takes no tap through to the map: still no Start
+        app.buttons["Karte schließen"].coordinate(withNormalizedOffset: CGVector(dx: -3, dy: 0.5)).tap()
+        shot(app, "m3-card-tap")
+        // a tap on the map would have gone on from the Ziel, making it Zwischenstopp 1
+        XCTAssertFalse(app.buttons["Zwischenstopp 1 entfernen"].exists, "a tap on the card reached the map")
+        app.buttons["Karte"].tap()
+        app.buttons["Karte schließen"].tap()
+        XCTAssertTrue(aerial.waitForNonExistence(timeout: 5))
+    }
+
+    /// The route and its Formpunkte under a finger as a person uses it, trembling a few points: a slow tap on the route
+    /// adds a Zwischenstopp; dragged, the route takes a Formpunkt where it rode above the finger; held still on it and
+    /// let go, nothing; held and then dragged, it moves; a quick swipe only pans.
+    @MainActor
+    func testTouchesTheRouteLikeAFinger() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        sleep(2)
+        let spot = { (x: Double, y: Double) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+        let tremble = CGVector(dx: 4, dy: 5)
+        let compass = app.buttons["LookAroundCompassView"]
+        spot(0.25, 0.3).tap()
+        sleep(1)
+        spot(0.75, 0.42).tap()
+        let figures = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' km'")).firstMatch
+        XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route")
+        let changed = { (before: String) -> String in
+            let change = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND label != %@", before), object: figures)
+            XCTAssertEqual(XCTWaiter().wait(for: [change], timeout: 60), .completed, "the route still \(before)")
+            return figures.label
+        }
+        let direct = figures.label
+
+        // a slow tap on the route adds a Zwischenstopp (the same distance: it lies on the route); undone
+        let grabber = app.buttons["Sheet Grabber"]
+        let panel = { (y: Double) in grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: spot(0.5, y)) }
+        spot(0.567, 0.356).press(forDuration: 0.4, thenDragTo: spot(0.567, 0.356).withOffset(tremble))
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from a slow tap on the route")
+        panel(0.1)
+        XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForExistence(timeout: 10), "a slow tap on the route added no Zwischenstopp")
+        panel(0.98)
+        sleep(1)
+        app.buttons["Rückgängig"].tap()
+        panel(0.1)
+        XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForNonExistence(timeout: 10), "undo did not remove the Zwischenstopp")
+        panel(0.98)
+        sleep(1)
+
+        // dragged: a Formpunkt where it rode, above the finger
+        let lift = 48 / app.frame.height
+        spot(0.567, 0.356).press(forDuration: 0.3, thenDragTo: spot(0.52, 0.46))
+        let shaped = changed(direct)
+        sleep(1)
+
+        // held still on the Formpunkt and let go: nothing
+        spot(0.52, 0.46 - lift).press(forDuration: 0.9, thenDragTo: spot(0.52, 0.46 - lift).withOffset(tremble))
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from a hold")
+        sleep(2)
+        XCTAssertEqual(figures.label, shaped, "holding the Formpunkt still moved it")
+
+        // held, then dragged: the Formpunkt moves, no Street View
+        spot(0.52, 0.46 - lift).press(forDuration: 0.9, thenDragTo: spot(0.42, 0.56))
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View after a drag")
+        let moved = changed(shaped)
+        shot(app, "f1-formpunkt-moved")
+
+        // a quick swipe pans the map and changes nothing
+        spot(0.3, 0.25).press(forDuration: 0.05, thenDragTo: spot(0.5, 0.3))
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from a swipe")
+        sleep(2)
+        XCTAssertEqual(figures.label, moved, "a swipe changed the route")
+    }
+
+    /// Street View from its button, as on the planner: the hint, then a tap shows Apple's Look Around there full screen;
+    /// closed, its pin stays, a tap on it shows it again, and the next tap elsewhere clears it and does its own job.
+    /// The hint's "Abbrechen" leaves the map as it was.
+    @MainActor
+    func testShowsStreetView() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
+        sleep(2)
+        let spot = { (x: Double, y: Double) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+        // Apple's viewer, in the simulator's language
+        let compass = app.buttons["LookAroundCompassView"], close = app.buttons["Close"]
+        let button = app.buttons["Street View"], hint = app.staticTexts["Street View: Ort antippen"]
+        let open = { app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'Karte antippen'")).count }
+
+        // cancelled: nothing happens
+        button.tap()
+        XCTAssertTrue(hint.waitForExistence(timeout: 5))
+        app.buttons["Abbrechen"].tap()
+        XCTAssertTrue(hint.waitForNonExistence(timeout: 5))
+        spot(0.4, 0.45).tap()
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View after cancelling")
+        XCTAssertEqual(open(), 1, "the tap after cancelling set no Start")
+        app.buttons["Rückgängig"].tap()
+
+        // the button, then a tap: Look Around, turned by a drag
+        button.tap()
+        XCTAssertTrue(hint.waitForExistence(timeout: 5))
+        shot(app, "s0-hint")
+        spot(0.4, 0.45).tap()
+        XCTAssertTrue(compass.waitForExistence(timeout: 10), "no Look Around")
+        XCTAssertFalse(hint.exists, "the hint stayed")
+        sleep(3)
+        spot(0.85, 0.5).press(forDuration: 0.05, thenDragTo: spot(0.35, 0.5))
+        sleep(2)
+        shot(app, "s1-look-around")
+        close.tap()
+        XCTAssertTrue(compass.waitForNonExistence(timeout: 5))
+        sleep(1)
+        shot(app, "s2-pin")
+        XCTAssertEqual(open(), 2, "Street View set a stop")
+
+        // a tap on the kept pin shows it again
+        spot(0.4, 0.45).withOffset(CGVector(dx: 0, dy: -30)).tap()
+        XCTAssertTrue(compass.waitForExistence(timeout: 10), "the pin did not show Street View again")
+        close.tap()
+        XCTAssertTrue(compass.waitForNonExistence(timeout: 5))
+
+        // a tap elsewhere clears the pin and sets the Start
+        spot(0.25, 0.3).tap()
+        XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from an ordinary tap")
+        XCTAssertEqual(open(), 1, "the tap after Street View set no Start")
+        sleep(1)
+        shot(app, "s3-cleared")
     }
 
     @MainActor

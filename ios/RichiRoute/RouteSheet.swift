@@ -5,6 +5,8 @@ import SwiftUI
 struct RouteSheet: View {
     @Bindable var planner: Planner
     let folded: Bool
+    /// The map's sources, as it shows them.
+    let credits: String
     let fold: () -> Void
     /// Lowers the panel to half the screen, so a stretch shows on the map above its profile.
     let halve: () -> Void
@@ -29,7 +31,7 @@ struct RouteSheet: View {
             .padding(.top, 20)
             .padding(.bottom, 4)
             switch tab {
-            case .route: RouteTab(planner: planner, folded: folded, fold: fold, halve: halve)
+            case .route: RouteTab(planner: planner, folded: folded, credits: credits, fold: fold, halve: halve)
             case .library: MyRoutes(planner: planner) { tab = .route }
             }
         }
@@ -75,6 +77,7 @@ struct RouteTab: View {
     @Bindable var planner: Planner
     /// Whether the panel is folded down, where it shows the route's name and figures.
     let folded: Bool
+    let credits: String
     /// Folds the panel, so the map is free for picking a point.
     let fold: () -> Void
     let halve: () -> Void
@@ -143,7 +146,7 @@ struct RouteTab: View {
             }
             }
             // the map's credits, once, at the very end
-            Text("© OpenStreetMap · Österr. Adressregister")
+            Text(credits)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .listRowSeparator(.hidden)

@@ -390,7 +390,8 @@ on the map, held still first it marks a stretch to zoom into, as the planner's
 profile on touch. Tapping a stop's row opens its search: places from the offline areas
 as the planner suggests them (the engine's `/places`, an address put on its own
 street with `/street`), the rider's position, or a tap on the map; holding a
-marker drags it, and holding the route drags it into a Formpunkt, as on the planner. A stop's row, held and dragged,
+marker drags it, and holding the route drags it into a Formpunkt, as on the planner, carried 48 pt above the finger so
+the finger never hides where it lands. A stop's row, held and dragged,
 changes places with another, Start and Ziel too; the planner's arrows show which way the route runs; a zoomed stretch
 or a surface section is raised with its ends marked while the rest fades, as on the planner (on the dark map, a soft
 glow beneath it). With only a Start set, **Runde vorschlagen** asks for the distance and the climbing, each on a
@@ -398,7 +399,18 @@ slider in the planner's steps or typed, and **Runden vorschlagen** then suggests
 shows other routes: the settings fold into one line (**Ändern** opens them again), the loops are one line each, the
 chosen one strong on the map with its arrows, the others grey, each with its distance and climbing; **Fahren** takes
 one as the route, from the Start through a Formpunkt every 5 km. **⛶** shows the whole route, also while a stretch
-or a surface's sections are shown; their **⊗**, as the loops', closes them. The route being planned is kept in the planner's file format
+or a surface's sections are shown; their **⊗**, as the loops', closes them. **Karte wählen** chooses the map as
+Apple Maps' map card does: the offline map, aerial photos with its names (basemap.at) or OpenTopoMap's terrain map,
+and the signed cycle routes (Waymarked Trails) over it, remembered from one opening to the next; those online ones
+wait for the internet, and the panel's credits name them. **Street View** (binoculars, only online), as on the
+planner, asks for a tap on the map and drops a pin there: Apple's Look Around opens full screen where Apple has it (its
+address and compass follow the rider), else Google's free embed in a card over the map; where neither has any, the pin
+says so and fades. The pin stays after Street View closes, a tap on it opens it again, and the next tap elsewhere clears
+it. Google's part needs a key for the Maps Embed API and the Street View Static API, restricted to the website
+`https://adamn676.github.io/*`, as `GOOGLE_MAPS_KEY = …` in `ios/Secrets.xcconfig`, which git ignores; without it,
+only Apple's imagery shows. On the map a tap always places, a slow one too; only a drag moves, and a second finger lets
+go of what it carries.
+The route being planned is kept in the planner's file format
 (the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
 the saved routes in that format and the last three replaced without saving, for
 seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first
