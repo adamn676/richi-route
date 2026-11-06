@@ -138,8 +138,9 @@ struct PlannerMap: UIViewRepresentable {
             pending.lineWidth = NSExpression(forConstantValue: 3)
             pending.lineDashPattern = NSExpression(forConstantValue: [2, 2])
             // the stretch the profile is zoomed into, lifted beneath the route: in the planner's ink, on the dark map
-            // as a soft light glow, which the white outline can't be taken for
-            let stretch = MLNShapeSource(identifier: "stretch", shape: nil)
+            // as a soft light glow, which the white outline can't be taken for. Its line smoothed, as a blurred line
+            // draws bright slashes across itself at a road's small jogs.
+            let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
             style.addSource(stretch)
             let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
             lifted.lineColor = NSExpression(forConstantValue: dark ? UIColor.white : MapStyle.ink)
