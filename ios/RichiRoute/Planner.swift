@@ -63,14 +63,14 @@ final class Planner {
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
-    /// A stretch chosen on the route it was chosen on: its distances along it, its line, which the map frames, and
-    /// the route's points it covers on each leg, `[leg, first, last]`, which the map brings out. Kept here, so panel
-    /// and map show the same stretch, also after another tab or an undo.
+    /// A stretch chosen on the route it was chosen on: its distances along it, the route along it in its surfaces,
+    /// which the map brings out, and its line, which the map frames. Kept here, so panel and map show the same stretch,
+    /// also after another tab or an undo.
     struct Stretch {
         let route: [String]
         let range: ClosedRange<Double>
+        let pieces: [MapContent.Line]
         let line: [[Double]]
-        let parts: [[Int]]
     }
 
     /// The stretch the elevation profile is zoomed into, and the surface section picked in "Untergrund", which the map
@@ -81,13 +81,15 @@ final class Planner {
     var profileRange: ClosedRange<Double>? { current(zoom)?.range }
     var sectionRange: ClosedRange<Double>? { current(section)?.range }
 
-    func zoomProfile(_ range: ClosedRange<Double>?, line: [[Double]] = [], parts: [[Int]] = []) {
-        zoom = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line, parts: parts) }
+    /// `parts` are the route's points it covers on each leg, `[leg, first, last]`; `ends`, where it begins and ends
+    /// between two of them.
+    func zoomProfile(_ range: ClosedRange<Double>?, parts: [[Int]] = [], ends: [[Double]] = []) {
+        zoom = range.map { stretch($0, parts: parts, ends: ends) }
         frame()
     }
 
-    func focusSection(_ range: ClosedRange<Double>?, line: [[Double]] = [], parts: [[Int]] = []) {
-        section = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line, parts: parts) }
+    func focusSection(_ range: ClosedRange<Double>?, parts: [[Int]] = []) {
+        section = range.map { stretch($0, parts: parts, ends: []) }
         frame()
     }
 
@@ -579,10 +581,7 @@ final class Planner {
         var lines: [MapContent.Line] = []
         for (index, pair) in pairs.enumerated() {
             switch legs[pair.key] {
-            case .routed(let leg):
-                for span in leg.drawnSpans {
-                    lines.append(.init(coordinates: Array(leg.coordinates[span.fromIndex...span.toIndex]), style: span.surface.rawValue, leg: index))
-                }
+            case .routed(let leg): lines += Self.lines(of: leg, at: index)
             case .failed: lines.append(.init(coordinates: [pair.from.coord!, pair.to.coord!], style: "air", leg: index))
             case .routing, nil:
                 // the beeline fills in as the search comes on
@@ -601,24 +600,29 @@ final class Planner {
             }
         }
         let stretch = current(section) ?? current(zoom)
-        return MapContent(lines: lines, pins: pins, framing: framing, stretch: stretch?.line ?? [], focused: stretch.map(focused) ?? [])
+        return MapContent(lines: lines, pins: pins, framing: framing, stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [])
     }
 
-    /// The route along a stretch, in its surfaces, ending where the stretch does, between two of the route's points.
-    private func focused(_ stretch: Stretch) -> [MapContent.Line] {
-        var pieces: [MapContent.Line] = []
-        for part in stretch.parts where pairs.indices.contains(part[0]) {
-            guard case .routed(let leg) = legs[pairs[part[0]].key] else { continue }
-            for span in leg.drawnSpans {
-                let (from, to) = (max(span.fromIndex, part[1]), min(span.toIndex, part[2]))
-                if from < to { pieces.append(.init(coordinates: Array(leg.coordinates[from...to]), style: span.surface.rawValue, leg: part[0])) }
-            }
+    private func stretch(_ range: ClosedRange<Double>, parts: [[Int]], ends: [[Double]]) -> Stretch {
+        var pieces = parts.flatMap { part -> [MapContent.Line] in
+            guard pairs.indices.contains(part[0]), case .routed(let leg) = legs[pairs[part[0]].key] else { return [] }
+            return Self.lines(of: leg, at: part[0], within: part[1]...part[2])
         }
-        guard let start = stretch.line.first, let end = stretch.line.last, let first = pieces.first else { return pieces }
-        if first.coordinates.first != start { pieces[0] = .init(coordinates: [start] + first.coordinates, style: first.style, leg: first.leg) }
-        let last = pieces[pieces.count - 1]
-        if last.coordinates.last != end { pieces[pieces.count - 1] = .init(coordinates: last.coordinates + [end], style: last.style, leg: last.leg) }
-        return pieces
+        if ends.count == 2, !pieces.isEmpty {
+            pieces[0].coordinates[0] = ends[0]
+            pieces[pieces.count - 1].coordinates[pieces[pieces.count - 1].coordinates.count - 1] = ends[1]
+        }
+        var line: [[Double]] = []
+        for piece in pieces { line += piece.coordinates.dropFirst(line.last == piece.coordinates.first ? 1 : 0) }
+        return Stretch(route: pairs.map(\.key), range: range, pieces: pieces, line: line)
+    }
+
+    /// A leg as the map draws it, by its surfaces; only its points `within`, when given.
+    private static func lines(of leg: Leg, at index: Int, within: ClosedRange<Int> = 0...Int.max) -> [MapContent.Line] {
+        leg.drawnSpans.compactMap { span in
+            let (from, to) = (max(span.fromIndex, within.lowerBound), min(span.toIndex, within.upperBound))
+            return from < to ? .init(coordinates: Array(leg.coordinates[from...to]), style: span.surface.rawValue, leg: index) : nil
+        }
     }
 }
 
@@ -646,7 +650,7 @@ struct Feedback: Equatable {
 /// What the map draws of the route: its legs by surface (or `waiting`, `air`) and its stops.
 struct MapContent: Equatable {
     struct Line: Equatable {
-        let coordinates: [[Double]]
+        var coordinates: [[Double]]
         let style: String
         let leg: Int
     }

@@ -57,21 +57,13 @@ struct Profile: Decodable, Equatable, Sendable {
                      gradient: ratio == 0 ? a : a.flatMap { a in b.map { a * (1 - ratio) + $0 * ratio } })
     }
 
-    /// The route's points between two distances on each leg, `[leg, first, last]`, as a surface section's parts.
+    /// The route's points on each leg a stretch runs on, from the last at or before `from` to the first at or after
+    /// `to`, `[leg, first, last]`, as a surface section's parts.
     func parts(from: Double, to: Double) -> [[Int]] {
         along.enumerated().compactMap { leg, distances in
-            let inside = distances.indices.filter { distances[$0] > from && distances[$0] < to }
-            return inside.first.map { [leg, $0, inside[inside.count - 1]] }
+            guard let start = distances.first, let end = distances.last, start < to, end > from else { return nil }
+            return [leg, distances.lastIndex { $0 <= from } ?? 0, distances.firstIndex { $0 >= to } ?? distances.count - 1]
         }
-    }
-
-    /// The route between two distances, ending exactly there (`trackCoordinates`).
-    func coordinates(from: Double, to: Double, legs: [Leg]) -> [[Double]] {
-        guard let start = point(at: from, legs: legs), let end = point(at: to, legs: legs) else { return [] }
-        let inside = zip(along, legs).flatMap { distances, leg in
-            zip(distances, leg.coordinates).filter { $0.0 > from && $0.0 < to }.map(\.1)
-        }
-        return [start.coordinate] + inside + [end.coordinate]
     }
 
     /// The points with a height along the route, a missing height breaking the line into runs (`buildGpxTrack`).

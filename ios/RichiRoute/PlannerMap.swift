@@ -79,7 +79,7 @@ struct PlannerMap: UIViewRepresentable {
         private var stretch: MLNShapeSource?
         private var focused: MLNShapeSource?
         /// The route's outline and line, faded on the light map while a stretch is brought out.
-        private var routeLayers: [MLNLineStyleLayer] = []
+        private var faded: [MLNLineStyleLayer] = []
         private var focus: MLNShapeSource?
         private var shown: MapContent?
         private var waiting: MapContent?
@@ -145,34 +145,43 @@ struct PlannerMap: UIViewRepresentable {
             filled.predicate = NSPredicate(format: "style == 'progress'")
             filled.lineColor = pending.lineColor
             filled.lineWidth = NSExpression(forConstantValue: 3)
-            // the stretch the profile is zoomed into, or a surface section: on the light map the route along it raised on
-            // a wider outline, its ends marked, over the rest, which fades, as the planner draws it; on the dark map a soft
-            // light glow beneath it, which the white outline can't be taken for. The glow's line smoothed, as a blurred line draws slashes across itself at a road's
-            // small jogs; the blur hides the smoothing.
-            let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
-            style.addSource(stretch)
-            let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
-            lifted.lineColor = NSExpression(forConstantValue: UIColor.white)
-            lifted.lineOpacity = NSExpression(forConstantValue: 0.5)
-            lifted.lineWidth = NSExpression(forConstantValue: 22)
-            lifted.lineBlur = NSExpression(forConstantValue: 6)
-            let focused = MLNShapeSource(identifier: "focused", shape: nil)
-            style.addSource(focused)
-            let focusedOutline = MLNLineStyleLayer(identifier: "focused-outline", source: focused)
-            focusedOutline.lineColor = outline.lineColor
-            focusedOutline.lineWidth = NSExpression(forConstantValue: 13)
-            let focusedLine = MLNLineStyleLayer(identifier: "focused-line", source: focused)
-            focusedLine.lineColor = line.lineColor
-            focusedLine.lineWidth = NSExpression(forConstantValue: 8)
-            let ends = MLNCircleStyleLayer(identifier: "focused-ends", source: focused)
-            ends.predicate = NSPredicate(format: "end == YES")
-            ends.circleRadius = NSExpression(forConstantValue: 6)
-            ends.circleColor = NSExpression(forConstantValue: UIColor.white)
-            ends.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
-            ends.circleStrokeWidth = NSExpression(forConstantValue: 2.5)
+            // the stretch the profile is zoomed into, or a surface section. On the light map the route along it is raised
+            // on a wider outline, its ends marked, and the rest fades, as the planner draws it. On the dark map a soft light
+            // glow lies beneath it, which the white outline can't be taken for; its line smoothed, as a blurred line draws
+            // slashes across itself at a road's small jogs, and the blur hides the smoothing.
+            var layers: [MLNStyleLayer] = [outline, line, pending, filled]
+            faded = []
+            if dark {
+                let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
+                style.addSource(stretch)
+                let glow = MLNLineStyleLayer(identifier: "stretch", source: stretch)
+                glow.lineColor = NSExpression(forConstantValue: UIColor.white)
+                glow.lineOpacity = NSExpression(forConstantValue: 0.5)
+                glow.lineWidth = NSExpression(forConstantValue: 22)
+                glow.lineBlur = NSExpression(forConstantValue: 6)
+                layers.insert(glow, at: 0)
+                self.stretch = stretch
+            } else {
+                let focused = MLNShapeSource(identifier: "focused", shape: nil)
+                style.addSource(focused)
+                let raisedOutline = MLNLineStyleLayer(identifier: "focused-outline", source: focused)
+                raisedOutline.lineColor = outline.lineColor
+                raisedOutline.lineWidth = NSExpression(forConstantValue: 13)
+                let raised = MLNLineStyleLayer(identifier: "focused-line", source: focused)
+                raised.lineColor = line.lineColor
+                raised.lineWidth = NSExpression(forConstantValue: 8)
+                let ends = MLNCircleStyleLayer(identifier: "focused-ends", source: focused)
+                ends.predicate = NSPredicate(format: "end == YES")
+                ends.circleRadius = NSExpression(forConstantValue: 6)
+                ends.circleColor = NSExpression(forConstantValue: UIColor.white)
+                ends.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
+                ends.circleStrokeWidth = NSExpression(forConstantValue: 2.5)
+                layers.insert(contentsOf: [raisedOutline, raised, ends], at: 2)
+                faded = [outline, line]
+                self.focused = focused
+            }
             // under the map's names, as the planner draws it, so street and place names stay readable on the route
             let labels = style.layers.first { $0 is MLNSymbolStyleLayer }
-            let layers: [MLNStyleLayer] = dark ? [lifted, outline, line, pending, filled] : [outline, line, focusedOutline, focusedLine, ends, pending, filled]
             for layer in layers {
                 if let layer = layer as? MLNLineStyleLayer {
                     layer.lineCap = NSExpression(forConstantValue: "round")
@@ -180,7 +189,6 @@ struct PlannerMap: UIViewRepresentable {
                 }
                 if let labels { style.insertLayer(layer, below: labels) } else { style.addLayer(layer) }
             }
-            routeLayers = dark ? [] : [outline, line]
 
             // the planner's markers: its ink, red for a stop without a road, a white ring; a Formpunkt white in an ink ring
             let stop = NSPredicate(format: "shape == NO"), formpunkt = NSPredicate(format: "shape == YES")
@@ -216,8 +224,6 @@ struct PlannerMap: UIViewRepresentable {
             dot.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
             dot.circleStrokeWidth = NSExpression(forConstantValue: 3)
             style.addLayer(dot)
-            self.stretch = stretch
-            self.focused = focused
             self.focus = focus
 
             self.lines = lines
@@ -248,13 +254,12 @@ struct PlannerMap: UIViewRepresentable {
             stretch?.shape = content.stretch.count > 1
                 ? MLNPolylineFeature(coordinates: content.stretch.map(Self.coordinate), count: UInt(content.stretch.count)) : nil
             let ends: [MLNShape] = content.focused.isEmpty ? [] : [content.stretch.first, content.stretch.last].compactMap { $0 }.map { end in
-                let point = MLNPointFeature()
-                point.coordinate = Self.coordinate(end)
-                point.attributes = ["end": true]
-                return point
+                let dot = Self.dot(end)
+                dot.attributes = ["end": true]
+                return dot
             }
             focused?.shape = MLNShapeCollectionFeature(shapes: content.focused.map(Self.feature) + ends)
-            for layer in routeLayers { layer.lineOpacity = NSExpression(forConstantValue: content.focused.isEmpty ? 1 : 0.35) }
+            for layer in faded { layer.lineOpacity = NSExpression(forConstantValue: content.focused.isEmpty ? 1 : 0.35) }
         }
 
         private static func feature(_ line: MapContent.Line) -> MLNPolylineFeature {

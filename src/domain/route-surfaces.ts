@@ -1,4 +1,4 @@
-import { distanceMeters, isPlaced, legId, type RouteLeg, type RoutePoint, type Surface, type SurfaceSpan } from './route-model.ts';
+import { distanceMeters, drawnSpans, isPlaced, legId, type RouteLeg, type RoutePoint, type Surface } from './route-model.ts';
 
 export const surfaceLabels: Record<Surface, string> = {
   paved: 'Befestigt', likelyPaved: 'Vermutlich befestigt', rough: 'Kopfsteinpflaster/Holzbrücke', unpaved: 'Unbefestigt', unknown: 'Unbekannt',
@@ -67,20 +67,13 @@ export function inspectSurfaces(points: RoutePoint[], legs: Record<string, Route
     for (let vertex = 1; vertex < leg.coordinates.length; vertex++) {
       distances.push(distances[vertex - 1] + distanceMeters(leg.coordinates[vertex - 1], leg.coordinates[vertex]));
     }
-    function add(fromIndex: number, toIndex: number, span?: SurfaceSpan) {
-      if (toIndex <= fromIndex || distances[toIndex] === distances[fromIndex]) return;
+    for (const { fromIndex, toIndex, surface, osm } of drawnSpans(leg.surfaces, leg.coordinates.length - 1)) {
+      if (distances[toIndex] === distances[fromIndex]) continue;
       pieces.push({
         id: `${leg.id}:${fromIndex}`, parts: [{ legId: leg.id, fromIndex, toIndex }],
-        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface: span?.surface ?? 'unknown', corrected: !!span?.osm,
+        fromMeters: offset + distances[fromIndex], toMeters: offset + distances[toIndex], surface, corrected: !!osm,
       });
     }
-    let cursor = 0;
-    for (const span of leg.surfaces) {
-      add(cursor, span.fromIndex);
-      add(span.fromIndex, span.toIndex, span);
-      cursor = span.toIndex;
-    }
-    add(cursor, leg.coordinates.length - 1);
     offset += distances.at(-1)!;
   }
 

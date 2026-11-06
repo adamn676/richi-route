@@ -1,5 +1,5 @@
 import type { Feature, LineString } from 'geojson';
-import type { Surface } from '@/domain/route-model';
+import { drawnSpans, type Surface } from '../domain/route-model.ts';
 import type { RouteFeature } from '@/stores/route.store';
 
 export interface RouteSegmentProperties {
@@ -33,12 +33,6 @@ export function getSegments(feature: RouteFeature): Feature<LineString, RouteSeg
     return segments;
   }
 
-  let nextIndex = 0;
-  for (const span of surfaces) {
-    if (span.fromIndex > nextIndex) addSegment(nextIndex, span.fromIndex, 'unknown');
-    addSegment(span.fromIndex, span.toIndex, span.surface);
-    nextIndex = span.toIndex;
-  }
-  addSegment(nextIndex, coordinates.length - 1, 'unknown');
+  for (const span of drawnSpans(surfaces, coordinates.length - 1)) addSegment(span.fromIndex, span.toIndex, span.surface);
   return segments;
 }

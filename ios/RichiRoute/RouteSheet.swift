@@ -83,8 +83,8 @@ struct RouteTab: View {
     @State private var shown: (profile: Profile, legs: [Leg], range: ClosedRange<Double>?)?
     /// Whether many Zwischenstopps show one by one rather than as one row.
     @State private var viasOpen = false
-    /// The route's surfaces with the legs they were made from, likewise.
-    @State private var surfaces: (value: Surfaces, legs: [Leg])?
+    /// The route's surfaces, likewise.
+    @State private var surfaces: Surfaces?
 
     /// The stop whose search is open, by its place among the stops and their number with it: a new Zwischenstopp
     /// is one not on the route yet, before the Ziel.
@@ -110,8 +110,9 @@ struct RouteTab: View {
                     ElevationProfile(profile: shown.profile, legs: shown.legs, range: shown.range) { point in
                         planner.showPoint(point?.coordinate)
                     } zoom: { range in
-                        planner.zoomProfile(range, line: range.map { shown.profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: shown.legs) } ?? [],
-                                            parts: range.map { shown.profile.parts(from: $0.lowerBound, to: $0.upperBound) } ?? [])
+                        let (profile, legs) = (shown.profile, shown.legs)
+                        planner.zoomProfile(range, parts: range.map { profile.parts(from: $0.lowerBound, to: $0.upperBound) } ?? [],
+                                            ends: range.map { [$0.lowerBound, $0.upperBound].compactMap { profile.point(at: $0, legs: legs)?.coordinate } } ?? [])
                         if range != nil {
                             halve()
                             withAnimation { scroller.scrollTo(Self.profileRow, anchor: .top) }
@@ -130,8 +131,8 @@ struct RouteTab: View {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
                     Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
-                    SurfaceRows(surfaces: surfaces.value, legs: surfaces.legs, focused: planner.sectionRange) { range, line, parts in
-                        planner.focusSection(range, line: line, parts: parts)
+                    SurfaceRows(surfaces: surfaces, focused: planner.sectionRange) { range, parts in
+                        planner.focusSection(range, parts: parts)
                         if range != nil { halve() }
                     }
                 }
@@ -157,9 +158,8 @@ struct RouteTab: View {
         // the surfaces of the route as it stands, asked again whenever a leg changes
         .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
             guard planner.isComplete, let engine = planner.engine else { return surfaces = nil }
-            let legs = legs
             guard let value = try? await engine.surfaces(legs), !Task.isCancelled else { return }
-            surfaces = (value, legs)
+            surfaces = value
         }
         // the profile of the route as it stands, or of its stretch: asked again whenever a leg or the stretch changes
         .task(id: ProfileRequest(route: planner.isComplete ? planner.pairs.map(\.key) : [], range: planner.profileRange)) {
@@ -204,7 +204,7 @@ struct RouteTab: View {
                         figure("Höchster Punkt", planner.highestMeters.map { "\(Format.whole($0)) m" } ?? "unbekannt")
                     }
                 }
-                if let surfaces { surfaceBar(surfaces.value) }
+                if let surfaces { surfaceBar(surfaces) }
             } else {
                 Text(status).font(.subheadline).foregroundStyle(.secondary)
                 if planner.isRouting {
@@ -268,7 +268,7 @@ struct RouteTab: View {
             ForEach(rows) { row in
                 if let index = row.index {
                     let fixed = index == 0 || index == last
-                    stopRow(waypoints[index], at: index, removable: !fixed)
+                    stopRow(waypoints[index], at: index)
                         .listRowBackground(planner.picking == row.id ? Color.ink.opacity(0.08) : nil)
                         .moveDisabled(!planner.hasRoute)
                         .deleteDisabled(fixed)
@@ -331,8 +331,9 @@ struct RouteTab: View {
     }
 
     /// A stop: tapping it replaces it by a tap on the map; a Zwischenstopp also has its × to remove it.
-    private func stopRow(_ stop: Planner.Stop, at index: Int, removable: Bool) -> some View {
+    private func stopRow(_ stop: Planner.Stop, at index: Int) -> some View {
         let count = planner.waypoints.count, error = planner.stopErrors[stop.id]
+        let removable = index > 0 && index < count - 1
         // held and dragged, a stop changes places with another, as in Apple Maps: its grip shows that
         let movable = planner.hasRoute
         return HStack(spacing: 12) {

@@ -1,7 +1,8 @@
 import { computed, markRaw, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { useRouteStore } from './route.store.ts';
-import { isPlaced, legId, type Coord, type RouteLeg, type Surface } from '../domain/route-model.ts';
+import { drawnSpans, isPlaced, legId, type Coord, type RouteLeg } from '../domain/route-model.ts';
+import { clipSpans } from '../domain/gpx-route.ts';
 import { buildGpxTrack, type GpxTrack, type GpxSegment } from '../domain/gpx-track.ts';
 import { bearing, gpxGradients, gradientRuns, inspectGpxDistance, nearestTrackDistance, trackCoordinates, type GpxFocus } from '../domain/gpx-inspection.ts';
 
@@ -27,30 +28,21 @@ export const useRouteProfileStore = defineStore('route-profile', () => {
   const range = ref<{ from: number; to: number } | null>(null);
   watch(track, () => { range.value = null; });
   const rangeCoordinates = computed(() => track.value && range.value ? trackCoordinates(track.value, gradients.value, range.value.from, range.value.to) : null);
-  // The same course in the surfaces it runs on, as the map draws the route.
+  // The same course in the surfaces it runs on, as the map draws the route: on each leg from the last point at or
+  // before its start to the first at or after its end, those two then moved to where it begins and ends.
   const rangeLines = computed(() => {
-    const coords = rangeCoordinates.value;
-    if (!coords || !legs.value || !track.value || !range.value) return null;
-    const { from, to } = range.value;
-    const lines: { coordinates: Coord[]; surface: Surface }[] = [];
-    legs.value.forEach((leg, s) => {
-      const inside = track.value!.distances[s].flatMap((distance, i) => distance > from && distance < to ? [i] : []);
-      if (!inside.length) return;
-      const add = (a: number, b: number, surface: Surface) => {
-        const [start, end] = [Math.max(a, inside[0]), Math.min(b, inside.at(-1)!)];
-        if (start < end) lines.push({ coordinates: leg.coordinates.slice(start, end + 1), surface });
-      };
-      let at = 0;
-      for (const span of leg.surfaces) {
-        add(at, span.fromIndex, 'unknown');
-        add(span.fromIndex, span.toIndex, span.surface);
-        at = Math.max(at, span.toIndex);
-      }
-      add(at, leg.coordinates.length - 1, 'unknown');
+    const coords = rangeCoordinates.value, distances = track.value?.distances, { from, to } = range.value ?? {};
+    if (!coords || !legs.value || !distances || from === undefined || to === undefined) return null;
+    const lines = legs.value.flatMap((leg, s) => {
+      const along = distances[s];
+      if (along[0] >= to || along.at(-1)! <= from) return [];
+      const first = Math.max(0, along.findIndex(d => d > from) - 1), last = along.findIndex(d => d >= to);
+      return clipSpans(drawnSpans(leg.surfaces, leg.coordinates.length - 1), first, last < 0 ? along.length - 1 : last)
+        .map(span => ({ coordinates: leg.coordinates.slice(first + span.fromIndex, first + span.toIndex + 1), surface: span.surface }));
     });
     if (lines.length) {
-      lines[0].coordinates.unshift(coords[0]);
-      lines.at(-1)!.coordinates.push(coords.at(-1)!);
+      lines[0].coordinates[0] = coords[0];
+      lines.at(-1)!.coordinates.splice(-1, 1, coords.at(-1)!);
     }
     return lines;
   });

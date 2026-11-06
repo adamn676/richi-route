@@ -44,6 +44,20 @@ export interface SurfaceSpan extends SpanKind {
   toIndex: number;
 }
 
+// A leg's surfaces end to end, its untagged stretches as 'unknown', as the map draws it (iOS: `Leg.drawnSpans`).
+export function drawnSpans(spans: SurfaceSpan[], lastIndex: number): SurfaceSpan[] {
+  const drawn: SurfaceSpan[] = [];
+  let at = 0;
+  for (const span of spans) {
+    if (span.toIndex <= at) continue;
+    if (span.fromIndex > at) drawn.push({ fromIndex: at, toIndex: span.fromIndex, surface: 'unknown' });
+    drawn.push(span);
+    at = span.toIndex;
+  }
+  if (at < lastIndex) drawn.push({ fromIndex: at, toIndex: lastIndex, surface: 'unknown' });
+  return drawn;
+}
+
 export function pathMeters(coordinates: Coord[]): number {
   return coordinates.reduce((sum, coord, i) => i ? sum + distanceMeters(coordinates[i - 1], coord) : 0, 0);
 }
