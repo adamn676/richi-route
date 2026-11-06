@@ -3,11 +3,12 @@ import SwiftUI
 
 /// The planner: the map, its buttons, and the route in a panel over it that the rider pulls up.
 struct PlannerView: View {
-    static let peek: CGFloat = 290
+    static let peek: CGFloat = 170
 
     @State private var planner = Planner()
     @State private var detent = PresentationDetent.height(Self.peek)
     @State private var locating = 0
+    @State private var undoShown = false
     @State private var offMap = false
     @AppStorage(Basemap.key) private var basemap = Basemap.map
     @AppStorage(Basemap.cycleRoutesKey) private var cycleRoutes = false
@@ -94,11 +95,13 @@ struct PlannerView: View {
         .animation(.easeOut(duration: 0.2), value: offMap)
         .overlay(alignment: .topTrailing) {
             VStack(spacing: 12) {
-                if !planner.routedLegs.isEmpty {
-                    MapButton(label: "Auf Route zoomen", symbol: "viewfinder") { planner.frame(whole: true) }
+                // as Apple Maps: the map's two lasting buttons in one capsule, the rest only while they apply
+                VStack(spacing: 0) {
+                    MapButton(label: "Karte wählen", symbol: "map", alone: false) { choosingMap.toggle() }
+                    Divider().frame(width: 28)
+                    MapButton(label: "Mein Standort", symbol: "location", alone: false) { locating += 1 }
                 }
-                MapButton(label: "Karte wählen", symbol: "map") { choosingMap.toggle() }
-                MapButton(label: "Mein Standort", symbol: "location") { locating += 1 }
+                .glass(in: Capsule())
                 // as on the planner, only with the internet
                 if connection.online {
                     MapButton(label: "Street View", symbol: "binoculars", active: pickingStreetView) {
@@ -106,13 +109,20 @@ struct PlannerView: View {
                         choosingMap = false
                     }
                 }
-                // each only while it can do something; redo keeps its place under undo
-                if planner.canUndo || planner.canRedo {
+                // for a while after an edit, as Apple's apps offer undo; the panel's menu has both always.
+                // Redo keeps its place under undo
+                if undoShown && (planner.canUndo || planner.canRedo) {
                     MapButton(label: "Rückgängig", symbol: "arrow.uturn.backward", action: planner.undo).shown(planner.canUndo)
                     MapButton(label: "Wiederholen", symbol: "arrow.uturn.forward", action: planner.redo).shown(planner.canRedo)
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: [planner.canUndo, planner.canRedo])
+            .task(id: planner.edits) {
+                guard planner.edits > 0 else { return }
+                undoShown = true
+                try? await Task.sleep(for: .seconds(10))
+                if !Task.isCancelled { undoShown = false }
+            }
+            .animation(.easeOut(duration: 0.2), value: [undoShown, planner.canUndo, planner.canRedo])
             .padding(.trailing, 16)
             .padding(.top, 8)
         }
@@ -154,14 +164,16 @@ struct PlannerView: View {
             } halve: {
                 detent = .medium
             }
-                // no full height: iOS swaps the glass for white there, abruptly
-                .presentationDetents([.height(Self.peek), .medium, .fraction(0.9)], selection: $detent)
-                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.9)))
+                // as Apple Maps: glass over the map, solid at full height
+                .presentationDetents([.height(Self.peek), .medium, .large], selection: $detent)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .interactiveDismissDisabled()
                 // shown from the panel, which is already presented over the map
                 .lookAroundViewer(isPresented: Binding { lookAround != nil } set: { if !$0 { lookAround = nil } },
                                   initialScene: lookAround)
         }
+        // a notice over the map in sight: the full-height panel, which covers it, comes down to half
+        .onChange(of: planner.notice) { if planner.notice != nil && detent == .large { detent = .medium } }
         .task { await planner.start() }
         // sparing, as Apple advises: the rider's own edits, a long wait ended, and what went wrong
         .sensoryFeedback(trigger: planner.feedback) { _, feedback in
@@ -179,7 +191,6 @@ extension PlannerView {
         index == 0 ? "Neuen Start antippen" : index == count - 1 ? "Neues Ziel antippen" : "Neuen Zwischenstopp \(index) antippen"
     }
 
-    /// How much of the map the panel covers at its height, which framing the route leaves free.
     /// Street View at a tapped spot, a pin dropped there: Apple's Look Around full screen, else Google's in its card;
     /// where neither has any, the pin says so and goes. None clears the pin and Google's card.
     private func look(at coord: [Double]?) {
@@ -208,8 +219,8 @@ extension PlannerView {
 
     func panelHeight(on screen: CGFloat) -> CGFloat {
         switch detent {
-        case .medium: screen / 2
-        case .fraction(0.9): screen * 0.9
+        // full height hides the map, so it keeps the half panel's view instead of fitting into nothing
+        case .medium, .large: screen / 2
         default: Self.peek
         }
     }
@@ -222,21 +233,36 @@ struct NoticeBar: View {
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(notice.text).font(.subheadline).padding(.leading, 16).padding(.vertical, 12)
-            Spacer(minLength: 0)
-            if notice.restore != nil {
-                Button("Wiederherstellen", action: restore)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 14)
+        // on one line beside its action where that fits, else the action under the text, never broken itself
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                Text(notice.text).fixedSize().padding(.leading, 16).padding(.vertical, 12)
+                Spacer(minLength: 0)
+                action
             }
+            .glass(in: Capsule())
+            VStack(alignment: .leading, spacing: 0) {
+                Text(notice.text).padding(.horizontal, 16).padding(.top, 12).padding(.bottom, notice.restore == nil ? 12 : 0)
+                action.padding(.leading, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glass(in: RoundedRectangle(cornerRadius: 22))
         }
+        .font(.subheadline)
         .foregroundStyle(Color.ink)
-        .glass(in: Capsule())
         .task(id: notice.id) {
             try? await Task.sleep(for: .seconds(notice.restore == nil ? 4 : 8))
             if !Task.isCancelled { dismiss() }
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        if notice.restore != nil {
+            Button("Wiederherstellen", action: restore)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize()
+                .frame(minHeight: 44)
+                .padding(.horizontal, 14)
         }
     }
 }
@@ -287,20 +313,22 @@ struct MapButton: View {
     let symbol: String
     /// On, as a mode the next tap on the map belongs to: drawn in ink.
     var active = false
+    /// A circle of its own; else part of a group's capsule.
+    var alone = true
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             Image(systemName: active ? symbol + ".fill" : symbol)
                 .font(.system(size: 18, weight: .medium))
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .foregroundStyle(active ? Color.white : Color.ink)
-        .background { if active { Circle().fill(Color(MapStyle.ink)) } }
-        .glass(in: Circle())
+        .foregroundStyle(active ? Color.onInk : Color.ink)
+        .background { if active { Circle().fill(Color.ink) } }
         .accessibilityLabel(label)
         .accessibilityAddTraits(active ? .isSelected : [])
+        if alone { button.glass(in: Circle()) } else { button }
     }
 }
 

@@ -206,6 +206,15 @@ struct PlannerMap: UIViewRepresentable {
             return view
         }
 
+        /// The rider's dot without the library's pulse around it, calm as on Apple Maps; its accuracy circle stays.
+        private let locationStyle = {
+            let style = MLNUserLocationAnnotationViewStyle()
+            style.haloFillColor = .clear
+            return style
+        }()
+
+        func mapViewStyle(forDefaultUserLocationAnnotationView map: MLNMapView) -> MLNUserLocationAnnotationViewStyle { locationStyle }
+
         /// Whether a finger is on the pin, its head or its needle.
         private func onPin(_ point: CGPoint, on map: MLNMapView) -> Bool {
             guard let pin else { return false }
@@ -244,7 +253,7 @@ struct PlannerMap: UIViewRepresentable {
             line.lineWidth = NSExpression(forConstantValue: 5)
             let pending = MLNLineStyleLayer(identifier: "route-pending", source: lines)
             pending.predicate = NSPredicate(format: "style IN {'waiting', 'air'}")
-            let waitingColor = dark ? "#9aa29e" : colors.hex("waiting")
+            let waitingColor = dark ? MapStyle.greyHex : colors.hex("waiting")
             pending.lineColor = NSExpression(mglJSONObject: ["match", ["get", "style"], "air", colors.hex("air"), waitingColor])
             pending.lineWidth = NSExpression(forConstantValue: 3)
             pending.lineDashPattern = NSExpression(forConstantValue: [2, 2])
@@ -282,13 +291,14 @@ struct PlannerMap: UIViewRepresentable {
                 layer.predicate = NSPredicate(format: "$geometryType == 'LineString' AND chosen == %@", NSNumber(value: chosen))
                 return layer
             }
-            // the chosen loop in the ink, the others grey; their figures a little darker, to read
-            let (strong, grey, greyText) = dark ? (MapStyle.lightInkHex, "#6c7370", "#9aa29e") : (MapStyle.inkHex, "#9aa29e", "#6c7370")
+            // the chosen loop blue, as the planner's first loop and Apple Maps' routes, on a dark outline on the dark map; the
+            // others grey, their figures a little darker, to read
+            let (strong, grey, greyText) = dark ? ("#6b95f0", "#6c7370", MapStyle.greyHex) : (colors.hex("loop"), MapStyle.greyHex, "#6c7370")
             let others = loopLines("loop-others", false)
             others.lineColor = NSExpression(forConstantValue: MapStyle.color(hex: grey))
             others.lineWidth = NSExpression(forConstantValue: 4)
             let loopOutline = loopLines("loop-outline", true)
-            loopOutline.lineColor = outline.lineColor
+            loopOutline.lineColor = dark ? NSExpression(forConstantValue: MapStyle.ink) : outline.lineColor
             loopOutline.lineWidth = outline.lineWidth
             let loopLine = loopLines("loop-line", true)
             loopLine.lineColor = NSExpression(forConstantValue: MapStyle.color(hex: strong))

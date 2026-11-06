@@ -108,7 +108,8 @@ struct MapChooser: View {
                     .accessibilityAddTraits(basemap == choice ? .isSelected : [])
                 }
             }
-            Toggle("Radrouten", isOn: $cycleRoutes).disabled(!online)
+            // iOS's own green: the ink, light in Dark Mode, would hide the white knob
+            Toggle("Radrouten", isOn: $cycleRoutes).tint(.green).disabled(!online)
             if !online {
                 Text("Satellit, Gelände und Radrouten nur mit Internet.").font(.footnote).foregroundStyle(.secondary)
             }

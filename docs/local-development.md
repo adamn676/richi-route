@@ -398,8 +398,14 @@ glow beneath it). With only a Start set, **Runde vorschlagen** asks for the dist
 slider in the planner's steps or typed, and **Runden vorschlagen** then suggests three loops from it, as Apple Maps
 shows other routes: the settings fold into one line (**Ändern** opens them again), the loops are one line each, the
 chosen one strong on the map with its arrows, the others grey, each with its distance and climbing; **Fahren** takes
-one as the route, from the Start through a Formpunkt every 5 km. **⛶** shows the whole route, also while a stretch
-or a surface's sections are shown; their **⊗**, as the loops', closes them. **Karte wählen** chooses the map as
+one as the route, from the Start through a Formpunkt every 5 km. As in Apple Maps, the map keeps two buttons in one
+capsule, **Karte wählen** and **Mein Standort**; undo and redo show beside them for 10 seconds after an edit and stay
+in the panel's **…** menu. A tap on the route's name and figures, or **Ganze Route zeigen** in that menu, shows the
+whole route, also while a stretch or a surface's sections are shown; their **⊗**, as the loops', closes them. The
+panel folds down to the route's name, figures and surface bar (with only a Start, **Runde vorschlagen** there), is
+glass over the map at half height and solid at full height; it comes down to half for a notice, which it would
+cover, and for a route opened from **Meine Routen**, which shows itself on the map instead of a notice, and goes up
+to half for **Meine Routen**. **Karte wählen** chooses the map as
 Apple Maps' map card does: the offline map, aerial photos with its names (basemap.at) or OpenTopoMap's terrain map,
 and the signed cycle routes (Waymarked Trails) over it, remembered from one opening to the next; those online ones
 wait for the internet, and the panel's credits name them. **Street View** (binoculars, only online), as on the
@@ -478,8 +484,19 @@ runs over SSH, on the simulator that holds the data (by its id; Xcode's
 parallel testing would use a copy without it); `TEST_RUNNER_RICHIROUTE_SHOTS`
 names a folder for `PlannerTests`' screenshots:
 `xcodebuild test -parallel-testing-enabled NO -project RichiRoute.xcodeproj -scheme RichiRoute -destination 'id=<simulator id>'`.
-On the device, signing over SSH fails (`errSecInternalComponent`), so run it
-from Xcode there.
+Over SSH the login keychain stays locked, so signing for the device fails
+(`errSecInternalComponent`). Run `scripts/ios-signing-keychain.sh` once in
+Terminal on the Mac itself: it copies the signing identity into a keychain of
+its own with a random password in `~/.richiroute-signing`. Then a build over SSH
+unlocks that keychain and installs on the iPhone:
+
+```sh
+keychain=~/Library/Keychains/richiroute-signing.keychain-db
+security unlock-keychain -p "$(cat ~/.richiroute-signing)" $keychain
+xcodebuild -project RichiRoute.xcodeproj -scheme RichiRoute -destination 'id=<iPhone id>' \
+  -derivedDataPath build/dd -allowProvisioningUpdates OTHER_CODE_SIGN_FLAGS="--keychain $keychain" build
+xcrun devicectl device install app --device <iPhone id> build/dd/Build/Products/Debug-iphoneos/RichiRoute.app
+```
 
 Measured on 1 November 2026 on an iPhone 13 mini, offline, with about 1 GB per
 search: Virgen–Mistelbach (518 km) 4.6 s and Wien–München (448 km) 5.8 s, the

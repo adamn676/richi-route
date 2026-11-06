@@ -26,6 +26,7 @@ struct LoopsView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(Color.ink)
+                .foregroundStyle(Color.onInk)
             } else {
                 Button { planner.loops?.editing = true } label: {
                     HStack {
@@ -69,6 +70,7 @@ struct LoopsView: View {
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
                 .tint(Color.ink)
+                .foregroundStyle(Color.onInk)
         }
         .contentShape(Rectangle())
         .onTapGesture { planner.chooseLoop(index) }
@@ -106,6 +108,9 @@ private struct LoopSetting: View {
             .onTapGesture { typing = true }
             Slider(value: Binding(get: { Double(nearest(value)) }, set: { set(steps[Int($0.rounded())]) }),
                    in: 0...Double(steps.count - 1), step: 1)
+                .tint(Color.track)
+                // a tick at each step, as iOS's pickers
+                .sensoryFeedback(.selection, trigger: value) { _, _ in !typing }
                 .accessibilityLabel(label)
                 .accessibilityValue("\(Format.whole(Double(value))) \(unit)")
         }

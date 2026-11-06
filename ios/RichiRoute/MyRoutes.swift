@@ -57,7 +57,7 @@ struct MyRoutes: View {
         .alert("Route umbenennen", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Neuer Routenname", text: $newName)
             Button("Abbrechen", role: .cancel) {}
-            Button("Umbenennen") { rename() }.disabled(RouteName.valid(newName) == nil)
+            Button("Umbenennen") { rename() }.disabled(RouteName.valid(newName) == nil).keyboardShortcut(.defaultAction)
         }
         .alert("Route löschen?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { entry in
             Button("Abbrechen", role: .cancel) {}

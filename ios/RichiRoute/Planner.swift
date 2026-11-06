@@ -113,6 +113,8 @@ final class Planner {
     private(set) var notice: Notice?
     private var undos: [[Stop]] = []
     private var redos: [[Stop]] = []
+    /// Counts the rider's edits, undo and redo with them.
+    private(set) var edits = 0
 
     static let maxSnapMeters = 250.0
     static let longSearch = Duration.seconds(3)
@@ -195,8 +197,10 @@ final class Planner {
     /// Saved and unchanged since.
     var isSaved: Bool { savedID != nil && savedStops == stops }
 
-    /// Whether there is a route worth keeping: Start and Ziel placed.
     var hasRoute: Bool { stops.first?.coord != nil && stops.last?.coord != nil }
+
+    /// A route worth keeping: not a Ziel on its Start with nothing between.
+    private var worthKeeping: Bool { hasRoute && (stops.count > 2 || stops.first?.coord != stops.last?.coord) }
 
     func save(as name: String) {
         mark(saved: RouteStore.store(file(named: name), as: .saved).id, name: name)
@@ -224,7 +228,7 @@ final class Planner {
     func replace(with entry: RouteStore.Entry?) {
         let file = entry.flatMap(RouteStore.file)
         var kept: RouteStore.Entry?
-        if hasRoute && !isSaved {
+        if worthKeeping && !isSaved {
             kept = RouteStore.store(self.file(named: name), as: .recent)
         }
         if let file {
@@ -238,8 +242,8 @@ final class Planner {
         undos.removeAll()
         redos.removeAll()
         if entry?.kind == .recent, let entry { RouteStore.delete(entry) }
+        // an opened route shows itself on the map, unconfirmed
         notice = kept.map { Notice(text: "Vorige Route liegt in „Zuletzt bearbeitet“.", restore: $0) }
-            ?? entry.map { Notice(text: "„\($0.name)“ geöffnet.") }
         remember()
     }
 
@@ -375,6 +379,7 @@ final class Planner {
         guard let previous = undos.popLast() else { return }
         redos.append(stops)
         restore(previous)
+        edits += 1
         feel(.tap)
     }
 
@@ -382,6 +387,7 @@ final class Planner {
         guard let next = redos.popLast() else { return }
         undos.append(stops)
         restore(next)
+        edits += 1
         feel(.tap)
     }
 
@@ -392,7 +398,7 @@ final class Planner {
         update()
     }
 
-    /// `whole`: the whole route, also while a stretch of it is shown ("Auf Route zoomen", `fitRoute`).
+    /// `whole`: the whole route, also while a stretch of it is shown ("Ganze Route zeigen", `fitRoute`).
     func frame(whole: Bool = false) {
         framesWhole = whole
         framing += 1
@@ -407,6 +413,7 @@ final class Planner {
         guard stops != before else { return }
         undos.append(before)
         redos.removeAll()
+        edits += 1
         if let placed { snap(placed) }
         update()
         feel(.tap)

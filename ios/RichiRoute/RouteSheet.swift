@@ -32,19 +32,33 @@ struct RouteSheet: View {
             .padding(.bottom, 4)
             switch tab {
             case .route: RouteTab(planner: planner, folded: folded, credits: credits, fold: fold, halve: halve)
-            case .library: MyRoutes(planner: planner) { tab = .route }
+            // an opened route shows on the map above the half-lowered panel
+            case .library: MyRoutes(planner: planner) {
+                tab = .route
+                halve()
+            }
             }
         }
+        // the rider's routes are a list: the folded panel would cut its first row
+        .onChange(of: tab) { if tab == .library && folded { halve() } }
         .alert("Route speichern", isPresented: $naming) {
             TextField("Routenname", text: $newName)
             Button("Abbrechen", role: .cancel) {}
             Button("Speichern") { if let name = RouteName.valid(newName) { planner.save(as: name) } }
                 .disabled(RouteName.valid(newName) == nil)
+                .keyboardShortcut(.defaultAction)
         }
     }
 
     private var menu: some View {
         Menu {
+            Section {
+                Button("Rückgängig", systemImage: "arrow.uturn.backward", action: planner.undo).disabled(!planner.canUndo)
+                Button("Wiederholen", systemImage: "arrow.uturn.forward", action: planner.redo).disabled(!planner.canRedo)
+                if !planner.routedLegs.isEmpty {
+                    Button("Ganze Route zeigen", systemImage: "viewfinder") { planner.frame(whole: true) }
+                }
+            }
             Button("Neue Route", systemImage: "plus") {
                 planner.newRoute()
                 tab = .route
@@ -201,6 +215,30 @@ struct RouteTab: View {
 
     /// What the folded panel shows: the route's figures and its surfaces at a glance, or what is going on.
     private var summary: some View {
+        // folded, the route's lines unseen beneath: every state is as tall, so the panel always ends under them
+        ZStack(alignment: .topLeading) {
+            if folded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(" ").font(.headline)
+                    figure(" ", " ")
+                    Rectangle().frame(height: 6)
+                }
+                .hidden()
+            }
+            summaryContent
+        }
+        .padding(.vertical, 4)
+        // a tap on the route's name and figures shows all of it, as Apple Maps' route card does
+        .contentShape(Rectangle())
+        .onTapGesture(perform: showWhole)
+        .accessibilityAction(named: "Ganze Route zeigen", showWhole)
+    }
+
+    private func showWhole() {
+        if !planner.routedLegs.isEmpty { planner.frame(whole: true) }
+    }
+
+    private var summaryContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let title = planner.savedName ?? planner.title {
                 Text(title).font(.headline).lineLimit(1)
@@ -224,9 +262,18 @@ struct RouteTab: View {
                         }
                     }
                 }
+                // with only a Start, in sight on the folded panel
+                if planner.stops.count == 2, planner.stops[0].coord != nil, planner.stops[1].coord == nil {
+                    Button {
+                        planner.openLoops()
+                        halve()
+                    } label: {
+                        Label("Runde vorschlagen", systemImage: "arrow.triangle.capsulepath")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
-        .padding(.vertical, 4)
     }
 
     private var status: String {
@@ -287,14 +334,6 @@ struct RouteTab: View {
             }
             .onDelete { offsets in offsets.map { rows[$0].id }.forEach(planner.remove) }
             .onMove { source, destination in planner.moveStops(from: IndexSet(source.map(place)), to: place(destination)) }
-            if planner.stops.count == 2, planner.stops[0].coord != nil, planner.stops[1].coord == nil {
-                Button {
-                    planner.openLoops()
-                    halve()
-                } label: {
-                    Label("Runde vorschlagen", systemImage: "arrow.triangle.capsulepath")
-                }
-            }
             if planner.hasRoute {
                 // its search first, so a Zwischenstopp is added once chosen, never empty
                 Button { searching = Searching(id: UUID(), index: waypoints.count - 1, count: waypoints.count + 1) } label: {
@@ -363,7 +402,8 @@ struct RouteTab: View {
                     if stop.coord == nil {
                         Circle().strokeBorder(.secondary, style: StrokeStyle(lineWidth: 2, dash: [3, 3]))
                     } else {
-                        Circle().fill(Color(error == nil ? MapStyle.ink : MapStyle.danger))
+                        // with the map markers' white ring, which keeps it in sight on the dark panel
+                        Circle().fill(Color(error == nil ? MapStyle.ink : MapStyle.danger)).overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
                     }
                 }
             VStack(alignment: .leading, spacing: 2) {

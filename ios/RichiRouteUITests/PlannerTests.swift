@@ -14,12 +14,10 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(tip.waitForExistence(timeout: 60))
         shot(app, "1-empty")
 
-        // a point on a road gets its street and town ("Körösistraße 2, 8010 Graz")
-        let named = app.staticTexts.matching(NSPredicate(format: "label MATCHES '.+, [0-9]{4} .+'")).firstMatch
-        // the map takes its taps once it has drawn
+        // the map takes its taps once it has drawn; the folded panel then offers a loop from the Start
         sleep(2)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.3)).tap()
-        XCTAssertTrue(named.waitForExistence(timeout: 30), "no named Start")
+        XCTAssertTrue(app.buttons["Runde vorschlagen"].waitForExistence(timeout: 30), "no Start")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.42)).tap()
         let figures = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' km'")).firstMatch
         XCTAssertTrue(figures.waitForExistence(timeout: 60), "no route between the two taps")
@@ -33,11 +31,11 @@ final class PlannerTests: XCTestCase {
         shot(app, "2a-formpunkt")
         unshape.tap()
         // both one undo step each: the Formpunkt back, then gone again
-        app.buttons["Rückgängig"].tap()
-        app.buttons["Rückgängig"].tap()
+        history(app, "Rückgängig")
+        history(app, "Rückgängig")
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
         // the profile, under the figures in the half-raised panel, the route on the map above it
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
+        panel(app, to: 0.45)
         let chart = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Höhenprofil'")).firstMatch
         XCTAssertTrue(chart.waitForExistence(timeout: 20))
         XCTAssertTrue(app.staticTexts["Zum Zoomen halten und ziehen"].exists)
@@ -52,16 +50,19 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForExistence(timeout: 10), "no zoomed stretch")
         shot(app, "2c-stretch")
         // the whole route again, the stretch still marked
-        app.buttons["Auf Route zoomen"].tap()
+        app.buttons["Weitere Aktionen"].tap()
+        app.buttons["Ganze Route zeigen"].tap()
         sleep(1)
         shot(app, "2c-whole")
         app.buttons["Ausschnitt schließen"].tap()
         XCTAssertTrue(app.staticTexts["Ausschnitt"].waitForNonExistence(timeout: 10))
 
         // a surface opens its sections, the first on the map; the arrows step through them, a second tap closes them
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        panel(app, to: 0.1)
         let paved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Befestigt'")).firstMatch
         XCTAssertTrue(paved.waitForExistence(timeout: 20), "no surfaces")
+        // a point on a road gets its street and town ("Körösistraße 2, 8010 Graz")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label MATCHES '.+, [0-9]{4} .+'")).firstMatch.waitForExistence(timeout: 30), "no named Start")
         paved.tap()
         let count = app.staticTexts.matching(NSPredicate(format: "label MATCHES 'Befestigt · (1 von [0-9]+|1 Abschnitt)'")).firstMatch
         XCTAssertTrue(count.waitForExistence(timeout: 5), "no sections")
@@ -75,14 +76,14 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(count.waitForNonExistence(timeout: 5))
 
         // undo and redo on the map
-        app.buttons["Rückgängig"].tap()
+        history(app, "Rückgängig")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 10))
-        app.buttons["Wiederholen"].tap()
+        history(app, "Wiederholen")
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "3-redone")
 
         // the search closes with its X, the stop unchanged
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        panel(app, to: 0.1)
         app.staticTexts["S"].firstMatch.tap()
         let search = app.textFields["Start suchen"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
@@ -142,21 +143,24 @@ final class PlannerTests: XCTestCase {
         // a new route starts a history of its own: nothing to undo
         let undo = app.buttons["Rückgängig"]
         XCTAssertFalse(undo.exists && undo.isHittable, "undo after a new route")
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        panel(app, to: 0.1)
         app.buttons["Meine Routen"].tap()
         let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Testrunde'")).firstMatch
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         shot(app, "8-my-routes")
         entry.tap()
-        XCTAssertTrue(app.staticTexts["„Testrunde“ geöffnet."].waitForExistence(timeout: 5))
+        // the route itself on the map and in the half-lowered panel, no notice
+        XCTAssertTrue(app.staticTexts["Testrunde"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["„Testrunde“ geöffnet."].exists)
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
         shot(app, "9-opened")
 
         // two Zwischenstopps, each added from its search by a tap on the map; their grips show that they change places
         // when held and dragged
-        let spots = [CGVector(dx: 0.3, dy: 0.25), CGVector(dx: 0.6, dy: 0.2), CGVector(dx: 0.45, dy: 0.3), CGVector(dx: 0.7, dy: 0.3)]
+        // below the route, which the opened route leaves free
+        let spots = [CGVector(dx: 0.25, dy: 0.55), CGVector(dx: 0.6, dy: 0.6), CGVector(dx: 0.45, dy: 0.68), CGVector(dx: 0.75, dy: 0.45)]
         for (index, spot) in spots.enumerated() {
-            grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+            panel(app, to: 0.1)
             // further down the list with each stop
             let add = app.buttons["Zwischenstopp hinzufügen"]
             for _ in 0..<4 where !add.isHittable { app.swipeUp() }
@@ -164,10 +168,13 @@ final class PlannerTests: XCTestCase {
             XCTAssertTrue(app.textFields["Zwischenstopp \(index + 1) suchen"].waitForExistence(timeout: 5))
             app.buttons["Auf der Karte wählen"].tap()
             XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForExistence(timeout: 5))
+            // the tap once the panel has come down from full height, not on it
+            let folded = NSPredicate { _, _ in grabber.frame.minY > app.frame.height * 0.6 }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: folded, evaluatedWith: nil)], timeout: 5), .completed, "the panel stayed up")
             app.coordinate(withNormalizedOffset: spot).tap()
             XCTAssertTrue(app.staticTexts["Neuen Zwischenstopp \(index + 1) antippen"].waitForNonExistence(timeout: 5))
         }
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        panel(app, to: 0.1)
         let group = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '4 Zwischenstopps'")).firstMatch
         XCTAssertTrue(group.waitForExistence(timeout: 10), "four Zwischenstopps not one row")
         shot(app, "10-grips")
@@ -176,10 +183,17 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForNonExistence(timeout: 5))
         shot(app, "11-grouped")
         // the four undone on the map, the panel folded
-        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
-        for _ in 1...4 { app.buttons["Rückgängig"].tap() }
+        panel(app, to: 0.98)
+        for _ in 1...4 { history(app, "Rückgängig") }
         XCTAssertTrue(group.waitForNonExistence(timeout: 5))
         XCTAssertTrue(figures.waitForExistence(timeout: 30))
+
+        // deleted again, so the test leaves "Meine Routen" as it found it
+        panel(app, to: 0.1)
+        app.buttons["Meine Routen"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        delete(app, entry)
+        XCTAssertTrue(entry.waitForNonExistence(timeout: 5), "Testrunde not deleted")
     }
 
     /// Moves a Formpunkt, reorders two Zwischenstopps around it, and renames, duplicates and deletes the route in
@@ -190,9 +204,6 @@ final class PlannerTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-fresh"]
         app.launch()
-        let grabber = app.buttons["Sheet Grabber"]
-        let raise = { grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))) }
-        let lower = { grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))) }
         let map = { (x: Double, y: Double) in app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tipp:'")).firstMatch.waitForExistence(timeout: 60))
         sleep(2)
@@ -218,13 +229,13 @@ final class PlannerTests: XCTestCase {
         map(0.52, 0.46 - lift).press(forDuration: 0.6, thenDragTo: map(0.42, 0.55))
         let moved = distance(shaped)
         shot(app, "e1-formpunkt-moved")
-        app.buttons["Rückgängig"].tap()
+        history(app, "Rückgängig")
         XCTAssertEqual(distance(moved), shaped, "undo did not put the Formpunkt back")
 
         // two Zwischenstopps, the farther first, held and dragged into the other order; the Formpunkt keeps its place
         for (index, spot) in [(0.62, 0.2), (0.3, 0.22)].enumerated() {
             let before = figures.label
-            raise()
+            panel(app, to: 0.1)
             let add = app.buttons["Zwischenstopp hinzufügen"]
             for _ in 0..<4 where !add.isHittable { app.swipeUp() }
             add.tap()
@@ -233,7 +244,7 @@ final class PlannerTests: XCTestCase {
             map(spot.0, spot.1).tap()
             _ = distance(before)
         }
-        raise()
+        panel(app, to: 0.1)
         let first = app.buttons["Zwischenstopp 1 entfernen"], second = app.buttons["Zwischenstopp 2 entfernen"]
         XCTAssertTrue(second.waitForExistence(timeout: 5))
         // a stop's name: the widest text in the row of its badge or × button
@@ -265,17 +276,19 @@ final class PlannerTests: XCTestCase {
         // the menu closed by a tap beside it, which the panel below does not take
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.25)).tap()
         XCTAssertTrue(unshape.waitForNonExistence(timeout: 5))
-        lower()
-        app.buttons["Rückgängig"].tap()
+        panel(app, to: 0.98)
+        history(app, "Rückgängig")
         XCTAssertTrue(app.staticTexts[before].waitForExistence(timeout: 10), "undo did not restore the Start")
         XCTAssertTrue(figures.waitForExistence(timeout: 60))
         XCTAssertEqual(figures.label, ordered)
-        raise()
+        panel(app, to: 0.1)
         XCTAssertEqual(name(app.buttons["Zwischenstopp 1 entfernen"]), names.0, "undo did not restore the order")
 
         // saved, then in "Meine Routen" renamed, which the open route takes on, duplicated, and the copy and then the
         // route itself deleted, which leaves the route open but no longer saved
         app.buttons["Weitere Aktionen"].tap()
+        // the menu takes its taps once it has opened, which the moving map does not let the test wait for
+        sleep(1)
         app.buttons["In „Meine Routen“ speichern …"].tap()
         let field = app.textFields["Routenname"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -288,7 +301,7 @@ final class PlannerTests: XCTestCase {
         let copy = renamed + " (Kopie)"
         field.typeText(saved + "\n")
         XCTAssertTrue(app.staticTexts[saved].waitForExistence(timeout: 5))
-        raise()
+        panel(app, to: 0.1)
         app.buttons["Meine Routen"].tap()
         let entry = { (label: String) in app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label + ",")).firstMatch }
         XCTAssertTrue(entry(saved).waitForExistence(timeout: 5))
@@ -304,17 +317,13 @@ final class PlannerTests: XCTestCase {
         app.buttons["Duplizieren"].tap()
         XCTAssertTrue(entry(copy).waitForExistence(timeout: 5), "no copy")
         shot(app, "e4-renamed-copied")
-        entry(copy).swipeLeft()
-        app.buttons["Löschen"].tap()
-        app.alerts.buttons["Endgültig löschen"].tap()
+        delete(app, entry(copy))
         XCTAssertTrue(entry(copy).waitForNonExistence(timeout: 5), "copy not deleted")
         XCTAssertTrue(entry(renamed).exists, "the original went with the copy")
         app.buttons["Route"].tap()
         XCTAssertTrue(app.staticTexts[renamed].waitForExistence(timeout: 5), "the open route kept its old name")
         app.buttons["Meine Routen"].tap()
-        entry(renamed).swipeLeft()
-        app.buttons["Löschen"].tap()
-        app.alerts.buttons["Endgültig löschen"].tap()
+        delete(app, entry(renamed))
         XCTAssertTrue(entry(renamed).waitForNonExistence(timeout: 5))
         app.buttons["Route"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' → '")).firstMatch.waitForExistence(timeout: 5),
@@ -365,7 +374,7 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' km'")).firstMatch.waitForExistence(timeout: 30))
         shot(app, "l3-taken")
         // one undo step back to the Start alone
-        app.buttons["Rückgängig"].tap()
+        history(app, "Rückgängig")
         XCTAssertTrue(open.waitForExistence(timeout: 10))
     }
 
@@ -437,18 +446,16 @@ final class PlannerTests: XCTestCase {
         let direct = figures.label
 
         // a slow tap on the route adds a Zwischenstopp (the same distance: it lies on the route); undone
-        let grabber = app.buttons["Sheet Grabber"]
-        let panel = { (y: Double) in grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.2, thenDragTo: spot(0.5, y)) }
         spot(0.567, 0.356).press(forDuration: 0.4, thenDragTo: spot(0.567, 0.356).withOffset(tremble))
         XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from a slow tap on the route")
-        panel(0.1)
+        panel(app, to: 0.1)
         XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForExistence(timeout: 10), "a slow tap on the route added no Zwischenstopp")
-        panel(0.98)
+        panel(app, to: 0.98)
         sleep(1)
-        app.buttons["Rückgängig"].tap()
-        panel(0.1)
+        history(app, "Rückgängig")
+        panel(app, to: 0.1)
         XCTAssertTrue(app.buttons["Zwischenstopp 1 entfernen"].waitForNonExistence(timeout: 10), "undo did not remove the Zwischenstopp")
-        panel(0.98)
+        panel(app, to: 0.98)
         sleep(1)
 
         // dragged: a Formpunkt where it rode, above the finger
@@ -491,7 +498,8 @@ final class PlannerTests: XCTestCase {
         // Apple's viewer, in the simulator's language
         let compass = app.buttons["LookAroundCompassView"], close = app.buttons["Close"]
         let button = app.buttons["Street View"], hint = app.staticTexts["Street View: Ort antippen"]
-        let open = { app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'Karte antippen'")).count }
+        // the folded panel offers a loop while only the Start is set
+        let started = app.buttons["Runde vorschlagen"]
 
         // cancelled: nothing happens
         button.tap()
@@ -500,8 +508,8 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(hint.waitForNonExistence(timeout: 5))
         spot(0.4, 0.45).tap()
         XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View after cancelling")
-        XCTAssertEqual(open(), 1, "the tap after cancelling set no Start")
-        app.buttons["Rückgängig"].tap()
+        XCTAssertTrue(started.waitForExistence(timeout: 10), "the tap after cancelling set no Start")
+        history(app, "Rückgängig")
 
         // the button, then a tap: Look Around, turned by a drag
         button.tap()
@@ -518,7 +526,7 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(compass.waitForNonExistence(timeout: 5))
         sleep(1)
         shot(app, "s2-pin")
-        XCTAssertEqual(open(), 2, "Street View set a stop")
+        XCTAssertFalse(started.exists, "Street View set a stop")
 
         // a tap on the kept pin shows it again
         spot(0.4, 0.45).withOffset(CGVector(dx: 0, dy: -30)).tap()
@@ -529,9 +537,32 @@ final class PlannerTests: XCTestCase {
         // a tap elsewhere clears the pin and sets the Start
         spot(0.25, 0.3).tap()
         XCTAssertFalse(compass.waitForExistence(timeout: 2), "Street View from an ordinary tap")
-        XCTAssertEqual(open(), 1, "the tap after Street View set no Start")
+        XCTAssertTrue(started.waitForExistence(timeout: 10), "the tap after Street View set no Start")
         sleep(1)
         shot(app, "s3-cleared")
+    }
+
+    /// Undo or redo as a rider does: on the map while it is offered there, else in the panel's menu.
+    @MainActor
+    private func history(_ app: XCUIApplication, _ label: String) {
+        let onMap = app.buttons[label]
+        if !(onMap.exists && onMap.isHittable) { app.buttons["Weitere Aktionen"].tap() }
+        onMap.tap()
+    }
+
+    /// The panel dragged by its grabber to a height on the screen, from 0 (top) to 1.
+    @MainActor
+    private func panel(_ app: XCUIApplication, to y: Double) {
+        app.buttons["Sheet Grabber"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)))
+    }
+
+    /// A saved route deleted from "Meine Routen" by a swipe, confirmed.
+    @MainActor
+    private func delete(_ app: XCUIApplication, _ entry: XCUIElement) {
+        entry.swipeLeft()
+        app.buttons["Löschen"].tap()
+        app.alerts.buttons["Endgültig löschen"].tap()
     }
 
     @MainActor

@@ -28,7 +28,10 @@ struct MapStyle: Sendable {
               var style = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let layers = style["layers"] as? [[String: Any]] else { return ("{}", [:]) }
         // the colours come with the app; the areas may not have been loaded yet
-        let colors = (style["metadata"] as? [String: Any])?["richiroute:route"] as? [String: String] ?? [:]
+        let metadata = style["metadata"] as? [String: Any]
+        var colors = metadata?["richiroute:route"] as? [String: String] ?? [:]
+        // the planner's first loop colour, which the chosen loop takes
+        colors["loop"] = (metadata?["richiroute:loops"] as? [String])?.first
         var sources: [String: Any] = [:]
         for (name, source) in style["sources"] as? [String: [String: Any]] ?? [:] {
             for id in ids {
@@ -53,6 +56,8 @@ struct MapStyle: Sendable {
     static let dangerHex = "#a3261b"
     /// The ink in Dark Mode, light enough to read on the dark map and panel.
     static let lightInkHex = "#e6ebe9"
+    /// The grey of what is not chosen or still waits, and of a slider's track in Dark Mode.
+    static let greyHex = "#9aa29e"
 
     static func color(hex: String) -> UIColor {
         let rgb = Int(hex.dropFirst(), radix: 16) ?? 0x808080
@@ -73,6 +78,10 @@ extension Color {
     /// on the dark panel.
     static let ink = Color(UIColor { $0.userInterfaceStyle == .dark ? MapStyle.color(hex: MapStyle.lightInkHex) : MapStyle.ink })
     static let danger = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0xff / 255, green: 0x8a / 255, blue: 0x7a / 255, alpha: 1) : MapStyle.danger })
+    /// Text on a control filled with the ink: white on the dark ink, the dark ink on the light one.
+    static let onInk = Color(UIColor { $0.userInterfaceStyle == .dark ? MapStyle.ink : .white })
+    /// A slider's travelled track: the ink, in Dark Mode grey, so the white knob stands out from it.
+    static let track = Color(UIColor { $0.userInterfaceStyle == .dark ? MapStyle.color(hex: MapStyle.greyHex) : MapStyle.ink })
 }
 
 /// Where the map and routing data lie: the app's own `Library/Application Support/RichiRoute`, which stays from one
