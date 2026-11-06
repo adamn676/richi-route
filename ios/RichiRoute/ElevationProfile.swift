@@ -57,6 +57,14 @@ struct Profile: Decodable, Equatable, Sendable {
                      gradient: ratio == 0 ? a : a.flatMap { a in b.map { a * (1 - ratio) + $0 * ratio } })
     }
 
+    /// The route's points between two distances on each leg, `[leg, first, last]`, as a surface section's parts.
+    func parts(from: Double, to: Double) -> [[Int]] {
+        along.enumerated().compactMap { leg, distances in
+            let inside = distances.indices.filter { distances[$0] > from && distances[$0] < to }
+            return inside.first.map { [leg, $0, inside[inside.count - 1]] }
+        }
+    }
+
     /// The route between two distances, ending exactly there (`trackCoordinates`).
     func coordinates(from: Double, to: Double, legs: [Leg]) -> [[Double]] {
         guard let start = point(at: from, legs: legs), let end = point(at: to, legs: legs) else { return [] }

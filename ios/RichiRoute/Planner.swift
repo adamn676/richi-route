@@ -63,12 +63,14 @@ final class Planner {
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
-    /// A stretch chosen on the route it was chosen on: its distances along it and its line, which the map lifts and
-    /// frames. Kept here, so panel and map show the same stretch, also after another tab or an undo.
+    /// A stretch chosen on the route it was chosen on: its distances along it, its line, which the map frames, and
+    /// the route's points it covers on each leg, `[leg, first, last]`, which the map brings out. Kept here, so panel
+    /// and map show the same stretch, also after another tab or an undo.
     struct Stretch {
         let route: [String]
         let range: ClosedRange<Double>
         let line: [[Double]]
+        let parts: [[Int]]
     }
 
     /// The stretch the elevation profile is zoomed into, and the surface section picked in "Untergrund", which the map
@@ -79,13 +81,13 @@ final class Planner {
     var profileRange: ClosedRange<Double>? { current(zoom)?.range }
     var sectionRange: ClosedRange<Double>? { current(section)?.range }
 
-    func zoomProfile(_ range: ClosedRange<Double>?, line: [[Double]] = []) {
-        zoom = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line) }
+    func zoomProfile(_ range: ClosedRange<Double>?, line: [[Double]] = [], parts: [[Int]] = []) {
+        zoom = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line, parts: parts) }
         frame()
     }
 
-    func focusSection(_ range: ClosedRange<Double>?, line: [[Double]] = []) {
-        section = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line) }
+    func focusSection(_ range: ClosedRange<Double>?, line: [[Double]] = [], parts: [[Int]] = []) {
+        section = range.map { Stretch(route: pairs.map(\.key), range: $0, line: line, parts: parts) }
         frame()
     }
 
@@ -598,7 +600,25 @@ final class Planner {
                 return MapContent.Pin(stop: stop.id, coord: coord, badge: badge, error: stopErrors[stop.id] != nil)
             }
         }
-        return MapContent(lines: lines, pins: pins, framing: framing, stretch: (current(section) ?? current(zoom))?.line ?? [])
+        let stretch = current(section) ?? current(zoom)
+        return MapContent(lines: lines, pins: pins, framing: framing, stretch: stretch?.line ?? [], focused: stretch.map(focused) ?? [])
+    }
+
+    /// The route along a stretch, in its surfaces, ending where the stretch does, between two of the route's points.
+    private func focused(_ stretch: Stretch) -> [MapContent.Line] {
+        var pieces: [MapContent.Line] = []
+        for part in stretch.parts where pairs.indices.contains(part[0]) {
+            guard case .routed(let leg) = legs[pairs[part[0]].key] else { continue }
+            for span in leg.drawnSpans {
+                let (from, to) = (max(span.fromIndex, part[1]), min(span.toIndex, part[2]))
+                if from < to { pieces.append(.init(coordinates: Array(leg.coordinates[from...to]), style: span.surface.rawValue, leg: part[0])) }
+            }
+        }
+        guard let start = stretch.line.first, let end = stretch.line.last, let first = pieces.first else { return pieces }
+        if first.coordinates.first != start { pieces[0] = .init(coordinates: [start] + first.coordinates, style: first.style, leg: first.leg) }
+        let last = pieces[pieces.count - 1]
+        if last.coordinates.last != end { pieces[pieces.count - 1] = .init(coordinates: last.coordinates + [end], style: last.style, leg: last.leg) }
+        return pieces
     }
 }
 
@@ -644,4 +664,6 @@ struct MapContent: Equatable {
     let framing: Int
     /// The stretch the profile is zoomed into, which framing then shows alone.
     var stretch: [[Double]] = []
+    /// The route along the stretch, which the light map shows over the rest of the route, faded.
+    var focused: [Line] = []
 }

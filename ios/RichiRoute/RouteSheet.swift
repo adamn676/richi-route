@@ -110,7 +110,8 @@ struct RouteTab: View {
                     ElevationProfile(profile: shown.profile, legs: shown.legs, range: shown.range) { point in
                         planner.showPoint(point?.coordinate)
                     } zoom: { range in
-                        planner.zoomProfile(range, line: range.map { shown.profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: shown.legs) } ?? [])
+                        planner.zoomProfile(range, line: range.map { shown.profile.coordinates(from: $0.lowerBound, to: $0.upperBound, legs: shown.legs) } ?? [],
+                                            parts: range.map { shown.profile.parts(from: $0.lowerBound, to: $0.upperBound) } ?? [])
                         if range != nil {
                             halve()
                             withAnimation { scroller.scrollTo(Self.profileRow, anchor: .top) }
@@ -129,8 +130,8 @@ struct RouteTab: View {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
                     Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
-                    SurfaceRows(surfaces: surfaces.value, legs: surfaces.legs, focused: planner.sectionRange) { range, line in
-                        planner.focusSection(range, line: line)
+                    SurfaceRows(surfaces: surfaces.value, legs: surfaces.legs, focused: planner.sectionRange) { range, line, parts in
+                        planner.focusSection(range, line: line, parts: parts)
                         if range != nil { halve() }
                     }
                 }

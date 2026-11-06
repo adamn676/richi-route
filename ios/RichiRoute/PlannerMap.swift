@@ -77,6 +77,9 @@ struct PlannerMap: UIViewRepresentable {
         private var lines: MLNShapeSource?
         private var pins: MLNShapeSource?
         private var stretch: MLNShapeSource?
+        private var focused: MLNShapeSource?
+        /// The route's outline and line, faded on the light map while a stretch is brought out.
+        private var routeLayers: [MLNLineStyleLayer] = []
         private var focus: MLNShapeSource?
         private var shown: MapContent?
         private var waiting: MapContent?
@@ -109,7 +112,7 @@ struct PlannerMap: UIViewRepresentable {
             let dark = map.traitCollection.userInterfaceStyle == .dark
             guard dark != self.dark else { return }
             self.dark = dark
-            (lines, pins, stretch, focus) = (nil, nil, nil, nil)
+            (lines, pins, stretch, focused, focus) = (nil, nil, nil, nil, nil)
             map.styleJSON = MapStyle.shared.json(dark: dark)
         }
 
@@ -142,25 +145,42 @@ struct PlannerMap: UIViewRepresentable {
             filled.predicate = NSPredicate(format: "style == 'progress'")
             filled.lineColor = pending.lineColor
             filled.lineWidth = NSExpression(forConstantValue: 3)
-            // the stretch the profile is zoomed into, lifted beneath the route: in the planner's ink, on the dark map
-            // as a soft light glow, which the white outline can't be taken for. Its line smoothed, as a blurred line
-            // draws bright slashes across itself at a road's small jogs.
+            // the stretch the profile is zoomed into, or a surface section: on the light map the route along it raised on
+            // a wider outline, its ends marked, over the rest, which fades, as the planner draws it; on the dark map a soft
+            // light glow beneath it, which the white outline can't be taken for. The glow's line smoothed, as a blurred line draws slashes across itself at a road's
+            // small jogs; the blur hides the smoothing.
             let stretch = MLNShapeSource(identifier: "stretch", shape: nil, options: [.simplificationTolerance: 3])
             style.addSource(stretch)
             let lifted = MLNLineStyleLayer(identifier: "stretch", source: stretch)
-            lifted.lineColor = NSExpression(forConstantValue: dark ? UIColor.white : MapStyle.ink)
-            lifted.lineWidth = NSExpression(forConstantValue: dark ? 22 : 13)
-            if dark {
-                lifted.lineOpacity = NSExpression(forConstantValue: 0.5)
-                lifted.lineBlur = NSExpression(forConstantValue: 6)
-            }
+            lifted.lineColor = NSExpression(forConstantValue: UIColor.white)
+            lifted.lineOpacity = NSExpression(forConstantValue: 0.5)
+            lifted.lineWidth = NSExpression(forConstantValue: 22)
+            lifted.lineBlur = NSExpression(forConstantValue: 6)
+            let focused = MLNShapeSource(identifier: "focused", shape: nil)
+            style.addSource(focused)
+            let focusedOutline = MLNLineStyleLayer(identifier: "focused-outline", source: focused)
+            focusedOutline.lineColor = outline.lineColor
+            focusedOutline.lineWidth = NSExpression(forConstantValue: 13)
+            let focusedLine = MLNLineStyleLayer(identifier: "focused-line", source: focused)
+            focusedLine.lineColor = line.lineColor
+            focusedLine.lineWidth = NSExpression(forConstantValue: 8)
+            let ends = MLNCircleStyleLayer(identifier: "focused-ends", source: focused)
+            ends.predicate = NSPredicate(format: "end == YES")
+            ends.circleRadius = NSExpression(forConstantValue: 6)
+            ends.circleColor = NSExpression(forConstantValue: UIColor.white)
+            ends.circleStrokeColor = NSExpression(forConstantValue: MapStyle.ink)
+            ends.circleStrokeWidth = NSExpression(forConstantValue: 2.5)
             // under the map's names, as the planner draws it, so street and place names stay readable on the route
             let labels = style.layers.first { $0 is MLNSymbolStyleLayer }
-            for layer in [lifted, outline, line, pending, filled] {
-                layer.lineCap = NSExpression(forConstantValue: "round")
-                layer.lineJoin = NSExpression(forConstantValue: "round")
+            let layers: [MLNStyleLayer] = dark ? [lifted, outline, line, pending, filled] : [outline, line, focusedOutline, focusedLine, ends, pending, filled]
+            for layer in layers {
+                if let layer = layer as? MLNLineStyleLayer {
+                    layer.lineCap = NSExpression(forConstantValue: "round")
+                    layer.lineJoin = NSExpression(forConstantValue: "round")
+                }
                 if let labels { style.insertLayer(layer, below: labels) } else { style.addLayer(layer) }
             }
+            routeLayers = dark ? [] : [outline, line]
 
             // the planner's markers: its ink, red for a stop without a road, a white ring; a Formpunkt white in an ink ring
             let stop = NSPredicate(format: "shape == NO"), formpunkt = NSPredicate(format: "shape == YES")
@@ -197,6 +217,7 @@ struct PlannerMap: UIViewRepresentable {
             dot.circleStrokeWidth = NSExpression(forConstantValue: 3)
             style.addLayer(dot)
             self.stretch = stretch
+            self.focused = focused
             self.focus = focus
 
             self.lines = lines
@@ -222,14 +243,24 @@ struct PlannerMap: UIViewRepresentable {
         }
 
         private func fill(_ content: MapContent) {
-            lines?.shape = MLNShapeCollectionFeature(shapes: content.lines.map { line in
-                let feature = MLNPolylineFeature(coordinates: line.coordinates.map(Self.coordinate), count: UInt(line.coordinates.count))
-                feature.attributes = ["style": line.style, "leg": line.leg]
-                return feature
-            })
+            lines?.shape = MLNShapeCollectionFeature(shapes: content.lines.map(Self.feature))
             draw(content.pins)
             stretch?.shape = content.stretch.count > 1
                 ? MLNPolylineFeature(coordinates: content.stretch.map(Self.coordinate), count: UInt(content.stretch.count)) : nil
+            let ends: [MLNShape] = content.focused.isEmpty ? [] : [content.stretch.first, content.stretch.last].compactMap { $0 }.map { end in
+                let point = MLNPointFeature()
+                point.coordinate = Self.coordinate(end)
+                point.attributes = ["end": true]
+                return point
+            }
+            focused?.shape = MLNShapeCollectionFeature(shapes: content.focused.map(Self.feature) + ends)
+            for layer in routeLayers { layer.lineOpacity = NSExpression(forConstantValue: content.focused.isEmpty ? 1 : 0.35) }
+        }
+
+        private static func feature(_ line: MapContent.Line) -> MLNPolylineFeature {
+            let feature = MLNPolylineFeature(coordinates: line.coordinates.map(coordinate), count: UInt(line.coordinates.count))
+            feature.attributes = ["style": line.style, "leg": line.leg]
+            return feature
         }
 
         /// The profile's point under the finger. As the finger comes down, the route is brought out from under the

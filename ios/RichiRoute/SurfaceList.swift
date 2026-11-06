@@ -39,7 +39,7 @@ struct SurfaceRows: View {
     let legs: [Leg]
     /// The section the map shows.
     let focused: ClosedRange<Double>?
-    let focus: (_ range: ClosedRange<Double>?, _ line: [[Double]]) -> Void
+    let focus: (_ range: ClosedRange<Double>?, _ line: [[Double]], _ parts: [[Int]]) -> Void
 
     @State private var open: Surface?
     @State private var shown = 10
@@ -62,7 +62,7 @@ struct SurfaceRows: View {
         return Button {
             if isOpen {
                 open = nil
-                focus(nil, [])
+                focus(nil, [], [])
             } else {
                 open = total.surface
                 shown = 10
@@ -110,7 +110,7 @@ struct SurfaceRows: View {
         ForEach(matching.prefix(shown), id: \.from) { section in
             let isFocused = section.range == focused
             Button {
-                if isFocused { focus(nil, []) } else { show(section) }
+                if isFocused { focus(nil, [], []) } else { show(section) }
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
@@ -155,5 +155,5 @@ struct SurfaceRows: View {
         show(matching[next])
     }
 
-    private func show(_ section: Surfaces.Section) { focus(section.range, section.line(on: legs)) }
+    private func show(_ section: Surfaces.Section) { focus(section.range, section.line(on: legs), section.parts) }
 }

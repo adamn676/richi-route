@@ -79,7 +79,6 @@ import SurfaceReportCard from '@/components/map/SurfaceReportCard.vue';
 import LoopSuggestionsLayer from '@/components/map/LoopSuggestionsLayer.vue';
 import { useLoopSuggestionsStore } from '@/stores/loop-suggestions.store';
 import { useRouteProfileStore } from '@/stores/route-profile.store';
-import { routeStyle } from '@/config/mapStyle';
 import RouteProfileLayer from '@/components/map/RouteProfileLayer.vue';
 import OfflineAreasLayer from '@/components/map/OfflineAreasLayer.vue';
 import { useOfflineAreasStore } from '@/stores/offline-areas.store';
@@ -101,9 +100,9 @@ const basemapGroups: { label: string; items: readonly { id: EditorBasemap; label
 ];
 const basemapTitle = computed(() =>
   `Kartenansicht: ${basemapGroups.flatMap(group => group.items).find(item => item.id === basemap.value)?.label}`);
-const { focus: routeProfileFocus, rangeCoordinates, range, track: profileTrack } = storeToRefs(useRouteProfileStore());
-// The stretch the profile zooms into, in the markers' ink.
-const profileRange = computed(() => rangeCoordinates.value && { coordinates: rangeCoordinates.value, color: routeStyle.waiting });
+const { focus: routeProfileFocus, rangeCoordinates, rangeLines, range, track: profileTrack } = storeToRefs(useRouteProfileStore());
+// The stretch the profile zooms into, in the surfaces it runs on.
+const profileRange = computed(() => rangeCoordinates.value && { coordinates: rangeCoordinates.value, lines: rangeLines.value ?? [] });
 const routeStore = useRouteStore();
 const { route, waypoints, routingPending, focusedSurface, surfaceReporting, surfacesReportable, surfacePicking, surfacePreview,
   surfaceSelection, surfaceEstimate, fitRequest, shownSection } = storeToRefs(routeStore);
