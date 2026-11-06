@@ -1116,7 +1116,7 @@ the profile shows its own detail, axes and colours, the header its length,
 climbing, mean gradient and steepest climb held over 100 m, the axis its exact
 ends, and the map frames its course, raised in its surfaces' colours with its
 ends marked, while the rest of the route fades. A double
-click, Escape or the zoom-out button shows the whole profile again; so does a
+click, Escape or its × (**Ausschnitt schließen**) shows the whole profile again; so does a
 changed route. A right-click on the map, or
 a long press on phones, offers Street View for any point. Without a key these
 links open Google Maps in a new tab; with a Google Maps Embed API key, Street
@@ -1230,7 +1230,7 @@ every other unpaved material) and a light grey for **Unbekannt**. Ways without
 a surface tag count by their type: roads and cycleways as likely paved, tracks
 of grade 2 to 5 as unpaved. The routing engine groups them as it answers a leg
 (`/leg`, `engine/planner`), which the iPhone app's engine serves too. Select a group to see its sections along the route,
-and select it again to close them. A section runs on across stops and shaping
+and select it again, or the × beside its sections (**Abschnitte schließen**), to close them. A section runs on across stops and shaping
 points, and a piece of under 10 m (GPS jitter, a kerb) takes the surface around
 it, so a section ends only where the surface really changes; corrected stretches
 stay their own. Select a section to frame it on the map, raised in its colour

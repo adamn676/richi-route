@@ -29,6 +29,8 @@
           <v-icon-button v-tooltip:bottom="'Voriger Abschnitt'" aria-label="Voriger Abschnitt" @click="step(-1)"><IconChevronLeft :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button v-tooltip:bottom="'Nächster Abschnitt'" aria-label="Nächster Abschnitt" @click="step(1)"><IconChevronRight :size="18" aria-hidden="true" /></v-icon-button>
         </template>
+        <!-- Back to the whole route, as the loop suggestions close. -->
+        <v-icon-button v-tooltip:bottom="'Abschnitte schließen'" aria-label="Abschnitte schließen" @click="selectSurface(selected)"><IconX :size="18" aria-hidden="true" /></v-icon-button>
       </div>
       <v-list class="surfaces__sections">
         <v-list-item v-for="section in matching.slice(0, visibleCount)" :key="section.id" tag="button" type="button" role="button"
@@ -59,7 +61,7 @@ import { routeStyle } from '@/config/mapStyle';
 import { inspectSurfaces, surfaceLabels, type SurfaceSection } from '@/domain/route-surfaces';
 import type { Surface } from '@/domain/route-model';
 import { formatKm, formatLength } from '@/utils/format';
-import { IconChevronLeft, IconChevronRight, IconPencil } from '@/components/icons';
+import { IconChevronLeft, IconChevronRight, IconPencil, IconX } from '@/components/icons';
 import { useRouteStore } from '@/stores/route.store';
 
 const store = useRouteStore();

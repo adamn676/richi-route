@@ -38,5 +38,4 @@ export { default as IconStack2 } from '@tabler/icons-vue/dist/esm/icons/IconStac
 export { default as IconTrain } from '@tabler/icons-vue/dist/esm/icons/IconTrain.mjs';
 export { default as IconTrash } from '@tabler/icons-vue/dist/esm/icons/IconTrash.mjs';
 export { default as IconX } from '@tabler/icons-vue/dist/esm/icons/IconX.mjs';
-export { default as IconZoomOut } from '@tabler/icons-vue/dist/esm/icons/IconZoomOut.mjs';
 export { default as IconZoomScan } from '@tabler/icons-vue/dist/esm/icons/IconZoomScan.mjs';

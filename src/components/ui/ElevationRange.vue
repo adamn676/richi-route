@@ -7,15 +7,16 @@
       <div v-if="stats.gradient !== null" class="elevation-range__mean"><dt>Ø Steigung</dt><dd>{{ formatGradient(stats.gradient) }}&nbsp;<small>%</small></dd></div>
       <div v-if="stats.steepest !== null"><dt>Max. Steigung</dt><dd>{{ formatGradient(stats.steepest) }}&nbsp;<small>%</small></dd></div>
     </dl>
-    <v-icon-button size="x-small" aria-label="Ganzes Profil zeigen" v-tooltip:top="'Ganzes Profil zeigen'" @click="emit('reset')">
-      <IconZoomOut :size="18" aria-hidden="true" />
+    <!-- Back to the whole route, as the loop suggestions and a surface's sections close. -->
+    <v-icon-button size="x-small" aria-label="Ausschnitt schließen" v-tooltip:top="'Ausschnitt schließen'" @click="emit('reset')">
+      <IconX :size="18" aria-hidden="true" />
     </v-icon-button>
   </span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { IconZoomOut } from '@/components/icons';
+import { IconX } from '@/components/icons';
 import { sectionStats } from '../../domain/gpx-inspection';
 import type { GpxTrack } from '../../domain/gpx-track';
 import { formatGradient, formatKm, formatWhole } from '@/utils/format';
