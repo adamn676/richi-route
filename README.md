@@ -111,6 +111,7 @@ the other checks are listed under [checks](docs/local-development.md#checks).
 | `search/` | The address search in Rust, built from the Austrian address register and OpenStreetMap; `search/wasm` runs it in a browser |
 | `config/` | Shared routing rules: local passage exceptions, turns, avoidances, surface corrections ([workflow](docs/local-development.md#managing-local-routing-rules)) |
 | `scripts/` | Setup and the local launcher (`start-local.sh`) |
+| `design/logo/` | The logo, its lockups and the iPhone app's icon, built by one script ([logo guide](design/logo/README.md)) |
 | `tests/` | Unit and browser tests |
 | `experiments/routing/` | A comparison app for BRouter, GraphHopper and openrouteservice, and rider-reviewed routes kept as regression checks ([routing guide](experiments/routing/README.md)) |
 | `docs/` | The [local development guide](docs/local-development.md) |

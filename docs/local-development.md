@@ -431,7 +431,8 @@ for the map and a second search. Where a section needs more, the engine searches
 it again leaning towards the target
 ([long sections](../engine/PORTING.md#long-sections)). The phone takes about
 three times as long as the computer, so its searches may run two minutes
-instead of one. The map is MapLibre Native 7.0.0.
+instead of one. The map is MapLibre Native 7.0.0. Its icon, `ios/RichiRoute/AppIcon.icon` (Icon Composer), is the
+logo from [`design/logo/`](../design/logo/README.md), whose `build.py` draws its shapes.
 
 `npm run ios:map` writes `ios/RichiRoute/Map/` (outside git), the map the app
 bundles: `style.json` (Karte with Geländerelief, from the same
@@ -455,7 +456,7 @@ it only for builds on your own phone. The app keeps `Data` in its own
 `Library/Application Support/RichiRoute`, where it stays from one install to
 the next, so the app itself is about 55 MB and installs quickly. Building needs
 a Mac with Xcode 27, Rust (`rustup target add aarch64-apple-ios
-aarch64-apple-ios-sim`) and XcodeGen. Copy `engine/` and `ios/` side by side
+aarch64-apple-ios-sim`) and XcodeGen 2.45 or newer (for the Icon Composer icon). Copy `engine/` and `ios/` side by side
 to the Mac, following the links, then generate the project:
 
 ```sh
