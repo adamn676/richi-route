@@ -213,7 +213,7 @@ struct PlannerMap: UIViewRepresentable {
             return style
         }()
 
-        func mapViewStyle(forDefaultUserLocationAnnotationView map: MLNMapView) -> MLNUserLocationAnnotationViewStyle { locationStyle }
+        func mapView(styleForDefaultUserLocationAnnotationView map: MLNMapView) -> MLNUserLocationAnnotationViewStyle { locationStyle }
 
         /// Whether a finger is on the pin, its head or its needle.
         private func onPin(_ point: CGPoint, on map: MLNMapView) -> Bool {
