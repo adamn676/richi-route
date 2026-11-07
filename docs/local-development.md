@@ -423,7 +423,10 @@ the saved routes in that format and the last three replaced without saving, for
 seven days, in the app's `Library/Application Support/RichiRoute/Routes`.
 Files go both ways, as on the planner: **Datei öffnen …** in the **…** menu, or a tap
 on a `.gpx` or `.richiroute` file in Files, Mail, Messages or AirDrop, opens it as the
-route, and the route before goes to "Zuletzt bearbeitet". A GPX track keeps its exact
+route, and the route before goes to "Zuletzt bearbeitet". As on the planner, the panel
+shows the rules' notices where the route passes a stretch with a catch (`Routing/notices.json`,
+from `src/config/routing-rules.generated.json`), and a section that could not be routed
+offers **Abschnitt zeigen** beside **Erneut versuchen**. A GPX track keeps its exact
 path and heights in sections of about 5 km; its surfaces are then found by routing it
 in portions of about 2 km and keeping what matches (`TrackSurfaces.swift`, as
 `src/domain/gpx-surfaces.ts`), with the progress beside "Untergrund", and after a

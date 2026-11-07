@@ -23,6 +23,8 @@ final class Planner {
         case routing
         case routed(Leg)
         case failed(String)
+
+        var isFailed: Bool { if case .failed = self { true } else { false } }
     }
 
     struct Pair {
@@ -65,6 +67,9 @@ final class Planner {
     private(set) var framing = 0
     /// Whether that framing shows the whole route rather than the stretch chosen.
     private var framesWhole = false
+    /// What that framing shows instead of the route, while it still fails: a leg that could not be routed, by its ends
+    /// ("Abschnitt zeigen").
+    private var framedLeg: String?
     /// Shows the elevation profile's point under the finger on the map. It goes to the map directly as the finger
     /// moves: through SwiftUI, each move would redraw the planner.
     @ObservationIgnored var showPoint: ([Double]?) -> Void = { _ in }
@@ -598,7 +603,7 @@ final class Planner {
 
     /// Asks again for the legs that failed and the roads of the stops that found none.
     func retry() {
-        legs = legs.filter { if case .failed = $0.value { false } else { true } }
+        legs = legs.filter { !$0.value.isFailed }
         for id in Array(stopErrors.keys) { snap(id) }
         update()
     }
@@ -606,6 +611,7 @@ final class Planner {
     /// `whole`: the whole route, also while a stretch of it is shown ("Ganze Route zeigen", `fitRoute`).
     func frame(whole: Bool = false) {
         framesWhole = whole
+        framedLeg = nil
         framing += 1
     }
 
@@ -744,7 +750,7 @@ final class Planner {
                 requests[pair.key] = nil
                 legs[pair.key] = state
                 remember()
-                if case .failed = state {
+                if state.isFailed {
                     feel(.warning)
                 } else if started.duration(to: .now) > Self.longSearch, !isRouting {
                     // the rider has waited for it, perhaps with the phone aside
@@ -811,11 +817,17 @@ final class Planner {
 
 
     /// The first problem fixed elsewhere than at a stop's row: a Formpunkt without a road, or a leg that could not be
-    /// routed.
-    var problem: String? {
-        if let shape = stops.first(where: { $0.shape && stopErrors[$0.id] != nil }) { return stopErrors[shape.id] }
-        for pair in pairs { if case .failed(let message) = legs[pair.key] { return message } }
+    /// routed, with that leg.
+    var problem: (message: String, leg: Pair?)? {
+        if let shape = stops.first(where: { $0.shape && stopErrors[$0.id] != nil }), let message = stopErrors[shape.id] { return (message, nil) }
+        for pair in pairs { if case .failed(let message) = legs[pair.key] { return (message, pair) } }
         return nil
+    }
+
+    /// "Abschnitt zeigen": a leg that could not be routed, framed on the map.
+    func show(_ leg: Pair) {
+        frame()
+        framedLeg = leg.key
     }
 
     /// The route's name as the planner gives it (`routeTitle`): "A → B" by its ends' places, "Runde ab A" where they
@@ -864,7 +876,8 @@ final class Planner {
         let suggested = (loops?.found ?? []).enumerated().map { index, found in
             MapContent.Loop(coordinates: found.loop.leg.coordinates, chosen: index == loops?.chosen, label: found.figures)
         }
-        return MapContent(lines: lines, pins: pins, framing: framing, framesWhole: framesWhole, stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [],
+        return MapContent(lines: lines, pins: pins, framing: framing, framesWhole: framesWhole,
+                          framed: pairs.first { $0.key == framedLeg && legs[$0.key]?.isFailed == true }.map { [$0.from.coord!, $0.to.coord!] } ?? [], stretch: stretch?.line ?? [], focused: stretch?.pieces ?? [],
                           loops: suggested)
     }
 
@@ -933,6 +946,8 @@ struct MapContent: Equatable {
     let pins: [Pin]
     let framing: Int
     var framesWhole = false
+    /// What framing shows instead, where set.
+    var framed: [[Double]] = []
     /// The stretch the profile is zoomed into, which framing then shows alone.
     var stretch: [[Double]] = []
     /// The route along the stretch, which the light map shows over the rest of the route, faded.

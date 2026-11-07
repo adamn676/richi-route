@@ -134,6 +134,8 @@ struct RouteTab: View {
     @State private var viasOpen = false
     /// The route's surfaces with the legs they were made from, likewise.
     @State private var surfaces: (value: Surfaces, legs: [Leg])?
+    /// The rules' notices on stretches the route passes.
+    @State private var notices: [RouteNotices.Notice] = []
 
     /// The stop whose search is open, by its place among the stops and their number with it: a new Zwischenstopp
     /// is one not on the route yet, before the Ziel.
@@ -153,8 +155,22 @@ struct RouteTab: View {
                 LoopsView(planner: planner, loops: loops)
             } else {
             Section { summary.id(Self.top) }
+            // as on the planner: the rules' notices, then what went wrong
+            if !notices.isEmpty {
+                Section {
+                    ForEach(notices) { notice in
+                        // only the sign in the warning colour
+                        Label {
+                            Text(notice.text)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
             if let problem = planner.problem {
-                Section { problemView(problem) }
+                Section { problemView(problem.message, leg: problem.leg) }
             }
             // under the figures, so the half-raised panel shows the profile with the map above it
             if planner.isComplete, let shown {
@@ -213,6 +229,12 @@ struct RouteTab: View {
         }
         // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
         .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
+        }
+        // what the rules say about stretches of the route, looked at again whenever a leg changes
+        .task(id: planner.routedLegs) {
+            let legs = legs
+            let found = await Task.detached { RouteNotices.along(legs) }.value
+            if !Task.isCancelled { notices = found }
         }
         // the surfaces of the route as it stands, asked again whenever a leg changes, also when a track's are found
         .task(id: planner.isComplete ? planner.routedLegs : []) {
@@ -320,10 +342,19 @@ struct RouteTab: View {
         return "Tipp: Antippen setzt Start und Ziel, ein Tippen auf die Route einen Zwischenstopp."
     }
 
-    private func problemView(_ problem: String) -> some View {
+    private func problemView(_ problem: String, leg: Planner.Pair?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(Color.danger)
-            Button("Erneut versuchen") { planner.retry() }.buttonStyle(.bordered)
+            HStack {
+                if let leg {
+                    Button("Abschnitt zeigen") {
+                        planner.show(leg)
+                        halve()
+                    }
+                }
+                Button("Erneut versuchen") { planner.retry() }
+            }
+            .buttonStyle(.bordered)
         }
         .font(.subheadline)
     }

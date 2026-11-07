@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RichiRoute tests" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>Über den Weidweg</name><trkseg>
+<trkpt lat="47.1028230" lon="15.3979350"><ele>373.8</ele></trkpt>
+<trkpt lat="47.1027800" lon="15.3979670"><ele>373.2</ele></trkpt>
+<trkpt lat="47.1026050" lon="15.3979770"><ele>373.2</ele></trkpt>
+<trkpt lat="47.1025840" lon="15.3979530"><ele>373.5</ele></trkpt>
+<trkpt lat="47.1025500" lon="15.3978660"><ele>374.2</ele></trkpt>
+<trkpt lat="47.1025370" lon="15.3978320"><ele>374.5</ele></trkpt>
+<trkpt lat="47.1024760" lon="15.3976390"><ele>375.2</ele></trkpt>
+<trkpt lat="47.1024660" lon="15.3976070"><ele>375.5</ele></trkpt>
+<trkpt lat="47.1024460" lon="15.3975460"><ele>375.8</ele></trkpt>
+<trkpt lat="47.1024940" lon="15.3975050"><ele>375.8</ele></trkpt>
+<trkpt lat="47.1025260" lon="15.3975000"><ele>375.8</ele></trkpt>
+<trkpt lat="47.1025560" lon="15.3974730"><ele>375.8</ele></trkpt>
+<trkpt lat="47.1025340" lon="15.3973550"><ele>376.5</ele></trkpt>
+<trkpt lat="47.1025170" lon="15.3973080"><ele>376.5</ele></trkpt>
+<trkpt lat="47.1024990" lon="15.3973090"><ele>376.5</ele></trkpt>
+</trkseg></trk>
+</gpx>

@@ -643,10 +643,12 @@ struct PlannerMap: UIViewRepresentable {
             return [at.longitude, at.latitude]
         }
 
-        /// The route with its stops, or the stretch the profile is zoomed into.
+        /// The route with its stops, the stretch the profile is zoomed into, or a leg shown alone.
         private func bounds(of content: MapContent) -> MLNCoordinateBounds? {
             let points: [[Double]]
-            if !content.loops.isEmpty {
+            if !content.framed.isEmpty {
+                points = content.framed
+            } else if !content.loops.isEmpty {
                 points = content.loops.flatMap(\.coordinates)
             } else if content.stretch.isEmpty || content.framesWhole {
                 points = content.lines.flatMap(\.coordinates) + content.pins.map(\.coord)

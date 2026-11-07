@@ -120,6 +120,8 @@ targets:
       # a GPX file is no resource by its type (Xcode simulates locations with it)
       - path: RichiRouteUITests/Testtrack.gpx
         buildPhase: resources
+      - path: RichiRouteUITests/Weidweg.gpx
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

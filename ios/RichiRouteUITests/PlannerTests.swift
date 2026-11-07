@@ -411,6 +411,19 @@ final class PlannerTests: XCTestCase {
         }
     }
 
+    /// A route over the Weidweg's stairs carries the rules' notice to push there.
+    @MainActor
+    func testShowsTheRulesNotices() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launchEnvironment["RICHIROUTE_OPEN"] = Bundle(for: Self.self).url(forResource: "Weidweg", withExtension: "gpx")!.path
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Über den Weidweg"].waitForExistence(timeout: 60), "the route not opened")
+        panel(app, to: 0.45)
+        XCTAssertTrue(app.staticTexts["Weidweg: kurze Treppen mit Fahrradrampe. Bitte schieben."].waitForExistence(timeout: 10), "no notice")
+        shot(app, "n1-notice")
+    }
+
     /// Chooses the map as on Apple Maps' card: aerial photos with the map's names, the terrain map, the signed cycle
     /// routes over it, and back to the offline map.
     @MainActor
