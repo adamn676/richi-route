@@ -24,24 +24,24 @@ enum RouteStore {
 
     private static let folder = DataFolder.root.appending(path: "Routes")
     private static let currentFile = folder.appending(path: "current.richiroute.json")
-    /// Which saved route the current one is, if any.
+    /// Which saved route the current one is, if any, and on a second line "named" where its name is its own.
     private static let currentID = folder.appending(path: "current.id")
     private static let writing = DispatchQueue(label: "RouteStore", qos: .utility)
     private static var indexes: [Kind: [Entry]] = [:]
 
     // MARK: The route being planned
 
-    static func current() -> (file: RouteFile, saved: UUID?)? {
+    static func current() -> (file: RouteFile, saved: UUID?, named: Bool)? {
         guard let file = read(currentFile) else { return nil }
-        let id = (try? String(contentsOf: currentID, encoding: .utf8)).flatMap(UUID.init(uuidString:))
-        return (file, id)
+        let lines = (try? String(contentsOf: currentID, encoding: .utf8))?.split(separator: "\n", omittingEmptySubsequences: false) ?? []
+        return (file, lines.first.flatMap { UUID(uuidString: String($0)) }, lines.dropFirst().first == "named")
     }
 
-    static func keep(_ file: RouteFile, saved: UUID?) {
+    static func keep(_ file: RouteFile, saved: UUID?, named: Bool) {
         let (path, idPath) = (currentFile, currentID)
         writing.async {
             write(file, to: path)
-            try? (saved?.uuidString ?? "").write(to: idPath, atomically: true, encoding: .utf8)
+            try? "\(saved?.uuidString ?? "")\n\(named ? "named" : "")".write(to: idPath, atomically: true, encoding: .utf8)
         }
     }
 

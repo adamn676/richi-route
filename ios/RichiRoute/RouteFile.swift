@@ -38,6 +38,7 @@ struct RouteFile: Codable, Sendable {
         let ascentMeters: Double?
         let status: String
         let routingPolicy: String?
+        let recorded: Bool?
 
         /// Encodes `null` for missing heights and climbing, as the planner writes them.
         func encode(to encoder: Encoder) throws {
@@ -54,6 +55,7 @@ struct RouteFile: Codable, Sendable {
             try container.encode(ascentMeters, forKey: .ascentMeters)
             try container.encode(status, forKey: .status)
             try container.encodeIfPresent(routingPolicy, forKey: .routingPolicy)
+            if recorded == true { try container.encode(true, forKey: .recorded) }
         }
     }
 

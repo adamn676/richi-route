@@ -13,6 +13,7 @@ struct RouteSheet: View {
     @State private var tab = Tab.route
     @State private var naming = false
     @State private var newName = ""
+    @State private var choosingFile = false
 
     enum Tab { case route, library }
 
@@ -39,6 +40,11 @@ struct RouteSheet: View {
             }
             }
         }
+        .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.gpx, .richiRoute, .json]) { chosen in
+            guard case .success(let url) = chosen else { return }
+            planner.open(fileAt: url)
+            tab = .route
+        }
         // the rider's routes are a list: the folded panel would cut its first row
         .onChange(of: tab) { if tab == .library && folded { halve() } }
         .alert("Route speichern", isPresented: $naming) {
@@ -59,18 +65,33 @@ struct RouteSheet: View {
                     Button("Ganze Route zeigen", systemImage: "viewfinder") { planner.frame(whole: true) }
                 }
             }
-            Button("Neue Route", systemImage: "plus") {
-                planner.newRoute()
-                tab = .route
+            Section {
+                Button("Neue Route", systemImage: "plus") {
+                    planner.newRoute()
+                    tab = .route
+                }
+                Button("Datei öffnen …", systemImage: "folder") { choosingFile = true }
             }
-            if planner.savedID == nil {
-                Button("In „Meine Routen“ speichern …", systemImage: "bookmark") {
-                    newName = planner.name
-                    naming = true
+            Section {
+                if planner.savedID == nil {
+                    Button("In „Meine Routen“ speichern …", systemImage: "bookmark") {
+                        newName = planner.name
+                        naming = true
+                    }
+                    .disabled(!planner.hasRoute)
+                } else if !planner.isSaved {
+                    Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
+                }
+                // as the planner's save menu: for a bike computer once every leg is routed, and to go on editing
+                Menu {
+                    let ready = planner.isComplete && !planner.isRouting
+                    share(.gpx, "GPX", "Für den Radcomputer", ready: ready)
+                    share(.fit, "FIT (Garmin)", "Für Garmin-Radcomputer", ready: ready)
+                    share(.richiRoute, "RichiRoute-Datei", "Zum Weiterbearbeiten")
+                } label: {
+                    Label("Teilen", systemImage: "square.and.arrow.up")
                 }
                 .disabled(!planner.hasRoute)
-            } else if !planner.isSaved {
-                Button("Änderungen speichern", systemImage: "bookmark", action: planner.saveChanges)
             }
             if planner.hasShapes {
                 Button("Formpunkte entfernen", systemImage: "eraser", action: planner.removeShapes)
@@ -83,6 +104,17 @@ struct RouteSheet: View {
         }
         .foregroundStyle(Color.ink)
         .accessibilityLabel("Weitere Aktionen")
+    }
+
+    /// A format to share, its use beneath; until `ready`, why it waits.
+    private func share(_ format: Planner.Export, _ title: String, _ detail: String, ready: Bool = true) -> some View {
+        Button {
+            Task { if let files = await planner.export(format) { Share.present(files) } }
+        } label: {
+            Text(title)
+            Text(ready ? detail : "Erst wenn die Route berechnet ist")
+        }
+        .disabled(!ready)
     }
 }
 
@@ -151,7 +183,12 @@ struct RouteTab: View {
             if planner.isComplete, let surfaces {
                 Section {
                     // a row, as "Wegpunkte": one heading style in the panel
-                    Text("Untergrund").font(.headline).foregroundStyle(Color.ink).listRowSeparator(.hidden)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Untergrund").font(.headline).foregroundStyle(Color.ink)
+                        Spacer()
+                        SurfaceProgress(planner: planner)
+                    }
+                    .listRowSeparator(.hidden)
                     SurfaceRows(surfaces: surfaces.value, focused: planner.sectionRange) { range, parts in
                         planner.focusSection(range, parts: parts, legs: surfaces.legs)
                         if range != nil { halve() }
@@ -177,8 +214,8 @@ struct RouteTab: View {
         // a tapped row scrolls into view; once its search is done, the folded panel shows its start again
         .onChange(of: searching == nil) { if searching == nil && folded { withAnimation { scroller.scrollTo(Self.top, anchor: .top) } } }
         }
-        // the surfaces of the route as it stands, asked again whenever a leg changes
-        .task(id: planner.isComplete ? planner.pairs.map(\.key) : []) {
+        // the surfaces of the route as it stands, asked again whenever a leg changes, also when a track's are found
+        .task(id: planner.isComplete ? planner.routedLegs : []) {
             guard planner.isComplete, let engine = planner.engine else { return surfaces = nil }
             let legs = legs
             guard let value = try? await engine.surfaces(legs), !Task.isCancelled else { return }
@@ -240,7 +277,7 @@ struct RouteTab: View {
 
     private var summaryContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let title = planner.savedName ?? planner.title {
+            if let title = planner.heading {
                 Text(title).font(.headline).lineLimit(1)
             }
             if planner.isComplete && !planner.isRouting {
@@ -454,6 +491,17 @@ private struct Dots: View {
                 path.addLine(to: CGPoint(x: size.size.width / 2, y: size.size.height))
             }
             .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 2.6, lineCap: .round, dash: [0, 7], dashPhase: 3.5))
+        }
+    }
+}
+
+/// How far the search for a track's surfaces has come; a view of its own, so each step redraws only this.
+private struct SurfaceProgress: View {
+    let planner: Planner
+
+    var body: some View {
+        if let progress = planner.surfaceProgress {
+            Text("Wird ermittelt … \(Int(progress * 100)) %").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
         }
     }
 }

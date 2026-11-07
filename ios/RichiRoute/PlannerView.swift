@@ -5,6 +5,8 @@ import SwiftUI
 struct PlannerView: View {
     static let peek: CGFloat = 170
 
+    /// A file another app handed over, which the planner opens.
+    @Binding var opened: URL?
     @State private var planner = Planner()
     @State private var detent = PresentationDetent.height(Self.peek)
     @State private var locating = 0
@@ -175,6 +177,11 @@ struct PlannerView: View {
         // a notice over the map in sight: the full-height panel, which covers it, comes down to half
         .onChange(of: planner.notice) { if planner.notice != nil && detent == .large { detent = .medium } }
         .task { await planner.start() }
+        .onChange(of: opened, initial: true) {
+            guard let opened else { return }
+            planner.open(fileAt: opened)
+            self.opened = nil
+        }
         // sparing, as Apple advises: the rider's own edits, a long wait ended, and what went wrong
         .sensoryFeedback(trigger: planner.feedback) { _, feedback in
             switch feedback.kind {

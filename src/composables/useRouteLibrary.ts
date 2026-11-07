@@ -264,7 +264,7 @@ export function useRouteLibrary() {
 
   async function download() {
     await run(async () => {
-      saveFile(new Blob([exportRouteBackup(title.value, payload())], { type: 'application/json' }), 'richiroute.json');
+      saveFile(new Blob([exportRouteBackup(title.value, payload())], { type: 'application/json' }), 'richiroute');
       message.value = 'RichiRoute-Datei heruntergeladen.';
     });
   }

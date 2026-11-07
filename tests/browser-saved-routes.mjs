@@ -93,8 +93,10 @@ try {
   await (await saveEntry(page, 'RichiRoute-Datei')).click();
   const download = await downloadEvent;
   await page.getByRole('tab', { name: 'Meine Routen', exact: true }).click();
-  await download.saveAs(output + '/roundtrip.richiroute.json');
-  const backup = JSON.parse(await readFile(output + '/roundtrip.richiroute.json', 'utf8'));
+  // the extension the iPhone app opens by a tap
+  assert.match(download.suggestedFilename(), /^richiroute-\d{4}-\d{2}-\d{2}\.richiroute$/);
+  await download.saveAs(output + '/roundtrip.richiroute');
+  const backup = JSON.parse(await readFile(output + '/roundtrip.richiroute', 'utf8'));
   assert.deepEqual(backup.draft, JSON.parse(original));
 
   // A changed route replaced without saving goes to the recently edited ones, not to the saved routes; the confirmation
@@ -162,7 +164,7 @@ try {
   same(JSON.parse(await state()), JSON.parse(edited));
 
   // A RichiRoute file opens as the route, as a GPX file does; it adds no saved route.
-  await page.getByLabel('Datei auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute.json');
+  await page.getByLabel('Datei auswählen', { exact: true }).setInputFiles(output + '/roundtrip.richiroute');
   await page.getByText('„Lange Runde“ geöffnet.').waitFor();
   same(JSON.parse(await state()), JSON.parse(original));
   await waitRows(1);

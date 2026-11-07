@@ -45,7 +45,7 @@ export function exportRouteBackup(name: string, payload: string): string {
 export function importRouteBackup(raw: string): { name: string; payload: string } {
   const data = JSON.parse(raw);
   if (!data || data.format !== 'richiroute' || data.version !== 1) {
-    throw new Error('Keine unterstützte RichiRoute-Sicherung. Bitte eine .richiroute.json-Datei wählen.');
+    throw new Error('Keine unterstützte RichiRoute-Sicherung. Bitte eine .richiroute-Datei wählen.');
   }
   const name = routeName(data.name);
   const draft = parseDraft(JSON.stringify(data.draft));

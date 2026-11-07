@@ -105,30 +105,46 @@ final class Planner {
     /// What the phone lets the rider feel, a new value each time (`PlannerView`).
     private(set) var feedback = Feedback(kind: .tap, count: 0)
     @ObservationIgnored private var saving: Task<Void, Never>?
-    /// The saved route this one is, by its id and name, and its stops when it was saved.
+    /// The saved route this one is, by its id, and its stops when it was saved.
     private(set) var savedID: UUID?
-    private(set) var savedName: String?
     private var savedStops: [Stop]?
+    /// The route's own name: as saved, or as the file it was opened from names it; nil for one named by its ends.
+    private(set) var givenName: String?
     /// A short note on what just happened to the routes, with the route to bring back where there is one.
     private(set) var notice: Notice?
     private var undos: [[Stop]] = []
     private var redos: [[Stop]] = []
     /// Counts the rider's edits, undo and redo with them.
     private(set) var edits = 0
+    private var started = false
+    /// A file to open once the planner has started.
+    @ObservationIgnored private var waiting: URL?
+    /// The search for an opened track's surfaces, and how far it has come.
+    @ObservationIgnored private var surfaceSearch: Task<Void, Never>?
+    /// The legs it looks at, by their ends: once the route has none of them, it ends.
+    @ObservationIgnored private var searched: Set<String> = []
+    private(set) var surfaceProgress: Double?
 
     static let maxSnapMeters = 250.0
     static let longSearch = Duration.seconds(3)
 
     func start() async {
+        defer {
+            started = true
+            if let waiting { open(fileAt: waiting) }
+            waiting = nil
+        }
         engine = await Engine.start()
         engineMissing = engine == nil
         // the route as it was when the app last closed; the UI tests start without it (`-fresh`), from the same map
-        if !ProcessInfo.processInfo.arguments.contains("-fresh"), let (file, id) = RouteStore.current() {
+        if !ProcessInfo.processInfo.arguments.contains("-fresh"), let (file, id, named) = RouteStore.current() {
             open(file)
-            if let id { mark(saved: id, name: file.name) }
+            mark(saved: id, name: id != nil || named ? file.name : nil)
         }
         for stop in stops where stop.coord != nil { snap(stop.id) }
         update()
+        // a track's surfaces, where iOS ended the app before they were found
+        findSurfaces()
     }
 
     // MARK: Saving, in the planner's file format
@@ -151,13 +167,14 @@ final class Planner {
             saved["\(from):\(to)"] = RouteFile.SavedLeg(
                 id: "\(from):\(to)", fromId: from, toId: to, fromCoord: pair.from.coord!, toCoord: pair.to.coord!,
                 coordinates: leg.coordinates, elevations: leg.elevations, surfaces: leg.surfaces,
-                distanceMeters: leg.distanceMeters, ascentMeters: leg.ascentMeters, status: "routed", routingPolicy: engine?.policy)
+                distanceMeters: leg.distanceMeters, ascentMeters: leg.ascentMeters, status: "routed", routingPolicy: engine?.policy,
+                recorded: leg.recorded)
         }
         return RouteFile(name: name, draft: RouteFile.Draft(points: points, legs: saved))
     }
 
-    /// Opens a saved route in place of this one. Its stops keep their names, and legs routed under the app's rules stay;
-    /// the others are routed again.
+    /// Opens a saved route in place of this one. Its stops keep their names, and legs routed under the app's rules stay,
+    /// as do a GPX track's; the others are routed again.
     func open(_ file: RouteFile) {
         // a Formpunkt without its place shapes nothing
         let saved = file.draft.points.filter { $0.type == "stop" || $0.type == "shape" && $0.coord != nil }.map { point in
@@ -172,10 +189,10 @@ final class Planner {
             onRoad.insert(coord)
             if let address = point.address { names[coord] = address }
         }
-        for leg in file.draft.legs.values where leg.status == "routed" && leg.routingPolicy != nil && leg.routingPolicy == engine?.policy {
+        for leg in file.draft.legs.values where leg.status == "routed" && (leg.recorded == true || leg.routingPolicy != nil && leg.routingPolicy == engine?.policy) {
             legs[Self.key(leg.fromCoord, leg.toCoord)] = .routed(Leg(
                 coordinates: leg.coordinates, elevations: leg.elevations, distanceMeters: leg.distanceMeters,
-                ascentMeters: leg.ascentMeters, surfaces: leg.surfaces))
+                ascentMeters: leg.ascentMeters, surfaces: leg.surfaces, recorded: leg.recorded))
         }
         update()
         frame()
@@ -187,12 +204,13 @@ final class Planner {
         saving = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            RouteStore.keep(file(named: name), saved: savedID)
+            RouteStore.keep(file(named: name), saved: savedID, named: givenName != nil)
         }
     }
 
-    /// The route's name: as saved, else by its ends.
-    var name: String { savedName ?? title ?? "Route" }
+    /// The route's name: its own, else by its ends.
+    var heading: String? { givenName ?? title }
+    var name: String { heading ?? "Route" }
 
     /// Saved and unchanged since.
     var isSaved: Bool { savedID != nil && savedStops == stops }
@@ -209,49 +227,236 @@ final class Planner {
     }
 
     func saveChanges() {
-        guard let savedID, let savedName else { return }
-        RouteStore.store(file(named: savedName), as: .saved, id: savedID)
+        guard let savedID, let givenName else { return }
+        RouteStore.store(file(named: givenName), as: .saved, id: savedID)
         savedStops = stops
         remember()
-        notice = Notice(text: "„\(savedName)“ gespeichert.")
+        notice = Notice(text: "„\(givenName)“ gespeichert.")
     }
 
     /// The open route renamed or deleted in "Meine Routen".
     func savedRouteChanged(_ id: UUID, name: String?) {
         guard id == savedID else { return }
-        if let name { savedName = name } else { mark(saved: nil, name: nil) }
+        if let name { givenName = name } else { mark(saved: nil, name: nil) }
         remember()
     }
 
-    /// Opens a saved or recent route, or a new one without; the route it replaces goes to "Zuletzt bearbeitet" where
-    /// it has Start and Ziel and is not saved as it stands.
+    /// Opens a saved or recent route, or a new one without.
     func replace(with entry: RouteStore.Entry?) {
         let file = entry.flatMap(RouteStore.file)
-        var kept: RouteStore.Entry?
-        if worthKeeping && !isSaved {
-            kept = RouteStore.store(self.file(named: name), as: .recent)
+        swap {
+            if let file {
+                open(file)
+                // a recent route goes by its ends, as they may have changed since it was named
+                let saved = entry?.kind == .saved
+                mark(saved: saved ? entry?.id : nil, name: saved ? file.name : nil)
+            } else {
+                restore([Stop(), Stop()])
+                mark(saved: nil, name: nil)
+            }
         }
-        if let file {
-            open(file)
-            mark(saved: entry?.kind == .saved ? entry?.id : nil, name: file.name)
-        } else {
-            restore([Stop(), Stop()])
-            mark(saved: nil, name: nil)
-        }
+        if entry?.kind == .recent, let entry { RouteStore.delete(entry) }
+    }
+
+    /// Puts the route aside in "Zuletzt bearbeitet", where it has Start and Ziel and is not saved as it stands, and
+    /// `opens` another in its place.
+    private func swap(_ opens: () -> Void) {
+        let kept = worthKeeping && !isSaved ? RouteStore.store(file(named: name), as: .recent) : nil
+        opens()
         // a history of its own, as the planner's (`restoreDraft`): the route replaced comes back with "Wiederherstellen"
         undos.removeAll()
         redos.removeAll()
-        if entry?.kind == .recent, let entry { RouteStore.delete(entry) }
         // an opened route shows itself on the map, unconfirmed
         notice = kept.map { Notice(text: "Vorige Route liegt in „Zuletzt bearbeitet“.", restore: $0) }
         remember()
+    }
+
+    // MARK: Files
+
+    /// Opens a GPX track or a RichiRoute file in place of the route; what keeps it from opening shows as a notice, and
+    /// the route stays. Files that come before the planner has started wait for it.
+    func open(fileAt url: URL) {
+        guard started else { return waiting = url }
+        Task {
+            switch await Task.detached(operation: { try Self.read(url) }).result {
+            case .success(.track(let name, let sections)):
+                guard !sections.isEmpty else { return fail("Die GPX-Datei enthält keinen Streckenverlauf.") }
+                swap { openTrack(named: name, sections) }
+            case .success(.route(let file)):
+                swap {
+                    open(file)
+                    mark(saved: nil, name: file.name)
+                }
+            case .failure(let error):
+                fail((error as? Engine.Failure)?.message ?? "Die Datei konnte nicht gelesen werden.")
+            }
+        }
+    }
+
+    private enum Opened: Sendable { case track(name: String, sections: [[Leg]]), route(RouteFile) }
+
+    private nonisolated static func read(_ url: URL) throws -> Opened {
+        let route = ["json", "richiroute"].contains(url.pathExtension.lowercased())
+        let (limit, tooLarge) = route ? (64 * 1024 * 1024, Engine.Failure(message: "Die RichiRoute-Datei darf höchstens 64 MB groß sein."))
+            : (GPX.maxBytes, GPX.tooLarge)
+        let scoped = url.startAccessingSecurityScopedResource()
+        var data: Data?, failure: Error?, coordinating: NSError?
+        // coordinated, so a file in iCloud Drive is downloaded and one being written is read whole
+        NSFileCoordinator().coordinate(readingItemAt: url, error: &coordinating) { url in
+            do {
+                guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= limit else { throw tooLarge }
+                data = try Data(contentsOf: url)
+            } catch {
+                failure = error
+            }
+        }
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        // what other apps hand over lands in the app's Inbox, a copy no longer needed once read
+        if url.deletingLastPathComponent().resolvingSymlinksInPath() == URL.documentsDirectory.appending(path: "Inbox").resolvingSymlinksInPath() {
+            try? FileManager.default.removeItem(at: url)
+        }
+        guard let data else { throw failure ?? coordinating ?? CocoaError(.fileReadUnknown) }
+        guard data.count <= limit else { throw tooLarge }
+        guard route else {
+            let track = try GPX.read(data, fileName: url.lastPathComponent)
+            return .track(name: track.name, sections: track.sections)
+        }
+        guard let file = try? JSONDecoder().decode(RouteFile.self, from: data), file.format == "richiroute", file.version == 1,
+              RouteName.valid(file.name) != nil, file.draft.points.count(where: { $0.type == "stop" }) >= 2 else {
+            throw Engine.Failure(message: "Ungültige oder nicht unterstützte RichiRoute-Datei. Die aktuelle Route bleibt geöffnet.")
+        }
+        return .route(file)
+    }
+
+    private func fail(_ message: String) {
+        notice = Notice(text: message)
+        feel(.warning)
+    }
+
+    /// A GPX track as the route (`_openSections`): Start and Ziel at its ends and a Formpunkt where each section ends,
+    /// each section kept as recorded; a gap between segments is routed. Its surfaces are looked up after.
+    private func openTrack(named name: String, _ sections: [[Leg]]) {
+        var route: [Stop] = []
+        for segment in sections {
+            guard let start = segment.first?.coordinates.first else { continue }
+            if route.last?.coord != start { route.append(Stop(start, shape: true)) }
+            for section in segment {
+                guard let from = route.last?.coord, let end = section.coordinates.last else { continue }
+                legs[Self.key(from, end)] = .routed(section)
+                route.append(Stop(end, shape: true))
+            }
+        }
+        route[0].shape = false
+        route[route.count - 1].shape = false
+        // the track's points lie where it went, which no snapping should move
+        route.forEach { onRoad.insert($0.coord!) }
+        restore(route)
+        mark(saved: nil, name: name)
+        frame()
+        findSurfaces()
+        guard let engine else { return }
+        for coord in Set([route[0].coord!, route[route.count - 1].coord!]) where names[coord] == nil {
+            Task {
+                guard let name = await engine.name(coord) else { return }
+                names[coord] = name
+                remember()
+            }
+        }
+    }
+
+    /// Looks up the surfaces of the route's GPX sections that have none yet, each section a track of its own.
+    private func findSurfaces() {
+        surfaceSearch?.cancel()
+        let open = pairs.compactMap { pair -> (key: String, leg: Leg)? in
+            guard case .routed(let leg) = legs[pair.key], leg.recorded == true, leg.surfaces.isEmpty else { return nil }
+            return (pair.key, leg)
+        }
+        searched = Set(open.map(\.key))
+        guard let engine, !open.isEmpty else { return endSurfaceSearch() }
+        let track = Track(name: "", segments: open.map { Track.Segment(coordinates: $0.leg.coordinates) })
+        surfaceSearch = Task {
+            let found = await TrackSurfaces.find(track, engine: engine) { [weak self] share in await self?.showSurfaceProgress(share) }
+            guard let found, !Task.isCancelled else { return }
+            endSurfaceSearch()
+            // sections edited meanwhile keep their own surfaces
+            for ((key, leg), spans) in zip(open, found) where !spans.isEmpty && legs[key] == .routed(leg) {
+                legs[key] = .routed(Leg(coordinates: leg.coordinates, elevations: leg.elevations, distanceMeters: leg.distanceMeters,
+                                        ascentMeters: leg.ascentMeters, surfaces: spans, recorded: true))
+            }
+            remember()
+        }
+    }
+
+    private func endSurfaceSearch() {
+        surfaceSearch?.cancel()
+        surfaceProgress = nil
+        searched = []
+    }
+
+    private func showSurfaceProgress(_ share: Double) {
+        if surfaceSearch?.isCancelled == false { surfaceProgress = share }
+    }
+
+    enum Export { case gpx, fit, richiRoute }
+
+    /// The route as files to share, named after it: GPX or FIT (in parts over 400 km) once every leg is routed, the
+    /// RichiRoute file with what is routed so far. nil, with a notice, where that fails.
+    func export(_ format: Export) async -> [URL]? {
+        let name = name
+        do {
+            let files: [(name: String, ending: String, data: Data)]
+            switch format {
+            case .richiRoute:
+                let file = file(named: name)
+                files = [(name, "richiroute", try await Task.detached { try JSONEncoder().encode(file) }.value)]
+            case .gpx, .fit:
+                guard isComplete, !isRouting else { throw Engine.Failure(message: "Bitte zuerst alle Abschnitte berechnen.") }
+                let (legs, afterStop) = (routedLegs.compactMap { $0 }, pairs.indices.map { $0 > 0 && !pairs[$0].from.shape })
+                if format == .gpx {
+                    files = [(name, "gpx", await Task.detached { GPX.write(name: name, segments: GPX.track(legs, afterStop: afterStop).segments) }.value)]
+                } else {
+                    guard let engine else { throw Engine.Failure(message: "Die Routing-Engine läuft nicht.") }
+                    let (coordinates, stops) = await Task.detached {
+                        let track = GPX.track(legs, afterStop: afterStop)
+                        return (track.segments.flatMap { $0 }, track.stops)
+                    }.value
+                    do {
+                        files = try await engine.fit(name: name, coordinates: coordinates, stops: stops).map { ($0.name, "fit", $0.fit) }
+                    } catch {
+                        throw Engine.Failure(message: "Die FIT-Datei konnte nicht erstellt werden (\((error as? Engine.Failure)?.message ?? error.localizedDescription)).")
+                    }
+                }
+            }
+            return try Self.write(files)
+        } catch {
+            fail((error as? Engine.Failure)?.message ?? "Die Datei konnte nicht erstellt werden.")
+            return nil
+        }
+    }
+
+    /// Files in a folder of their own, their names without what a path cannot hold and within its 255 bytes.
+    private nonisolated static func write(_ files: [(name: String, ending: String, data: Data)]) throws -> [URL] {
+        let folder = URL.temporaryDirectory.appending(path: "Export/\(UUID().uuidString)")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return try files.map { file in
+                var name = file.name.replacing(/[\/:]/, with: "-")
+                while name.utf8.count > 200 { name.removeLast() }
+                let url = folder.appending(path: "\(name).\(file.ending)")
+                try file.data.write(to: url)
+                return url
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            throw error
+        }
     }
 
     func dismissNotice() { notice = nil }
 
     private func mark(saved id: UUID?, name: String?) {
         savedID = id
-        savedName = id == nil ? nil : name
+        givenName = name
         savedStops = id == nil ? nil : stops
     }
 
@@ -505,6 +710,7 @@ final class Planner {
         defer { remember() }
         let needed = pairs
         let keys = Set(needed.map(\.key))
+        if !searched.isEmpty && searched.isDisjoint(with: keys) { endSurfaceSearch() }
         for (key, request) in requests where !keys.contains(key) {
             request.cancel()
             requests[key] = nil

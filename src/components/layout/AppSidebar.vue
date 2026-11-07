@@ -121,7 +121,7 @@ onMounted(() => {
 onBeforeUnmount(() => resizes?.disconnect());
 // A file opens as the route, chosen in the route's tools or dropped anywhere on the page: a GPX track or a RichiRoute file.
 async function openFile(file: File) {
-  const json = /\.json$/i.test(file.name);
+  const json = /\.(richiroute|json)$/i.test(file.name);
   if (!json && !/\.gpx$/i.test(file.name) && !/xml/.test(file.type)) {
     error.value = 'Hier lassen sich GPX-Dateien und RichiRoute-Dateien öffnen.';
     return;

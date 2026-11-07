@@ -420,7 +420,18 @@ go of what it carries.
 The route being planned is kept in the planner's file format
 (the "RichiRoute-Datei"), so the app opens with it again; "Meine Routen" holds
 the saved routes in that format and the last three replaced without saving, for
-seven days, in the app's `Library/Application Support/RichiRoute/Routes`. The first
+seven days, in the app's `Library/Application Support/RichiRoute/Routes`.
+Files go both ways, as on the planner: **Datei öffnen …** in the **…** menu, or a tap
+on a `.gpx` or `.richiroute` file in Files, Mail, Messages or AirDrop, opens it as the
+route, and the route before goes to "Zuletzt bearbeitet". A GPX track keeps its exact
+path and heights in sections of about 5 km; its surfaces are then found by routing it
+in portions of about 2 km and keeping what matches (`TrackSurfaces.swift`, as
+`src/domain/gpx-surfaces.ts`), with the progress beside "Untergrund", and after a
+relaunch for the sections still without. **Teilen** in the
+same menu hands the route to the share sheet as GPX, FIT (in parts over 400 km, from
+the engine's `/fit`) or RichiRoute file, named after the route. `PlannerTests`
+opens `RichiRouteUITests/Testtrack.gpx` through the launch environment
+`RICHIROUTE_OPEN`, as another app would hand it over. The first
 screen of earlier tests (long routes, the Garmin test) opens with the launch
 argument `-proof`.
 The routing engine is built into the app as `engine/ios`, which runs the same
@@ -1082,7 +1093,7 @@ deleting an entry checks its revision inside the same database transaction, so
 an outdated tab cannot silently overwrite another tab's changes. Deleting a
 saved entry leaves its currently open draft intact.
 
-The same menu offers **GPX** and **FIT (Garmin)** for a bike computer and a **RichiRoute-Datei** (`.richiroute.json`) with the route's points, geometry,
+The same menu offers **GPX** and **FIT (Garmin)** for a bike computer and a **RichiRoute-Datei** (`.richiroute`, which the iPhone app opens by a tap; `.json` opens too) with the route's points, geometry,
 elevation, surfaces and routing revision, to go on editing it, also on another
 device. Opening such a file (the open icon, or dropping it on the map) makes it the
 current route, as a GPX track does; files are limited to 64 MB. Changed routing

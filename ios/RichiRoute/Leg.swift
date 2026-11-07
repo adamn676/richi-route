@@ -10,7 +10,7 @@ struct Leg: Decodable, Sendable, Equatable {
         }
 
         let fromIndex: Int
-        let toIndex: Int
+        var toIndex: Int
         let surface: Surface
         let surfaceTag: String?
         var osm: Kind?
@@ -21,6 +21,8 @@ struct Leg: Decodable, Sendable, Equatable {
     let distanceMeters: Double
     let ascentMeters: Double?
     let surfaces: [Span]
+    /// A section of a GPX track: kept as recorded, also under other routing rules.
+    var recorded: Bool?
 
     /// The spans with what the engine's surfaces leave out drawn as unknown, as the planner draws them.
     var drawnSpans: [Span] {

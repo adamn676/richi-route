@@ -10,7 +10,7 @@
             v-tooltip:bottom="'Formpunkte entfernen: die weißen Punkte, die die Route formen'" @click="act(() => routeStore.clearShaping())"><IconEraser :size="18" aria-hidden="true" /></v-icon-button>
           <v-icon-button v-tooltip:bottom="'Datei öffnen: GPX oder RichiRoute-Datei (oder auf die Karte ziehen)'" aria-label="Datei öffnen"
             @click="fileInput?.click()"><IconFileImport :size="18" aria-hidden="true" /></v-icon-button>
-          <input ref="fileInput" type="file" accept=".gpx,.json,application/gpx+xml,application/xml,text/xml,application/json" aria-label="Datei auswählen"
+          <input ref="fileInput" type="file" accept=".gpx,.richiroute,.json,application/gpx+xml,application/xml,text/xml,application/json" aria-label="Datei auswählen"
             hidden @change="chooseFile" />
           <!-- Every way to keep the route: in this browser, as GPX or a FIT course for a bike computer (once every section is
                calculated), and as a RichiRoute file to go on editing it. -->

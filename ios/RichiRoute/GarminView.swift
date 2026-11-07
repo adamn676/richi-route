@@ -84,7 +84,7 @@ struct GarminView: View {
         do {
             let started = ContinuousClock.now
             let route = try await engine.route(points)
-            let parts = try await engine.fit(name: test, route: route)
+            let parts = try await engine.fit(name: test, coordinates: Engine.track(route))
             note("\(parts.count) FIT-Datei(en), \(parts.map { "\($0.fit.count) B" }.joined(separator: " + ")), in \(seconds(since: started)) s berechnet")
             let server = try await FitServer(serving: parts.map(\.fit)) { request, bytes, seconds in
                 Task { @MainActor in

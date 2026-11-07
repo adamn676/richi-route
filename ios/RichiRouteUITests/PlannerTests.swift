@@ -378,6 +378,39 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 10))
     }
 
+    /// A GPX track handed over as another app would: it opens as the route with its name, keeps both over a relaunch, gets
+    /// its surfaces, and goes out again as GPX and FIT through the share sheet.
+    @MainActor
+    func testOpensAndSharesTracks() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-fresh"]
+        app.launchEnvironment["RICHIROUTE_OPEN"] = Bundle(for: Self.self).url(forResource: "Testtrack", withExtension: "gpx")!.path
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Testtrack Andritz"].waitForExistence(timeout: 60), "the track not opened")
+        XCTAssertTrue(app.staticTexts["10,4 km"].waitForExistence(timeout: 30))
+        // ended by iOS meanwhile, the app opens with the track again, under its name, and goes on finding its surfaces
+        app.terminate()
+        app.launchArguments = []
+        app.launchEnvironment = [:]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Testtrack Andritz"].waitForExistence(timeout: 60), "the track's name lost")
+        // its surfaces, unknown at first, from the roads it follows
+        let found = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH 'Untergrund:' AND label CONTAINS 'Befestigt'")).firstMatch
+        XCTAssertTrue(found.waitForExistence(timeout: 120), "no surfaces for the track")
+        shot(app, "f1-track")
+        for format in ["GPX", "FIT (Garmin)"] {
+            app.buttons["Weitere Aktionen"].tap()
+            app.buttons["Teilen"].tap()
+            app.buttons[format].tap()
+            let sheet = app.otherElements["ActivityListView"]
+            XCTAssertTrue(sheet.waitForExistence(timeout: 20), "no share sheet for \(format)")
+            shot(app, "f2-share-\(format)")
+            sheet.swipeDown(velocity: .fast)
+            XCTAssertTrue(sheet.waitForNonExistence(timeout: 10))
+        }
+    }
+
     /// Chooses the map as on Apple Maps' card: aerial photos with the map's names, the terrain map, the signed cycle
     /// routes over it, and back to the offline map.
     @MainActor

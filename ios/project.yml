@@ -69,6 +69,28 @@ targets:
           - CFBundleURLName: com.adamn.RichiRoute.connectiq
             CFBundleURLSchemes: [richiroute-ciq]
         LSApplicationQueriesSchemes: [gcm-ciq]
+        # GPX tracks and RichiRoute files open from Files, Mail, Messages and AirDrop, read where they lie
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: GPX-Track
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.topografix.gpx]
+          - CFBundleTypeName: RichiRoute-Datei
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.adamn.richiroute]
+        LSSupportsOpeningDocumentsInPlace: true
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.topografix.gpx
+            UTTypeDescription: GPX-Track
+            UTTypeConformsTo: [public.xml]
+            UTTypeTagSpecification:
+              public.filename-extension: [gpx]
+              public.mime-type: [application/gpx+xml]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.adamn.richiroute
+            UTTypeDescription: RichiRoute-Datei
+            UTTypeConformsTo: [public.json]
+            UTTypeTagSpecification:
+              public.filename-extension: [richiroute]
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: RichiRoute/RichiEngine.h
@@ -92,7 +114,12 @@ targets:
   RichiRouteUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [RichiRouteUITests]
+    sources:
+      - path: RichiRouteUITests
+        excludes: ["*.gpx"]
+      # a GPX file is no resource by its type (Xcode simulates locations with it)
+      - path: RichiRouteUITests/Testtrack.gpx
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

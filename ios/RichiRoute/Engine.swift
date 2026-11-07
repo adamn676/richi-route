@@ -177,13 +177,13 @@ struct Engine: Sendable {
         return request
     }
 
-    /// The route of a `route` answer as FIT courses named `name`, in parts over 400 km: each part's name, as its
-    /// file has it, and file.
-    func fit(name: String, route geojson: Data) async throws -> [(name: String, fit: Data)] {
+    /// A track of [longitude, latitude, height where known] as FIT courses named `name`, in parts over 400 km, best cut
+    /// at `stops` (indices into it): each part's name, as its file has it, and file.
+    func fit(name: String, coordinates: [[Double]], stops: [Int] = []) async throws -> [(name: String, fit: Data)] {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/fit")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "coordinates": Self.track(geojson)])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "coordinates": coordinates, "stops": stops] as [String: Any])
         let answer = try JSONSerialization.jsonObject(with: try await ask(request)) as? [String: Any]
         let parts = (answer?["parts"] as? [[String: String]] ?? []).compactMap { part in
             part["name"].flatMap { name in part["fit"].flatMap { Data(base64Encoded: $0) }.map { (name: name, fit: $0) } }
